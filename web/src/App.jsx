@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import tentScene from "./assets/tent-scene.jpeg";
 import {
   ArrowDownRight,
   ArrowRight,
@@ -54,9 +55,17 @@ import {
   LogOut,
   LoaderCircle,
   CircleAlert,
-  KeyRound,
   Tent,
   BadgeCheck,
+  UserPlus,
+  Headset,
+  Mail,
+  MapPin,
+  UserRound,
+  CircleCheck,
+  PartyPopper,
+  CalendarCheck,
+  MessageSquare,
 } from "lucide-react";
 
 const navigation = [
@@ -1064,19 +1073,411 @@ function clearSession() {
   }
 }
 
-function LoginScreen({ onLogin }) {
+const CUSTOMER_AREAS = ["Kayenze", "Geita Town", "Katoro", "Kalangalala", "Nyankumbu", "Nyarugusu", "Other area"];
+
+const authShowcaseContent = {
+  staff: {
+    eyebrow: "RENT · CELEBRATE · GROW",
+    title: "Everything your rental business needs, in one place.",
+    text: "Track inventory, bookings, deliveries and payments — then print receipts and reports in a click.",
+    features: [
+      "Live availability for every tent, table and light",
+      "Receipts, invoices and M-Pesa collections",
+      "Finance, sales and delivery reports",
+    ],
+    stats: [["248", "items tracked"], ["72%", "utilization"], ["1,284", "customers"]],
+  },
+  customer: {
+    eyebrow: "FOR YOUR NEXT EVENT",
+    title: "Tents, chairs and décor — delivered to your door.",
+    text: "Create a free Pendo Rentals account to book equipment for weddings, send-offs, meetings and celebrations across Geita.",
+    features: [
+      "Book tents, tables, chairs, lights and more",
+      "Pay easily with M-Pesa, cash or bank transfer",
+      "Booking updates and receipts by SMS",
+    ],
+    stats: [["248", "items to rent"], ["24h", "delivery in Geita"], ["1,284", "happy customers"]],
+  },
+};
+
+function AuthShowcase({ variant = "staff" }) {
+  const content = authShowcaseContent[variant];
+  return (
+    <section className="auth-showcase" aria-hidden="true">
+      <img className="auth-showcase-art" src={tentScene} alt="" />
+      <div className="auth-brand">
+        <BrandMark />
+        <span className="brand-lockup">
+          <span className="brand-name">Pendo<span>rentals</span></span>
+          <span className="brand-caption">{variant === "customer" ? "EVENT & OUTDOOR RENTALS" : "RENTAL WORKSPACE"}</span>
+        </span>
+      </div>
+      <div className="auth-showcase-copy">
+        <span className="auth-eyebrow"><Tent size={13} /> {content.eyebrow}</span>
+        <h2>{content.title}</h2>
+        <p>{content.text}</p>
+        <ul className="auth-features">
+          {content.features.map((feature) => (
+            <li key={feature}><BadgeCheck size={15} /> {feature}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="auth-stat-row">
+        {content.stats.map(([value, label]) => (
+          <div key={label}><strong>{value}</strong><span>{label}</span></div>
+        ))}
+      </div>
+      <footer className="auth-showcase-foot">
+        <span>Kayenze, Geita · Tanzania</span>
+        <span>© 2026 Pendo Rentals</span>
+      </footer>
+    </section>
+  );
+}
+
+function getPasswordStrength(password) {
+  if (!password) return { score: 0, label: "" };
+  let score = 0;
+  if (password.length >= 8) score += 1;
+  if (password.length >= 12) score += 1;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+  if (/\d/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+  const level = Math.min(4, Math.max(1, score));
+  return { score: level, label: ["", "Weak", "Fair", "Good", "Strong"][level] };
+}
+
+function validateSignup(form) {
+  const errors = {};
+  if (!form.firstName.trim()) errors.firstName = "Enter your first name.";
+  if (!form.lastName.trim()) errors.lastName = "Enter your last name.";
+  if (!/^0[67]\d{8}$/.test(normalizePhone(form.phone))) errors.phone = "Enter a valid phone number, e.g. 0712 345 678.";
+  if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = "Enter a valid email address or leave it empty.";
+  if (!form.area) errors.area = "Choose your area so we can plan deliveries.";
+  if (form.password.length < 8) errors.password = "Use at least 8 characters.";
+  if (!form.confirm) errors.confirm = "Re-enter your password.";
+  else if (form.confirm !== form.password) errors.confirm = "Passwords do not match.";
+  if (!form.terms) errors.terms = "Please accept the rental terms to continue.";
+  return errors;
+}
+
+function SignupScreen({ onBackToLogin }) {
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    area: "",
+    password: "",
+    confirm: "",
+    terms: false,
+    updates: true,
+  });
+  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [created, setCreated] = useState(null);
+
+  const errors = validateSignup(form);
+  const strength = getPasswordStrength(form.password);
+  const showError = (field) => (submitted || touched[field]) && errors[field];
+
+  function update(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function touch(field) {
+    setTouched((current) => ({ ...current, [field]: true }));
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    setSubmitted(true);
+    if (Object.keys(errors).length > 0 || submitting) {
+      const firstInvalid = event.currentTarget.querySelector("[aria-invalid='true']");
+      firstInvalid?.focus();
+      return;
+    }
+    setSubmitting(true);
+    setTimeout(() => {
+      setSubmitting(false);
+      setCreated({
+        firstName: form.firstName.trim(),
+        name: `${form.firstName.trim()} ${form.lastName.trim()}`,
+        phone: normalizePhone(form.phone).replace(/^(\d{4})(\d{3})(\d{3})$/, "$1 $2 $3"),
+        email: form.email.trim(),
+        area: form.area,
+      });
+    }, 900);
+  }
+
+  function fieldMessage(field) {
+    return showError(field) ? (
+      <small className="auth-field-error" id={`signup-${field}-error`}><CircleAlert size={12} /> {errors[field]}</small>
+    ) : null;
+  }
+
+  if (created) {
+    return (
+      <main className="auth-page">
+        <AuthShowcase variant="customer" />
+        <section className="auth-panel">
+          <div className="auth-flow auth-success">
+            <div className="auth-success-badge"><PartyPopper size={30} /></div>
+            <div className="auth-heading">
+              <h1>Karibu, {created.firstName}!</h1>
+              <p>Your Pendo Rentals account has been created.</p>
+            </div>
+            <dl className="auth-summary">
+              <div><dt><UserRound size={14} /> Name</dt><dd>{created.name}</dd></div>
+              <div><dt><Phone size={14} /> Phone</dt><dd>{created.phone}</dd></div>
+              {created.email && <div><dt><Mail size={14} /> Email</dt><dd>{created.email}</dd></div>}
+              <div><dt><MapPin size={14} /> Area</dt><dd>{created.area}</dd></div>
+            </dl>
+            <ol className="auth-next-steps">
+              <li><span><MessageSquare size={15} /></span><div><strong>Watch for our SMS</strong><small>We’ll confirm your account on {created.phone}.</small></div></li>
+              <li><span><CalendarCheck size={15} /></span><div><strong>Book your first rental</strong><small>Call or visit us in Kayenze to reserve tents, chairs and décor.</small></div></li>
+            </ol>
+            <button type="button" className="auth-primary" onClick={onBackToLogin}>
+              Back to sign in <ArrowRight size={17} />
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="auth-page">
+      <AuthShowcase variant="customer" />
+      <section className="auth-panel">
+        <div className="auth-flow auth-signup">
+          <button type="button" className="auth-back" onClick={onBackToLogin}>
+            <ArrowLeft size={15} /> Back to sign in
+          </button>
+          <div className="auth-card-brand">
+            <BrandMark />
+            <span className="brand-name">Pendo<span>rentals</span></span>
+          </div>
+          <div className="auth-heading">
+            <span className="auth-kicker">CUSTOMER ACCOUNT</span>
+            <h1>Create your account</h1>
+            <p>Rent tents, chairs and décor for your events in Geita.</p>
+          </div>
+
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+            <div className="auth-field-grid">
+              <div className="auth-field">
+                <label className={`auth-input ${showError("firstName") ? "has-error" : ""}`}>
+                  <UserRound size={17} />
+                  <span className="sr-only">First name</span>
+                  <input
+                    autoComplete="given-name"
+                    placeholder="First name"
+                    value={form.firstName}
+                    onChange={(event) => update("firstName", event.target.value)}
+                    onBlur={() => touch("firstName")}
+                    aria-invalid={Boolean(showError("firstName"))}
+                    aria-describedby={showError("firstName") ? "signup-firstName-error" : undefined}
+                    autoFocus
+                  />
+                </label>
+                {fieldMessage("firstName")}
+              </div>
+              <div className="auth-field">
+                <label className={`auth-input ${showError("lastName") ? "has-error" : ""}`}>
+                  <UserRound size={17} />
+                  <span className="sr-only">Last name</span>
+                  <input
+                    autoComplete="family-name"
+                    placeholder="Last name"
+                    value={form.lastName}
+                    onChange={(event) => update("lastName", event.target.value)}
+                    onBlur={() => touch("lastName")}
+                    aria-invalid={Boolean(showError("lastName"))}
+                    aria-describedby={showError("lastName") ? "signup-lastName-error" : undefined}
+                  />
+                </label>
+                {fieldMessage("lastName")}
+              </div>
+            </div>
+
+            <div className="auth-field-grid">
+              <div className="auth-field">
+                <label className={`auth-input ${showError("phone") ? "has-error" : ""}`}>
+                  <Phone size={17} />
+                  <span className="sr-only">Phone number</span>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="Phone number"
+                    value={form.phone}
+                    onChange={(event) => update("phone", event.target.value)}
+                    onBlur={() => touch("phone")}
+                    aria-invalid={Boolean(showError("phone"))}
+                    aria-describedby={showError("phone") ? "signup-phone-error" : undefined}
+                  />
+                </label>
+                {fieldMessage("phone")}
+              </div>
+              <div className="auth-field">
+                <label className={`auth-input auth-select ${showError("area") ? "has-error" : ""}`}>
+                  <MapPin size={17} />
+                  <span className="sr-only">Area</span>
+                  <select
+                    value={form.area}
+                    onChange={(event) => {
+                      update("area", event.target.value);
+                      touch("area");
+                    }}
+                    onBlur={() => touch("area")}
+                    aria-invalid={Boolean(showError("area"))}
+                    aria-describedby={showError("area") ? "signup-area-error" : undefined}
+                    className={form.area ? "" : "is-placeholder"}
+                  >
+                    <option value="" disabled>Your area</option>
+                    {CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}
+                  </select>
+                  <ChevronDown size={15} className="auth-select-caret" />
+                </label>
+                {fieldMessage("area")}
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label className={`auth-input ${showError("email") ? "has-error" : ""}`}>
+                <Mail size={17} />
+                <span className="sr-only">Email (optional)</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="Email (optional)"
+                  value={form.email}
+                  onChange={(event) => update("email", event.target.value)}
+                  onBlur={() => touch("email")}
+                  aria-invalid={Boolean(showError("email"))}
+                  aria-describedby={showError("email") ? "signup-email-error" : undefined}
+                />
+              </label>
+              {fieldMessage("email")}
+            </div>
+
+            <div className="auth-field">
+              <label className={`auth-input ${showError("password") ? "has-error" : ""}`}>
+                <Lock size={17} />
+                <span className="sr-only">Password</span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Create password"
+                  value={form.password}
+                  onChange={(event) => update("password", event.target.value)}
+                  onBlur={() => touch("password")}
+                  aria-invalid={Boolean(showError("password"))}
+                  aria-describedby="signup-password-help"
+                />
+                <button
+                  type="button"
+                  className="auth-reveal"
+                  onClick={() => setShowPassword((shown) => !shown)}
+                  aria-label={showPassword ? "Hide passwords" : "Show passwords"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </label>
+              <div className="auth-strength" id="signup-password-help" data-score={strength.score}>
+                <span className="auth-strength-bars" aria-hidden="true"><i /><i /><i /><i /></span>
+                <small>{showError("password") ? errors.password : strength.label ? `${strength.label} password` : "At least 8 characters"}</small>
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label className={`auth-input ${showError("confirm") ? "has-error" : ""} ${form.confirm && form.confirm === form.password ? "is-valid" : ""}`}>
+                <Lock size={17} />
+                <span className="sr-only">Confirm password</span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Confirm password"
+                  value={form.confirm}
+                  onChange={(event) => update("confirm", event.target.value)}
+                  onBlur={() => touch("confirm")}
+                  aria-invalid={Boolean(showError("confirm"))}
+                  aria-describedby={showError("confirm") ? "signup-confirm-error" : undefined}
+                />
+                {form.confirm && form.confirm === form.password && <CircleCheck size={17} className="auth-valid-icon" />}
+              </label>
+              {fieldMessage("confirm")}
+            </div>
+
+            <div className="auth-consents">
+              <label className="auth-check">
+                <input
+                  type="checkbox"
+                  checked={form.terms}
+                  onChange={(event) => {
+                    update("terms", event.target.checked);
+                    touch("terms");
+                  }}
+                  aria-invalid={Boolean(showError("terms"))}
+                />
+                <span>I agree to Pendo Rentals’ <b>rental terms</b> and <b>privacy policy</b></span>
+              </label>
+              {fieldMessage("terms")}
+              <label className="auth-check">
+                <input type="checkbox" checked={form.updates} onChange={(event) => update("updates", event.target.checked)} />
+                <span>Send me booking updates and offers by SMS</span>
+              </label>
+            </div>
+
+            <button className="auth-primary" type="submit" disabled={submitting}>
+              {submitting ? <><LoaderCircle size={17} className="auth-spin" /> Creating account…</> : <>Create account <ArrowRight size={17} /></>}
+            </button>
+          </form>
+
+          <p className="auth-switch">
+            Already have an account? <button type="button" className="auth-link" onClick={onBackToLogin}>Sign in</button>
+          </p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function LoginScreen({ onLogin, onSignup }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  useEffect(() => {
+    if (!helpOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (!event.target.closest(".auth-help")) setHelpOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setHelpOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [helpOpen]);
 
   function handleSubmit(event) {
     event.preventDefault();
-    if (submitting) return;
+    if (submitting || !username.trim() || !password) return;
     setError("");
+    setNotice("");
     setSubmitting(true);
     setTimeout(() => {
       if (normalizePhone(username) === TEST_LOGIN.username && password === TEST_LOGIN.password) {
@@ -1092,80 +1493,49 @@ function LoginScreen({ onLogin }) {
 
   return (
     <main className="auth-page">
-      <section className="auth-showcase" aria-hidden="true">
-        <div className="auth-showcase-glow" />
-        <div className="auth-brand">
-          <BrandMark />
-          <span className="brand-lockup">
-            <span className="brand-name">Pendo<span>rentals</span></span>
-            <span className="brand-caption">RENTAL WORKSPACE</span>
-          </span>
-        </div>
-        <div className="auth-showcase-copy">
-          <span className="auth-eyebrow"><Tent size={13} /> RENT · CELEBRATE · GROW</span>
-          <h2>Everything your rental business needs, in one place.</h2>
-          <p>Track inventory, bookings, deliveries and payments — then print receipts and reports in a click.</p>
-          <ul className="auth-features">
-            <li><BadgeCheck size={15} /> Live availability for every tent, table and light</li>
-            <li><BadgeCheck size={15} /> Receipts, invoices and M-Pesa collections</li>
-            <li><BadgeCheck size={15} /> Finance, sales and delivery reports</li>
-          </ul>
-        </div>
-        <div className="auth-stat-row">
-          <div><strong>248</strong><span>items tracked</span></div>
-          <div><strong>72%</strong><span>utilization</span></div>
-          <div><strong>1,284</strong><span>customers</span></div>
-        </div>
-        <footer className="auth-showcase-foot">
-          <span>Kayenze, Geita · Tanzania</span>
-          <span>© 2026 Pendo Rentals</span>
-        </footer>
-      </section>
+      <AuthShowcase variant="staff" />
 
       <section className="auth-panel">
-        <form className="auth-card" onSubmit={handleSubmit} noValidate>
+        <div className="auth-flow">
           <div className="auth-card-brand">
             <BrandMark />
             <span className="brand-name">Pendo<span>rentals</span></span>
           </div>
-          <span className="auth-kicker">WELCOME BACK</span>
-          <h1>Sign in to your workspace</h1>
-          <p className="auth-lede">Use your registered phone number and password.</p>
 
-          <label className="auth-field">
-            <span>Phone number</span>
-            <span className={`auth-input ${error ? "has-error" : ""}`}>
-              <Phone size={15} />
+          <div className="auth-heading">
+            <h1>Welcome back</h1>
+            <p>Sign in to manage your Pendo Rentals workspace.</p>
+          </div>
+
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+            <label className={`auth-input ${error ? "has-error" : ""}`}>
+              <Phone size={17} />
+              <span className="sr-only">Phone number</span>
               <input
                 type="tel"
                 inputMode="tel"
                 autoComplete="username"
-                placeholder="e.g. 0622 882 278"
+                placeholder="Phone Number"
                 value={username}
                 onChange={(event) => {
                   setUsername(event.target.value);
                   setError("");
                 }}
-                required
                 autoFocus
               />
-            </span>
-          </label>
-
-          <label className="auth-field">
-            <span>Password</span>
-            <span className={`auth-input ${error ? "has-error" : ""}`}>
-              <Lock size={15} />
+            </label>
+            <label className={`auth-input ${error ? "has-error" : ""}`}>
+              <Lock size={17} />
+              <span className="sr-only">Password</span>
               <input
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
-                placeholder="Enter your password"
+                placeholder="Password"
                 value={password}
                 onChange={(event) => {
                   setPassword(event.target.value);
                   setError("");
                 }}
-                required
               />
               <button
                 type="button"
@@ -1173,65 +1543,78 @@ function LoginScreen({ onLogin }) {
                 onClick={() => setShowPassword((shown) => !shown)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
-            </span>
-          </label>
-
-          {error && (
-            <p className="auth-error" role="alert" key={attempt}>
-              <CircleAlert size={14} /> {error}
-            </p>
-          )}
-
-          <div className="auth-row">
-            <label className="auth-check">
-              <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-              <span>Keep me signed in</span>
             </label>
-            <button
-              type="button"
-              className="auth-link"
-              onClick={() => setError(`Forgot your password? Call ${BUSINESS_INFO.phone} to reset it.`)}
-            >
-              Forgot password?
+            {error && (
+              <p className="auth-error" role="alert" key={attempt}>
+                <CircleAlert size={14} /> {error}
+              </p>
+            )}
+            <div className="auth-row">
+              <label className="auth-check">
+                <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+                <span>Keep me signed in</span>
+              </label>
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  setError("");
+                  setNotice(`To reset your password, call Pendo Rentals on ${BUSINESS_INFO.phone}.`);
+                }}
+              >
+                Forgot Password?
+              </button>
+            </div>
+            <button className="auth-primary" type="submit" disabled={submitting || !username.trim() || !password}>
+              {submitting ? <><LoaderCircle size={17} className="auth-spin" /> Signing in…</> : <>Sign in <ArrowRight size={17} /></>}
             </button>
-          </div>
+          </form>
+
+          {notice && <p className="auth-notice" role="status">{notice}</p>}
+
+          <div className="auth-divider"><span>OR</span></div>
 
           <button
-            className="button button-primary auth-submit"
-            type="submit"
-            disabled={submitting || !username || !password}
+            type="button"
+            className="auth-outline"
+            onClick={onSignup}
           >
-            {submitting ? (
-              <><LoaderCircle size={16} className="auth-spin" /> Signing in…</>
-            ) : (
-              <>Sign in <ArrowRight size={16} /></>
-            )}
+            <UserPlus size={17} /> Sign Up / Create Account
           </button>
 
-          <div className="auth-test-hint">
-            <KeyRound size={14} />
-            <span>
-              <strong>Test account</strong>
-              <small>0622882278 · 12345</small>
-            </span>
+          <section className={`auth-help ${helpOpen ? "open" : ""}`} aria-label="Contact Pendo support">
             <button
               type="button"
-              onClick={() => {
-                setUsername(TEST_LOGIN.username);
-                setPassword(TEST_LOGIN.password);
-                setError("");
-              }}
+              className="auth-help-head"
+              onClick={() => setHelpOpen((open) => !open)}
+              aria-expanded={helpOpen}
+              aria-controls="auth-help-contacts"
             >
-              Fill in
+              <span className="auth-help-icon"><Headset size={18} /></span>
+              <span>
+                <strong>Need Help?</strong>
+                <small>{helpOpen ? "Reach Pendo Support by phone or email" : "Contact Pendo Support"}</small>
+              </span>
+              <ChevronDown size={17} className="auth-help-caret" />
             </button>
-          </div>
-
-          <small className="auth-terms">
-            <ShieldCheck size={12} /> Secure workspace for Pendo Rentals staff only.
-          </small>
-        </form>
+            {helpOpen && (
+            <div className="auth-help-contacts" id="auth-help-contacts">
+              <a href={`tel:${BUSINESS_INFO.phone.replace(/\s/g, "")}`}>
+                <Phone size={15} />
+                <span><small>Call us</small><strong>{BUSINESS_INFO.phone}</strong></span>
+                <ChevronRight size={15} />
+              </a>
+              <a href={`mailto:${BUSINESS_INFO.email}`}>
+                <Mail size={15} />
+                <span><small>Email us</small><strong>{BUSINESS_INFO.email}</strong></span>
+                <ChevronRight size={15} />
+              </a>
+            </div>
+            )}
+          </section>
+        </div>
       </section>
     </main>
   );
@@ -1239,8 +1622,14 @@ function LoginScreen({ onLogin }) {
 
 function App() {
   const [user, setUser] = useState(readSession);
+  const [authView, setAuthView] = useState("login");
 
-  if (!user) return <LoginScreen onLogin={setUser} />;
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [authView]);
+
+  if (!user && authView === "signup") return <SignupScreen onBackToLogin={() => setAuthView("login")} />;
+  if (!user) return <LoginScreen onLogin={setUser} onSignup={() => setAuthView("signup")} />;
   return (
     <Workspace
       onLogout={() => {
