@@ -209,8 +209,10 @@ const customersData = [
     name: "Jordan Mitchell",
     email: "jordan.m@email.com",
     phone: "+1 (415) 555-0124",
+    address: "1842 Pine Street, San Francisco, CA 94109",
+    lastOrder: "2026-10-01",
     orders: 12,
-    spent: "$2,480",
+    spent: "TSh 2,480",
     initials: "JM",
     color: "peach",
   },
@@ -218,8 +220,10 @@ const customersData = [
     name: "Avery Sinclair",
     email: "avery.s@email.com",
     phone: "+1 (415) 555-0182",
+    address: "725 Valencia Street, San Francisco, CA 94110",
+    lastOrder: "2026-09-29",
     orders: 8,
-    spent: "$1,920",
+    spent: "TSh 1,920",
     initials: "AS",
     color: "lilac",
   },
@@ -227,8 +231,10 @@ const customersData = [
     name: "Riley Lawson",
     email: "riley.l@email.com",
     phone: "+1 (415) 555-0156",
+    address: "310 Ocean Avenue, San Francisco, CA 94112",
+    lastOrder: "2026-09-26",
     orders: 6,
-    spent: "$1,145",
+    spent: "TSh 1,145",
     initials: "RL",
     color: "mint",
   },
@@ -236,8 +242,10 @@ const customersData = [
     name: "Sam Kim",
     email: "sam.k@email.com",
     phone: "+1 (415) 555-0109",
+    address: "91 Clement Street, San Francisco, CA 94118",
+    lastOrder: "2026-09-20",
     orders: 5,
-    spent: "$980",
+    spent: "TSh 980",
     initials: "SK",
     color: "blue",
   },
@@ -249,7 +257,7 @@ const invoicesData = [
     customer: "Jordan Mitchell",
     issued: "Oct 01, 2026",
     due: "Oct 08, 2026",
-    amount: "$248.00",
+    amount: "TSh 248.00",
     status: "Paid",
     tone: "green",
   },
@@ -258,7 +266,7 @@ const invoicesData = [
     customer: "Avery Sinclair",
     issued: "Oct 01, 2026",
     due: "Oct 08, 2026",
-    amount: "$412.00",
+    amount: "TSh 412.00",
     status: "Due soon",
     tone: "amber",
   },
@@ -267,7 +275,7 @@ const invoicesData = [
     customer: "Riley Lawson",
     issued: "Sep 29, 2026",
     due: "Oct 06, 2026",
-    amount: "$186.00",
+    amount: "TSh 186.00",
     status: "Paid",
     tone: "green",
   },
@@ -276,7 +284,7 @@ const invoicesData = [
     customer: "Morgan Lee",
     issued: "Sep 28, 2026",
     due: "Oct 05, 2026",
-    amount: "$132.00",
+    amount: "TSh 132.00",
     status: "Overdue",
     tone: "red",
   },
@@ -349,17 +357,45 @@ function Metric({ icon: Icon, label, value, change, kind, color, caption }) {
   );
 }
 
-async function downloadOrders(orders, format) {
-  const columns = ["Order", "Customer", "Rental items", "Rental dates", "Total", "Status"];
-  const rows = orders.map(({ id, customer, items, date, total, status }) => [
-      id,
-      customer,
-      items,
-      date,
-      total,
-      status,
-  ]);
-  const fileName = `pendo-orders-${new Date().toISOString().slice(0, 10)}`;
+function getReportData(page, orders) {
+  if (page === "Customers") {
+    return {
+      title: "Customers",
+      columns: ["Name", "Email", "Phone", "Address", "Orders", "Last order", "Lifetime spend"],
+      rows: customersData.map((customer) => [
+        customer.name,
+        customer.email,
+        customer.phone,
+        customer.address,
+        customer.orders,
+        customer.lastOrder,
+        customer.spent,
+      ]),
+    };
+  }
+  if (page === "Inventory") {
+    return {
+      title: "Inventory",
+      columns: ["Item", "Category", "SKU", "Rate (TSh/day)", "Quantity", "Status"],
+      rows: inventory.map((item) => [item.name, item.category, item.sku, `TSh ${item.rate}`, item.quantity, item.status]),
+    };
+  }
+  if (page === "Invoices") {
+    return {
+      title: "Invoices",
+      columns: ["Invoice", "Customer", "Issued", "Due", "Amount", "Status"],
+      rows: invoicesData.map((invoice) => [invoice.id, invoice.customer, invoice.issued, invoice.due, invoice.amount, invoice.status]),
+    };
+  }
+  return {
+    title: "Orders",
+    columns: ["Order", "Customer", "Rental items", "Rental dates", "Total", "Status"],
+    rows: orders.map(({ id, customer, items, date, total, status }) => [id, customer, items, date, total, status]),
+  };
+}
+
+async function downloadTableReport(title, columns, rows, format) {
+  const fileName = `pendo-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${new Date().toISOString().slice(0, 10)}`;
 
   if (format === "excel") {
     const { zipSync } = await import("fflate");
@@ -381,7 +417,7 @@ async function downloadOrders(orders, format) {
     const workbookFiles = {
       "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
       "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-      "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Orders" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escapeXml(title.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
       "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
       "xl/worksheets/sheet1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`,
     };
@@ -403,17 +439,17 @@ async function downloadOrders(orders, format) {
     import("jspdf"),
     import("jspdf-autotable"),
   ]);
-  const document = new jsPDF({ orientation: "landscape" });
-  document.setFontSize(16);
-  document.text("Pendo Rentals - Orders", 14, 16);
-  autoTable(document, {
+  const pdfDocument = new jsPDF({ orientation: "landscape" });
+  pdfDocument.setFontSize(16);
+  pdfDocument.text(`Pendo Rentals - ${title}`, 14, 16);
+  autoTable(pdfDocument, {
     head: [columns],
     body: rows,
     startY: 23,
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [38, 116, 237] },
   });
-  document.save(`${fileName}.pdf`);
+  pdfDocument.save(`${fileName}.pdf`);
 }
 
 function App() {
@@ -425,6 +461,7 @@ function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [period, setPeriod] = useState("This week");
   const [saved, setSaved] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const filteredInventory = inventory.filter((item) =>
     `${item.name} ${item.category} ${item.sku}`
@@ -618,12 +655,14 @@ function App() {
               >
                 <Download size={16} /> Export
               </button>
-              <button
-                className="button button-primary"
-                onClick={() => setModal(isInventory ? "item" : "booking")}
-              >
-                <Plus size={17} /> {isInventory ? "Add an item" : "New booking"}
-              </button>
+              {(isInventory || activePage === "Overview") && (
+                <button
+                  className="button button-primary"
+                  onClick={() => setModal(isInventory ? "item" : "booking")}
+                >
+                  <Plus size={17} /> {isInventory ? "Add an item" : "New booking"}
+                </button>
+              )}
             </div>
           </section>
           )}
@@ -930,9 +969,17 @@ function App() {
           saved={saved}
           onSave={() => setSaved(true)}
           onExport={async (format) => {
-            await downloadOrders(orders, format);
-            setModal("");
+            try {
+              const report = getReportData(activePage, orders);
+              await downloadTableReport(report.title, report.columns, report.rows, format);
+              setExportError("");
+              setModal("");
+            } catch (error) {
+              setExportError(error instanceof Error ? error.message : "Export failed. Please try again.");
+            }
           }}
+          exportError={exportError}
+          exportTitle={activePage}
         />
       )}
     </div>
@@ -1594,14 +1641,22 @@ function OrdersPage({ query, onCreate, onOrderView, orders, setOrders }) {
 }
 
 function CustomersPage({ query, onAdd }) {
-  const rows = customersData.filter((customer) =>
-    `${customer.name} ${customer.email} ${customer.phone}`
+  const [nameQuery, setNameQuery] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const search = `${query} ${nameQuery}`.trim().toLowerCase();
+  const rows = customersData.filter((customer) => {
+    const matchesName = `${customer.name} ${customer.email} ${customer.phone} ${customer.address}`
       .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
+      .includes(search);
+    const matchesStart = !startDate || customer.lastOrder >= startDate;
+    const matchesEnd = !endDate || customer.lastOrder <= endDate;
+    return matchesName && matchesStart && matchesEnd;
+  });
   return (
     <>
       <PageSummary
+        className="customers-summary"
         items={[
           {
             icon: Users,
@@ -1624,26 +1679,77 @@ function CustomersPage({ query, onAdd }) {
           {
             icon: CircleDollarSign,
             label: "Average lifetime value",
-            value: "$486",
+            value: "TSh 486",
             change: "11.6%",
             kind: "up",
             color: "purple-icon",
             caption: "vs last month",
           },
+          {
+            icon: UserCog,
+            label: "New customers",
+            value: "96",
+            change: "12.4%",
+            kind: "up",
+            color: "orange-icon",
+            caption: "this month",
+          },
         ]}
       />
       <section className="panel workspace-table-panel">
         <div className="workspace-toolbar">
-          <div>
+          <div className="customer-toolbar-copy">
             <div className="panel-kicker">YOUR COMMUNITY</div>
             <h2 className="toolbar-title">
-              All customers <span className="heading-count">1,284</span>
+              Customers <span className="heading-count">{rows.length}</span>
             </h2>
+          </div>
+          <div className="customer-toolbar-controls">
+            <label className="customer-name-filter">
+              <Search size={14} />
+              <input
+                type="search"
+                value={nameQuery}
+                onChange={(event) => setNameQuery(event.target.value)}
+                placeholder="Filter by name"
+                aria-label="Filter customers by name"
+              />
+            </label>
+            <label className="customer-date-filter">
+              <span>From</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                aria-label="Last order from date"
+              />
+            </label>
+            <label className="customer-date-filter">
+              <span>To</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                aria-label="Last order to date"
+              />
+            </label>
+            <button
+              className="button button-secondary customer-clear-filters"
+              onClick={() => {
+                setNameQuery("");
+                setStartDate("");
+                setEndDate("");
+              }}
+              disabled={!nameQuery && !startDate && !endDate}
+            >
+              Clear
+            </button>
           </div>
           <button className="button button-primary" onClick={onAdd}>
             <Plus size={15} /> Add customer
           </button>
         </div>
+        <div className="customer-table-gap" />
         <DataTable
           columns={[
             {
@@ -1662,7 +1768,17 @@ function CustomersPage({ query, onAdd }) {
               ),
             },
             { key: "phone", label: "PHONE" },
+            { key: "address", label: "ADDRESS" },
             { key: "orders", label: "ORDERS" },
+            {
+              key: "lastOrder",
+              label: "LAST ORDER",
+              render: (row) => new Date(`${row.lastOrder}T00:00:00`).toLocaleDateString("en-US", {
+                month: "short",
+                day: "2-digit",
+                year: "numeric",
+              }),
+            },
             {
               key: "spent",
               label: "LIFETIME SPEND",
@@ -1676,7 +1792,7 @@ function CustomersPage({ query, onAdd }) {
         />
         <div className="table-bottom">
           <span>
-            Showing <strong>{rows.length}</strong> customers
+            Showing <strong>{rows.length}</strong> of {customersData.length} customers
           </span>
           <Pagination />
         </div>
@@ -1686,19 +1802,30 @@ function CustomersPage({ query, onAdd }) {
 }
 
 function InvoicesPage({ query, onCreate }) {
-  const rows = invoicesData.filter((invoice) =>
-    `${invoice.id} ${invoice.customer} ${invoice.status}`
+  const [invoiceQuery, setInvoiceQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [dueFrom, setDueFrom] = useState("");
+  const [dueTo, setDueTo] = useState("");
+  const search = `${query} ${invoiceQuery}`.trim().toLowerCase();
+  const rows = invoicesData.filter((invoice) => {
+    const matchesSearch = `${invoice.id} ${invoice.customer} ${invoice.status}`
       .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
+      .includes(search);
+    const dueDate = new Date(`${invoice.due} 00:00:00`).toISOString().slice(0, 10);
+    const matchesStatus = statusFilter === "All statuses" || invoice.status === statusFilter;
+    const matchesFrom = !dueFrom || dueDate >= dueFrom;
+    const matchesTo = !dueTo || dueDate <= dueTo;
+    return matchesSearch && matchesStatus && matchesFrom && matchesTo;
+  });
   return (
     <>
       <PageSummary
+        className="invoices-summary"
         items={[
           {
             icon: Receipt,
             label: "Paid this month",
-            value: "$12,840",
+            value: "TSh 12,840",
             change: "18.2%",
             kind: "up",
             color: "mint-icon",
@@ -1707,7 +1834,7 @@ function InvoicesPage({ query, onCreate }) {
           {
             icon: Clock3,
             label: "Outstanding",
-            value: "$2,460",
+            value: "TSh 2,460",
             change: "8 invoices",
             kind: "up",
             color: "orange-icon",
@@ -1716,26 +1843,78 @@ function InvoicesPage({ query, onCreate }) {
           {
             icon: CircleDollarSign,
             label: "Overdue",
-            value: "$540",
+            value: "TSh 540",
             change: "2 invoices",
             kind: "down",
             color: "blue-icon",
             caption: "",
           },
+          {
+            icon: Receipt,
+            label: "Invoices issued",
+            value: "124",
+            change: "9.1%",
+            kind: "up",
+            color: "purple-icon",
+            caption: "this month",
+          },
         ]}
       />
       <section className="panel workspace-table-panel">
         <div className="workspace-toolbar">
-          <div>
+          <div className="invoice-toolbar-copy">
             <div className="panel-kicker">BILLING</div>
             <h2 className="toolbar-title">
-              Invoices <span className="heading-count">124</span>
+              Invoices <span className="heading-count">{rows.length}</span>
             </h2>
+          </div>
+          <div className="invoice-toolbar-controls">
+            <label className="customer-name-filter">
+              <Search size={14} />
+              <input
+                type="search"
+                value={invoiceQuery}
+                onChange={(event) => setInvoiceQuery(event.target.value)}
+                placeholder="Invoice or customer"
+                aria-label="Search invoices or customers"
+              />
+            </label>
+            <select
+              className="invoice-status-filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              aria-label="Filter invoices by status"
+            >
+              {["All statuses", ...new Set(invoicesData.map((invoice) => invoice.status))].map((status) => (
+                <option key={status}>{status}</option>
+              ))}
+            </select>
+            <label className="invoice-date-filter">
+              <span>Due from</span>
+              <input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} aria-label="Due date from" />
+            </label>
+            <label className="invoice-date-filter">
+              <span>To</span>
+              <input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} aria-label="Due date to" />
+            </label>
+            <button
+              className="button button-secondary invoice-clear-filters"
+              onClick={() => {
+                setInvoiceQuery("");
+                setStatusFilter("All statuses");
+                setDueFrom("");
+                setDueTo("");
+              }}
+              disabled={!invoiceQuery && statusFilter === "All statuses" && !dueFrom && !dueTo}
+            >
+              Clear
+            </button>
           </div>
           <button className="button button-primary" onClick={onCreate}>
             <Plus size={15} /> Create invoice
           </button>
         </div>
+        <div className="invoice-table-gap" />
         <DataTable
           columns={[
             {
@@ -1781,37 +1960,53 @@ function InvoicesPage({ query, onCreate }) {
 }
 
 function FinancePage({ tab, setTab, period, setPeriod, onAdd }) {
+  const [expenseQuery, setExpenseQuery] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("All categories");
+  const [expenseMethod, setExpenseMethod] = useState("All methods");
+  const [expenseFrom, setExpenseFrom] = useState("");
+  const [expenseTo, setExpenseTo] = useState("");
   const expenses = [
     {
       category: "Equipment maintenance",
       description: "Tent repairs & cleaning",
-      amount: "$420.00",
-      date: "Oct 01, 2026",
+      amount: "TSh 420.00",
+      date: "2026-10-01",
       method: "Business card",
     },
     {
       category: "Delivery & transport",
       description: "Fuel and vehicle costs",
-      amount: "$285.50",
-      date: "Sep 30, 2026",
+      amount: "TSh 285.50",
+      date: "2026-09-30",
       method: "Business card",
     },
     {
       category: "Supplies",
       description: "Replacement tent pegs",
-      amount: "$128.00",
-      date: "Sep 28, 2026",
+      amount: "TSh 128.00",
+      date: "2026-09-28",
       method: "Bank transfer",
     },
   ];
+  const filteredExpenses = expenses.filter((expense) => {
+    const matchesQuery = `${expense.category} ${expense.description} ${expense.method}`
+      .toLowerCase()
+      .includes(expenseQuery.toLowerCase());
+    const matchesCategory = expenseCategory === "All categories" || expense.category === expenseCategory;
+    const matchesMethod = expenseMethod === "All methods" || expense.method === expenseMethod;
+    const matchesFrom = !expenseFrom || expense.date >= expenseFrom;
+    const matchesTo = !expenseTo || expense.date <= expenseTo;
+    return matchesQuery && matchesCategory && matchesMethod && matchesFrom && matchesTo;
+  });
   return (
     <>
       <PageSummary
+        className="finance-summary"
         items={[
           {
             icon: CircleDollarSign,
             label: "Total revenue",
-            value: "$24,680",
+            value: "TSh 24,680",
             change: "12.8%",
             kind: "up",
             color: "mint-icon",
@@ -1820,7 +2015,7 @@ function FinancePage({ tab, setTab, period, setPeriod, onAdd }) {
           {
             icon: Wallet,
             label: "Total expenses",
-            value: "$6,240",
+            value: "TSh 6,240",
             change: "3.6%",
             kind: "down",
             color: "orange-icon",
@@ -1829,19 +2024,29 @@ function FinancePage({ tab, setTab, period, setPeriod, onAdd }) {
           {
             icon: ChartNoAxesCombined,
             label: "Net profit",
-            value: "$18,440",
+            value: "TSh 18,440",
             change: "16.4%",
             kind: "up",
             color: "blue-icon",
             caption: "this month",
           },
+          {
+            icon: Wallet,
+            label: "Cash flow",
+            value: "TSh 18,440",
+            change: "Positive",
+            kind: "up",
+            color: "purple-icon",
+            caption: period.toLowerCase(),
+          },
         ]}
       />
       <section className="panel finance-panel">
-        <div className="panel-heading">
-          <div>
+        <div className="finance-heading">
+          <div className="finance-heading-copy">
             <div className="panel-kicker">MONEY IN, MONEY OUT</div>
             <h2>Finance &amp; expenses</h2>
+            <p>Track rental revenue, operating costs, and net cash flow.</p>
           </div>
           <button
             className="select-button"
@@ -1867,6 +2072,63 @@ function FinancePage({ tab, setTab, period, setPeriod, onAdd }) {
             <Plus size={14} /> Add expense
           </button>
         </div>
+        {tab === "Expenses" && (
+          <div className="finance-filters" aria-label="Filter expenses">
+            <label className="finance-search-filter">
+              <Search size={14} />
+              <input
+                type="search"
+                value={expenseQuery}
+                onChange={(event) => setExpenseQuery(event.target.value)}
+                placeholder="Search expenses"
+                aria-label="Search expenses"
+              />
+            </label>
+            <select
+              className="finance-category-filter"
+              value={expenseCategory}
+              onChange={(event) => setExpenseCategory(event.target.value)}
+              aria-label="Filter by expense category"
+            >
+              {["All categories", ...new Set(expenses.map((expense) => expense.category))].map((category) => (
+                <option key={category}>{category}</option>
+              ))}
+            </select>
+            <select
+              className="finance-category-filter finance-method-filter"
+              value={expenseMethod}
+              onChange={(event) => setExpenseMethod(event.target.value)}
+              aria-label="Filter by payment method"
+            >
+              {["All methods", ...new Set(expenses.map((expense) => expense.method))].map((method) => (
+                <option key={method}>{method}</option>
+              ))}
+            </select>
+            <label className="finance-date-filter">
+              <span>From</span>
+              <input type="date" value={expenseFrom} onChange={(event) => setExpenseFrom(event.target.value)} aria-label="Expense date from" />
+            </label>
+            <label className="finance-date-filter">
+              <span>To</span>
+              <input type="date" value={expenseTo} onChange={(event) => setExpenseTo(event.target.value)} aria-label="Expense date to" />
+            </label>
+            <button
+              className="button button-secondary finance-clear-filters"
+              onClick={() => {
+                setExpenseQuery("");
+                setExpenseCategory("All categories");
+                setExpenseMethod("All methods");
+                setExpenseFrom("");
+                setExpenseTo("");
+              }}
+              disabled={!expenseQuery && expenseCategory === "All categories" && expenseMethod === "All methods" && !expenseFrom && !expenseTo}
+            >
+              Clear
+            </button>
+            <span className="finance-filter-count">{filteredExpenses.length} expenses</span>
+          </div>
+        )}
+        <div className="finance-content-gap" />
         {tab === "Expenses" ? (
           <DataTable
             columns={[
@@ -1879,10 +2141,18 @@ function FinancePage({ tab, setTab, period, setPeriod, onAdd }) {
                   <strong className="table-primary">{row.amount}</strong>
                 ),
               },
-              { key: "date", label: "DATE" },
+              {
+                key: "date",
+                label: "DATE",
+                render: (row) => new Date(`${row.date}T00:00:00`).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "2-digit",
+                  year: "numeric",
+                }),
+              },
               { key: "method", label: "PAID WITH" },
             ]}
-            rows={expenses}
+            rows={filteredExpenses}
             rowKey="description"
           />
         ) : (
@@ -1898,19 +2168,19 @@ function FinanceSummary() {
     <div className="summary-content">
       <div className="summary-row">
         <span>Rental income</span>
-        <strong>$24,680.00</strong>
+        <strong>TSh 24,680.00</strong>
       </div>
       <div className="summary-row">
         <span>Operating expenses</span>
-        <strong>−$6,240.00</strong>
+        <strong>−TSh 6,240.00</strong>
       </div>
       <div className="summary-row">
         <span>Tax collected</span>
-        <strong>$1,974.40</strong>
+        <strong>TSh 1,974.40</strong>
       </div>
       <div className="summary-row summary-total">
         <span>Net operating profit</span>
-        <strong>$18,440.00</strong>
+        <strong>TSh 18,440.00</strong>
       </div>
     </div>
   );
@@ -1940,17 +2210,68 @@ function MessagingPage({ onEdit }) {
   ];
   return (
     <>
-      <div className="message-tabs">
-        {["SMS templates", "Notification history"].map((item) => (
-          <button
-            key={item}
-            className={channel === item ? "active" : ""}
-            onClick={() => setChannel(item)}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      <PageSummary
+        className="messaging-summary"
+        items={[
+          {
+            icon: MessageSquareText,
+            label: "Active templates",
+            value: "3",
+            change: "All enabled",
+            kind: "up",
+            color: "blue-icon",
+            caption: "",
+          },
+          {
+            icon: Send,
+            label: "Messages sent",
+            value: "248",
+            change: "This month",
+            kind: "up",
+            color: "mint-icon",
+            caption: "",
+          },
+          {
+            icon: Check,
+            label: "Delivery rate",
+            value: "98.4%",
+            change: "Healthy",
+            kind: "up",
+            color: "purple-icon",
+            caption: "",
+          },
+          {
+            icon: Clock3,
+            label: "Queued",
+            value: "2",
+            change: "Sending shortly",
+            kind: "up",
+            color: "orange-icon",
+            caption: "",
+          },
+        ]}
+      />
+      <section className="panel messaging-panel">
+        <div className="messaging-toolbar">
+          <div>
+            <div className="panel-kicker">CUSTOMER COMMUNICATIONS</div>
+            <h2>{channel === "SMS templates" ? "SMS templates" : "Notification history"}</h2>
+            <p>{channel === "SMS templates" ? "Automated messages for every step of a rental." : "Recent messages sent to your customers."}</p>
+          </div>
+          <div className="message-tabs" role="tablist" aria-label="Messaging views">
+            {["SMS templates", "Notification history"].map((item) => (
+              <button
+                key={item}
+                role="tab"
+                aria-selected={channel === item}
+                className={channel === item ? "active" : ""}
+                onClick={() => setChannel(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
       {channel === "SMS templates" ? (
         <section className="template-grid">
           {templates.map(({ icon: Icon, title, text, usage }) => (
@@ -1964,8 +2285,11 @@ function MessagingPage({ onEdit }) {
                   Active
                 </span>
               </div>
-              <h2>{title}</h2>
-              <p>“{text}”</p>
+              <div className="template-card-body">
+                <span className="template-trigger">AUTOMATION</span>
+                <h3>{title}</h3>
+                <p>“{text}”</p>
+              </div>
               <div className="template-bottom">
                 <span>{usage}</span>
                 <button className="button button-secondary" onClick={onEdit}>
@@ -1981,7 +2305,15 @@ function MessagingPage({ onEdit }) {
           </button>
         </section>
       ) : (
-        <section className="panel message-history">
+        <section className="message-history">
+          <div className="message-history-heading">
+            <div>
+              <strong>Recent activity</strong>
+              <span>Latest SMS delivery attempts</span>
+            </div>
+            <span className="history-count">2 messages</span>
+          </div>
+          <div className="panel workspace-table-panel">
           <DataTable
             columns={[
               { key: "id", label: "CUSTOMER" },
@@ -2005,6 +2337,7 @@ function MessagingPage({ onEdit }) {
             ]}
             rowKey="id"
           />
+          </div>
         </section>
       )}
       <section className="panel channel-settings">
@@ -2020,11 +2353,14 @@ function MessagingPage({ onEdit }) {
           Connected
         </span>
       </section>
+      </section>
     </>
   );
 }
 
 function ReportsPage({ period, setPeriod, onOpen }) {
+  const [category, setCategory] = useState("All reports");
+  const [reportQuery, setReportQuery] = useState("");
   const reports = [
     {
       icon: CircleDollarSign,
@@ -2063,55 +2399,103 @@ function ReportsPage({ period, setPeriod, onOpen }) {
       tag: "CUSTOM",
     },
   ];
+  const categories = ["All reports", "Finance", "Inventory", "Customers", "Operations", "Custom"];
+  const visibleReports = reports.filter((report) => {
+    const matchesCategory = category === "All reports" || report.tag.toLowerCase() === category.toLowerCase();
+    const matchesQuery = `${report.title} ${report.desc} ${report.tag}`.toLowerCase().includes(reportQuery.toLowerCase());
+    return matchesCategory && matchesQuery;
+  });
   return (
     <>
-      <div className="report-summary panel">
-        <div>
-          <span className="panel-kicker">REPORTING PERIOD</span>
-          <h2>Business performance</h2>
-        </div>
-        <button
-          className="select-button"
-          onClick={() =>
-            setPeriod(period === "This month" ? "Last 30 days" : "This month")
-          }
-        >
-          {period}
-          <ChevronDown size={14} />
-        </button>
-        <div className="report-summary-stats">
+      <section className="report-performance">
+        <div className="report-performance-heading">
           <div>
-            <span>Total revenue</span>
-            <strong>$24,680</strong>
-            <small className="positive-text">↑ 12.8% vs previous period</small>
+            <span className="panel-kicker">PERFORMANCE OVERVIEW</span>
+            <h2>Business at a glance</h2>
+            <p>Review the key numbers for your rental operation.</p>
           </div>
-          <div>
+          <label className="report-period-control">
+            <span>Period</span>
+            <select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Reporting period">
+              {["This week", "This month", "Last month", "Last 30 days", "This year"].map((option) => (
+                <option key={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="report-summary-stats">
+          <article>
+            <span>Total revenue</span>
+            <strong>TSh 24,680</strong>
+            <small className="positive-text">↑ 12.8% vs previous period</small>
+          </article>
+          <article>
             <span>Orders fulfilled</span>
             <strong>186</strong>
             <small className="positive-text">↑ 8.4% vs previous period</small>
-          </div>
-          <div>
+          </article>
+          <article>
             <span>Utilization</span>
             <strong>72%</strong>
             <small className="positive-text">↑ 4.2% vs previous period</small>
-          </div>
-        </div>
-      </div>
-      <div className="report-grid">
-        {reports.map(({ icon: Icon, title, desc, tag }) => (
-          <article className="panel report-card" key={title}>
-            <span className="template-icon">
-              <Icon size={17} />
-            </span>
-            <span className="report-tag">{tag}</span>
-            <h2>{title}</h2>
-            <p>{desc}</p>
-            <button className="text-action" onClick={onOpen}>
-              Open report <ArrowRight size={14} />
-            </button>
           </article>
-        ))}
-      </div>
+          <article>
+            <span>Active customers</span>
+            <strong>1,284</strong>
+            <small className="positive-text">↑ 8.4% vs previous period</small>
+          </article>
+        </div>
+      </section>
+      <section className="report-library panel">
+        <div className="report-library-heading">
+          <div>
+            <span className="panel-kicker">REPORT LIBRARY</span>
+            <h2>Explore reports <span className="heading-count">{visibleReports.length}</span></h2>
+          </div>
+          <label className="report-search">
+            <Search size={14} />
+            <input
+              type="search"
+              value={reportQuery}
+              onChange={(event) => setReportQuery(event.target.value)}
+              placeholder="Search reports"
+              aria-label="Search reports"
+            />
+          </label>
+        </div>
+        <div className="report-category-tabs" role="tablist" aria-label="Report categories">
+          {categories.map((option) => (
+            <button
+              key={option}
+              role="tab"
+              aria-selected={category === option}
+              className={category === option ? "active" : ""}
+              onClick={() => setCategory(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        {visibleReports.length > 0 ? (
+          <div className="report-grid">
+            {visibleReports.map(({ icon: Icon, title, desc, tag }) => (
+              <article className="panel report-card" key={title}>
+                <div className="report-card-top">
+                  <span className="template-icon"><Icon size={17} /></span>
+                  <span className="report-tag">{tag}</span>
+                </div>
+                <h3>{title}</h3>
+                <p>{desc}</p>
+                <button className="text-action" onClick={onOpen}>
+                  Open report <ArrowRight size={14} />
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">No reports match your search.</div>
+        )}
+      </section>
     </>
   );
 }
@@ -2522,7 +2906,7 @@ function Pagination() {
   );
 }
 
-function Modal({ type, onClose, saved, onSave, onExport }) {
+function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle }) {
   const isItem = type === "item";
   const isBooking = type === "booking";
   const formTitles = {
@@ -2535,8 +2919,9 @@ function Modal({ type, onClose, saved, onSave, onExport }) {
     user: "Invite team member",
   };
   const isForm = Boolean(formTitles[type]);
-  const title = formTitles[type] || (type === "orders-export"
-    ? "Export orders"
+  const isExport = type === "report" || type === "orders-export";
+  const title = formTitles[type] || (isExport
+    ? type === "orders-export" ? "Export orders" : `Export ${exportTitle || "report"}`
     : type === "notifications"
     ? "Notifications"
     : type === "profile"
@@ -2586,9 +2971,9 @@ function Modal({ type, onClose, saved, onSave, onExport }) {
               Done
             </button>
           </div>
-        ) : type === "orders-export" ? (
+        ) : isExport ? (
           <div className="export-format-options">
-            <p>Choose a file format for the current orders list.</p>
+            <p>Choose a format to download this report.</p>
             <button className="export-format-button" onClick={() => onExport("excel")}>
               <span className="export-format-icon">XLSX</span>
               <span><strong>Excel workbook</strong><small>.xlsx spreadsheet</small></span>
@@ -2599,6 +2984,7 @@ function Modal({ type, onClose, saved, onSave, onExport }) {
               <span><strong>PDF document</strong><small>Print-ready order list</small></span>
               <Download size={16} />
             </button>
+            {exportError && <p className="export-error" role="alert">{exportError}</p>}
           </div>
         ) : isForm ? (
           <form
@@ -2619,7 +3005,7 @@ function Modal({ type, onClose, saved, onSave, onExport }) {
             {isItem && <div className="form-row"><label>Category<select required defaultValue=""><option value="" disabled>Choose category</option><option>Shelter</option><option>Furniture</option><option>Lighting</option><option>Outdoor gear</option></select></label><label>Daily rate<input required type="number" min="1" placeholder="$ 0.00" /></label></div>}
             {isBooking && <div className="form-row"><label>Start date<input required type="date" defaultValue="2026-10-03" /></label><label>Duration (days)<input required type="number" min="1" placeholder="2" /></label></div>}
             {type === "invoice" && <div className="form-row"><label>Amount<input required type="number" min="1" placeholder="$ 0.00" /></label><label>Due date<input required type="date" defaultValue="2026-10-08" /></label></div>}
-            {type === "expense" && <><label>Category<select required defaultValue=""><option value="" disabled>Choose category</option><option>Maintenance</option><option>Delivery &amp; transport</option><option>Supplies</option><option>Other</option></select></label><label>Description<input required placeholder="What was this expense for?" /></label><div className="form-row"><label>Amount<input required type="number" min="1" placeholder="$ 0.00" /></label><label>Date<input required type="date" defaultValue="2026-10-01" /></label></div></>}
+            {type === "expense" && <><label>Category<select required defaultValue=""><option value="" disabled>Choose category</option><option>Maintenance</option><option>Delivery &amp; transport</option><option>Supplies</option><option>Other</option></select></label><label>Description<input required placeholder="What was this expense for?" /></label><div className="form-row"><label>Amount<span className="currency-input"><span>TSh</span><input required type="number" min="1" placeholder="0.00" /></span></label><label>Date<input required type="date" defaultValue="2026-10-01" /></label></div></>}
             {type === "template" && <><label>Template name<input required defaultValue="Booking confirmation" /></label><label>Message<textarea required rows="4" defaultValue="Your booking is confirmed! We can’t wait to help you get outside." /></label><label>Send this message<select defaultValue="Booking confirmed"><option>Booking confirmed</option><option>Rental return reminder</option><option>After item return</option></select></label></>}
             {type === "user" && <label>Role<select required defaultValue=""><option value="" disabled>Select a role</option><option>Store manager</option><option>Inventory staff</option><option>Delivery staff</option></select></label>}
             {isItem && (
