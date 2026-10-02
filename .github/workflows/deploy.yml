@@ -53,9 +53,9 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'ec2-user' }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
-      WEB_NGINX_PORT: 8282
-      PENDO_PORT: 18282
-      CONTAINER_NAME: pendorentals-api-8282
+      WEB_NGINX_PORT: 5050
+      PENDO_PORT: 5051
+      CONTAINER_NAME: pendorentals-api-5051
       DEPLOY_DIR: /home/ec2-user/pendorentals-deploy
 
     steps:
@@ -122,9 +122,10 @@ jobs:
           release_id="$5"
           previous="${container}-previous"
           owner_label="com.pendorentals.service=api"
-          nginx_config="/etc/nginx/conf.d/pendorentals-8282.conf"
-          nginx_backup="/tmp/pendorentals-8282-nginx.previous"
-          web_root="/var/www/pendorentals-8282"
+          nginx_config="/etc/nginx/conf.d/pendorentals-5050.conf"
+          nginx_backup="/tmp/pendorentals-5050-nginx.previous"
+          old_nginx_config="/etc/nginx/conf.d/pendorentals-8282.conf"
+          web_root="/var/www/pendorentals-5050"
           web_release="$web_root/releases/$release_id"
           had_nginx_config="no"
           old_web_release=""
@@ -133,8 +134,13 @@ jobs:
           sudo -n nginx -t >/dev/null
           sudo -n test -d /etc/nginx/conf.d
 
+          sudo -n semanage port -a -t http_port_t -p tcp "$nginx_port" 2>/dev/null || sudo -n semanage port -m -t http_port_t -p tcp "$nginx_port"
+          sudo -n firewall-cmd --permanent --add-port="$nginx_port/tcp"
+          sudo -n firewall-cmd --permanent --add-port="$api_port/tcp"
+          sudo -n firewall-cmd --reload
+
           if sudo -n test -f "$nginx_config"; then
-            if ! sudo -n grep -q 'Managed by GitHub Actions: pendorentals-8282' "$nginx_config"; then
+            if ! sudo -n grep -q 'Managed by GitHub Actions: pendorentals-5050' "$nginx_config"; then
               echo "Refusing to replace unmanaged Nginx config: $nginx_config" >&2
               exit 1
             fi
@@ -179,7 +185,7 @@ jobs:
             --name "$container" \
             --label "$owner_label" \
             --restart unless-stopped \
-            -p "127.0.0.1:$api_port:5001" \
+            -p "$api_port:5001" \
             pendorentals-api:latest; then
             restore_api
             exit 1
@@ -198,6 +204,8 @@ jobs:
 
           sudo -n install -d -m 0755 "$web_release"
           sudo -n rsync -a --delete "$deploy_dir/web/" "$web_release/"
+          sudo -n semanage fcontext -a -t httpd_sys_content_t "$web_root(/.*)?" 2>/dev/null || sudo -n semanage fcontext -m -t httpd_sys_content_t "$web_root(/.*)?"
+          sudo -n restorecon -R "$web_root"
           if sudo -n test -L "$web_root/current"; then
             old_web_release="$(sudo -n readlink "$web_root/current")"
           fi
@@ -206,7 +214,7 @@ jobs:
 
           nginx_candidate="$(mktemp)"
           cat > "$nginx_candidate" <<NGINX_CONFIG
-          # Managed by GitHub Actions: pendorentals-8282
+          # Managed by GitHub Actions: pendorentals-5050
           server {
               listen $nginx_port;
               server_name 13.222.191.203;
@@ -249,12 +257,27 @@ jobs:
             exit 1
           fi
 
+          if sudo -n test -f "$old_nginx_config" && sudo -n grep -q 'Managed by GitHub Actions: pendorentals-8282' "$old_nginx_config"; then
+            sudo -n rm -f "$old_nginx_config"
+            sudo -n nginx -t
+            sudo -n systemctl reload nginx
+          fi
+          sudo -n firewall-cmd --permanent --remove-port=8282/tcp || true
+          sudo -n firewall-cmd --reload
+          sudo -n semanage port -d -t http_port_t -p tcp 8282 2>/dev/null || true
+
+          old_container="pendorentals-api-8282"
+          if docker inspect "$old_container" >/dev/null 2>&1; then
+            old_owner="$(docker inspect -f '{{ index .Config.Labels "com.pendorentals.service" }}' "$old_container")"
+            if [ "$old_owner" = "api" ]; then docker rm -f "$old_container" >/dev/null; fi
+          fi
+
           docker rm -f "$previous" >/dev/null 2>&1 || true
           sudo -n rm -f "$nginx_backup"
-          echo "Pendo Rentals deployed at http://13.222.191.203:$nginx_port/"
+          echo "Pendo Rentals web: http://13.222.191.203:$nginx_port/; API: http://13.222.191.203:$api_port/"
           REMOTE_SCRIPT
 
       - name: Smoke test through Nginx
         run: |
-          curl -fsS "http://$DEPLOY_HOST:$WEB_NGINX_PORT/api/health"
+          curl -fsS "http://$DEPLOY_HOST:$PENDO_PORT/api/health"
           curl -fsSI "http://$DEPLOY_HOST:$WEB_NGINX_PORT/" | head -n 1
