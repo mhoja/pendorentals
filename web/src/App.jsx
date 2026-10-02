@@ -65,6 +65,23 @@ import {
   CircleCheck,
   PartyPopper,
   CalendarCheck,
+  Building2,
+  Banknote,
+  ScrollText,
+  CreditCard,
+  Plug,
+  Upload,
+  Save,
+  Smartphone,
+  Landmark,
+  Percent,
+  KeyRound,
+  Globe,
+  MessageCircle,
+  Cloud,
+  HardDriveDownload,
+  CircleDot,
+  Info,
   MessageSquare,
 } from "lucide-react";
 
@@ -82,8 +99,6 @@ const managementNavigation = [
   { label: "Reports", icon: ChartNoAxesCombined },
   { label: "Users & Roles", icon: UserCog },
   { label: "Settings", icon: Settings2 },
-  { label: "Login / Splash Screen", icon: LayoutDashboard },
-  { label: "Mobile App", icon: Package },
 ];
 
 const inventory = [
@@ -1829,7 +1844,7 @@ function Workspace({ onLogout }) {
               </p>
             </div>
             <div className="welcome-actions">
-              {activePage !== "Reports" && (
+              {!["Reports", "Settings"].includes(activePage) && (
                 <button
                   className="button button-secondary"
                   onClick={handleExport}
@@ -2125,10 +2140,10 @@ function Workspace({ onLogout }) {
               page={activePage}
               query={query}
               onModal={setModal}
-              onNavigate={changePage}
                 onOrderView={setViewedOrder}
                 orders={orders}
                 setOrders={setOrders}
+                onLogout={onLogout}
             />
           )}
           <footer className="page-footer">
@@ -2295,16 +2310,9 @@ function InventoryCard({ item }) {
   );
 }
 
-function WorkspacePage({ page, query, onModal, onNavigate, onOrderView, orders, setOrders }) {
+function WorkspacePage({ page, query, onModal, onOrderView, orders, setOrders, onLogout }) {
   const [tab, setTab] = useState("All");
   const [period, setPeriod] = useState("This month");
-  const [settings, setSettings] = useState({
-    email: true,
-    sms: true,
-    reminders: true,
-    delivery: false,
-  });
-  const [signedIn, setSignedIn] = useState(false);
 
   if (page === "Orders")
     return (
@@ -2337,10 +2345,7 @@ function WorkspacePage({ page, query, onModal, onNavigate, onOrderView, orders, 
   if (page === "Users & Roles")
     return <UsersPage query={query} onInvite={() => onModal("user")} />;
   if (page === "Settings")
-    return <SettingsPage settings={settings} setSettings={setSettings} />;
-  if (page === "Login / Splash Screen")
-    return <LoginPreview signedIn={signedIn} setSignedIn={setSignedIn} />;
-  if (page === "Mobile App") return <MobilePreview onNavigate={onNavigate} />;
+    return <SettingsPage onLogout={onLogout} />;
   return (
     <section className="panel empty-page">
       <div className="empty-illustration">
@@ -4253,289 +4258,720 @@ function UsersPage({ query, onInvite }) {
   );
 }
 
-function SettingsPage({ settings, setSettings }) {
-  const toggle = (key) =>
-    setSettings((current) => ({ ...current, [key]: !current[key] }));
+const SETTINGS_KEY = "pendo-settings";
+
+const DEFAULT_SETTINGS = {
+  businessName: BUSINESS_INFO.name,
+  tagline: "Rent · Celebrate · Grow",
+  businessType: "Event & outdoor rentals",
+  tin: "",
+  phone: BUSINESS_INFO.phone,
+  whatsapp: BUSINESS_INFO.phone,
+  email: BUSINESS_INFO.email,
+  address: "Kayenze",
+  region: "Geita",
+  weekdayOpen: "08:00",
+  weekdayClose: "18:00",
+  saturdayOpen: "09:00",
+  saturdayClose: "16:00",
+  sundayOpen: false,
+  firstName: "Pendo",
+  lastName: "Mbolela",
+  accountEmail: "pendo@pendorentals.com",
+  alertEmail: true,
+  alertSms: true,
+  alertNewBooking: true,
+  alertPayment: true,
+  alertLowStock: true,
+  alertDailySummary: false,
+  customerConfirm: true,
+  customerReminders: true,
+  reminderLead: "1 day before",
+  customerDelivery: true,
+  customerThanks: true,
+  smsSender: "PENDO",
+  minDays: "1",
+  depositPercent: "30",
+  advanceDays: "180",
+  lateFee: "10000",
+  gracePeriod: "2",
+  damagePolicy: "Customers pay the repair or replacement cost for items returned damaged or missing.",
+  freeCancelHours: "48",
+  refundPercent: "50",
+  deliveryFee: "15000",
+  perKmFee: "1000",
+  freeDeliveryArea: "Kayenze",
+  payMpesa: true,
+  payTigo: true,
+  payAirtel: true,
+  payCash: true,
+  payBank: true,
+  payCard: false,
+  lipaNumber: "",
+  lipaName: BUSINESS_INFO.name,
+  bankName: "CRDB Bank",
+  bankAccountName: BUSINESS_INFO.name,
+  bankAccountNumber: "",
+  vatEnabled: false,
+  vatRate: "18",
+  titheEnabled: true,
+  tithePercent: "10",
+  receiptPrefix: "RCT-",
+  invoicePrefix: "INV-",
+  receiptFooter: "Thank you for renting with Pendo. Please keep this receipt for your records.",
+};
+
+const settingsSections = [
+  { id: "profile", icon: Building2, title: "Business profile", desc: "Name, contacts and opening hours" },
+  { id: "account", icon: UserCog, title: "Account & security", desc: "Your profile and password" },
+  { id: "notifications", icon: Bell, title: "Notifications", desc: "Team alerts and customer SMS" },
+  { id: "policies", icon: ScrollText, title: "Rental policies", desc: "Deposits, fees and returns" },
+  { id: "payments", icon: CreditCard, title: "Payments & receipts", desc: "Methods, tax and receipt format" },
+  { id: "integrations", icon: Plug, title: "Integrations", desc: "SMS, M-Pesa and backups" },
+];
+
+function loadSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+    return stored ? { ...DEFAULT_SETTINGS, ...stored } : DEFAULT_SETTINGS;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function validateSettings(values) {
+  const errors = {};
+  if (!values.businessName.trim()) errors.businessName = "Business name is required.";
+  if (!/^0[67]\d{8}$/.test(normalizePhone(values.phone))) errors.phone = "Enter a valid phone number, e.g. 0622 882 278.";
+  if (values.whatsapp && !/^0[67]\d{8}$/.test(normalizePhone(values.whatsapp))) errors.whatsapp = "Enter a valid WhatsApp number.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) errors.email = "Enter a valid email address.";
+  if (values.accountEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.accountEmail.trim())) errors.accountEmail = "Enter a valid email address.";
+  if (!values.firstName.trim()) errors.firstName = "First name is required.";
+  if (!values.lastName.trim()) errors.lastName = "Last name is required.";
+  if (!/^[A-Za-z0-9 ]{3,11}$/.test(values.smsSender)) errors.smsSender = "3–11 letters or numbers.";
+  if (Number(values.depositPercent) < 0 || Number(values.depositPercent) > 100) errors.depositPercent = "Between 0 and 100.";
+  if (Number(values.refundPercent) < 0 || Number(values.refundPercent) > 100) errors.refundPercent = "Between 0 and 100.";
+  if (values.vatEnabled && !(Number(values.vatRate) > 0 && Number(values.vatRate) <= 100)) errors.vatRate = "Enter a VAT rate.";
+  if (values.titheEnabled && !(values.tithePercent !== "" && Number(values.tithePercent) > 0 && Number(values.tithePercent) <= 100)) errors.tithePercent = "Enter a percentage between 0.1 and 100.";
+  return errors;
+}
+
+function SettingSwitch({ checked, onChange, label }) {
   return (
-    <div className="settings-layout">
-      <nav className="panel settings-nav">
-        {[
-          "Business profile",
-          "Notifications",
-          "Rental policies",
-          "Payments",
-          "Integrations",
-        ].map((section, index) => (
-          <button className={index === 0 ? "active" : ""} key={section}>
-            {section}
-            <ChevronRight size={14} />
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`set-switch ${checked ? "on" : ""}`}
+      onClick={() => onChange(!checked)}
+    >
+      <i />
+    </button>
+  );
+}
+
+function SettingsCard({ title, desc, children, aside }) {
+  return (
+    <section className="set-card">
+      <header>
+        <div>
+          <h3>{title}</h3>
+          {desc && <p>{desc}</p>}
+        </div>
+        {aside}
+      </header>
+      <div className="set-card-body">{children}</div>
+    </section>
+  );
+}
+
+function SettingsPage({ onLogout }) {
+  const [active, setActive] = useState("profile");
+  const [saved, setSaved] = useState(loadSettings);
+  const [draft, setDraft] = useState(saved);
+  const [showErrors, setShowErrors] = useState(false);
+  const [toast, setToast] = useState("");
+  const [notice, setNotice] = useState("");
+  const [logo, setLogo] = useState("");
+  const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
+
+  const errors = validateSettings(draft);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const section = settingsSections.find((item) => item.id === active);
+  const SectionIcon = section.icon;
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(""), 2600);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => () => logo && URL.revokeObjectURL(logo), [logo]);
+
+  const set = (key) => (value) => setDraft((current) => ({ ...current, [key]: value }));
+  const bind = (key) => ({
+    value: draft[key],
+    onChange: (event) => set(key)(event.target.value),
+    "aria-invalid": Boolean(showErrors && errors[key]),
+  });
+  const error = (key) => showErrors && errors[key] ? <small className="set-error"><CircleAlert size={12} /> {errors[key]}</small> : null;
+  const sectionHasErrors = (id) => showErrors && Object.keys(errors).some((key) => settingsFieldSection[key] === id);
+
+  function save() {
+    if (Object.keys(errors).length) {
+      setShowErrors(true);
+      const firstKey = Object.keys(errors)[0];
+      setActive(settingsFieldSection[firstKey] || active);
+      return;
+    }
+    setSaved(draft);
+    setShowErrors(false);
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(draft));
+    } catch {
+      // Storage unavailable: changes last for this session only.
+    }
+    setToast("Settings saved");
+  }
+
+  function discard() {
+    setDraft(saved);
+    setShowErrors(false);
+  }
+
+  function changeSection(id) {
+    setActive(id);
+    setNotice("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const toggleRow = (key, title, detail, Icon) => (
+    <div className="set-toggle-row" key={key}>
+      {Icon && <span className="set-row-icon"><Icon size={15} /></span>}
+      <span className="set-row-copy">
+        <strong>{title}</strong>
+        {detail && <small>{detail}</small>}
+      </span>
+      <SettingSwitch checked={draft[key]} onChange={set(key)} label={title} />
+    </div>
+  );
+
+  return (
+    <div className="set-layout">
+      <nav className="set-nav" aria-label="Settings sections">
+        <span className="set-nav-kicker">SETTINGS</span>
+        {settingsSections.map(({ id, icon: Icon, title, desc }) => (
+          <button
+            key={id}
+            type="button"
+            className={`set-nav-item ${active === id ? "active" : ""}`}
+            onClick={() => changeSection(id)}
+            aria-current={active === id ? "page" : undefined}
+          >
+            <span className="set-nav-icon"><Icon size={16} /></span>
+            <span className="set-nav-copy">
+              <strong>{title}</strong>
+              <small>{desc}</small>
+            </span>
+            {sectionHasErrors(id) && <span className="set-nav-alert" aria-label="Has errors" />}
           </button>
         ))}
       </nav>
-      <section className="panel settings-content">
-        <div className="panel-kicker">WORKSPACE PREFERENCES</div>
-        <h2>Business profile</h2>
-        <p>Manage your store details and customer-facing information.</p>
-        <div className="settings-form">
-          <label>
-            Business name
-            <input defaultValue="Pendo Outdoors" />
-          </label>
-          <div className="form-row">
-            <label>
-              Contact email
-              <input defaultValue="hello@pendooutdoors.com" />
-            </label>
-            <label>
-              Phone number
-              <input defaultValue="+1 (415) 555-0100" />
-            </label>
+
+      <div className="set-main">
+        <header className="set-head">
+          <span className="set-head-icon"><SectionIcon size={20} /></span>
+          <div>
+            <span className="set-kicker">WORKSPACE PREFERENCES</span>
+            <h2>{section.title}</h2>
+            <p>{section.desc}</p>
           </div>
-          <label>
-            Store address
-            <input defaultValue="245 Summit Avenue, San Francisco, CA" />
-          </label>
-          <div className="settings-separator" />
-          <h3>Notifications</h3>
-          <p>Choose which updates your team receives.</p>
-          {[
-            ["email", "Email updates", "Booking, payment, and return updates"],
-            ["sms", "SMS alerts", "Urgent booking and delivery changes"],
-            [
-              "reminders",
-              "Return reminders",
-              "Notify customers before rentals are due",
-            ],
-            [
-              "delivery",
-              "Delivery status",
-              "Updates when drivers complete deliveries",
-            ],
-          ].map(([key, title, detail]) => (
-            <button
-              className="toggle-row"
-              key={key}
-              onClick={() => toggle(key)}
+        </header>
+
+        {notice && <p className="set-notice" role="status"><Info size={14} /> {notice}</p>}
+
+        {active === "profile" && (
+          <>
+            <SettingsCard title="Brand" desc="Shown on receipts, invoices and the sign-in page.">
+              <div className="set-brand">
+                <div className="set-logo">
+                  {logo ? <img src={logo} alt="Business logo preview" /> : <BrandMark />}
+                </div>
+                <div className="set-brand-copy">
+                  <strong>{draft.businessName || "Your business"}</strong>
+                  <small>{draft.tagline}</small>
+                  <label className="set-upload">
+                    <Upload size={14} /> Upload logo
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) setLogo(URL.createObjectURL(file));
+                      }}
+                    />
+                  </label>
+                  <small className="set-hint">PNG, JPG or SVG, at least 256 × 256 px. Preview only for now.</small>
+                </div>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Business details">
+              <div className="set-grid">
+                <label className="set-field">
+                  <span>Business name</span>
+                  <input {...bind("businessName")} />
+                  {error("businessName")}
+                </label>
+                <label className="set-field">
+                  <span>Tagline</span>
+                  <input {...bind("tagline")} />
+                </label>
+                <label className="set-field">
+                  <span>Business type</span>
+                  <select {...bind("businessType")}>
+                    {["Event & outdoor rentals", "Event rentals", "Outdoor & camping rentals", "Party supplies"].map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+                <label className="set-field">
+                  <span>TIN number <em>Optional</em></span>
+                  <input {...bind("tin")} placeholder="e.g. 123-456-789" />
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Contact & location" desc="Customers see these on receipts and in SMS messages.">
+              <div className="set-grid">
+                <label className="set-field">
+                  <span>Phone number</span>
+                  <span className="set-input-icon"><Phone size={14} /><input {...bind("phone")} inputMode="tel" /></span>
+                  {error("phone")}
+                </label>
+                <label className="set-field">
+                  <span>WhatsApp number</span>
+                  <span className="set-input-icon"><MessageCircle size={14} /><input {...bind("whatsapp")} inputMode="tel" /></span>
+                  {error("whatsapp")}
+                </label>
+                <label className="set-field set-span-2">
+                  <span>Email address</span>
+                  <span className="set-input-icon"><Mail size={14} /><input {...bind("email")} type="email" /></span>
+                  {error("email")}
+                </label>
+                <label className="set-field">
+                  <span>Street / village</span>
+                  <span className="set-input-icon"><MapPin size={14} /><input {...bind("address")} /></span>
+                </label>
+                <label className="set-field">
+                  <span>Region</span>
+                  <select {...bind("region")}>
+                    {["Geita", "Mwanza", "Shinyanga", "Kagera", "Dar es Salaam", "Dodoma", "Arusha"].map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Opening hours" desc="Used for pickup and return times.">
+              <div className="set-hours">
+                {[["Monday – Friday", "weekdayOpen", "weekdayClose"], ["Saturday", "saturdayOpen", "saturdayClose"]].map(([day, open, close]) => (
+                  <div className="set-hours-row" key={day}>
+                    <strong>{day}</strong>
+                    <input type="time" {...bind(open)} aria-label={`${day} opening time`} />
+                    <i>to</i>
+                    <input type="time" {...bind(close)} aria-label={`${day} closing time`} />
+                  </div>
+                ))}
+                <div className="set-hours-row">
+                  <strong>Sunday</strong>
+                  <span className={`set-pill ${draft.sundayOpen ? "open" : ""}`}>{draft.sundayOpen ? "Open by appointment" : "Closed"}</span>
+                  <SettingSwitch checked={draft.sundayOpen} onChange={set("sundayOpen")} label="Open on Sunday" />
+                </div>
+              </div>
+            </SettingsCard>
+          </>
+        )}
+
+        {active === "account" && (
+          <>
+            <SettingsCard title="Your profile">
+              <div className="set-profile">
+                <span className="set-avatar">{(draft.firstName[0] || "P").toUpperCase()}{(draft.lastName[0] || "M").toUpperCase()}</span>
+                <div>
+                  <strong>{draft.firstName} {draft.lastName}</strong>
+                  <small>Signed in with {BUSINESS_INFO.phone}</small>
+                </div>
+                <span className="set-role"><ShieldCheck size={13} /> Admin</span>
+              </div>
+              <div className="set-grid">
+                <label className="set-field">
+                  <span>First name</span>
+                  <input {...bind("firstName")} />
+                  {error("firstName")}
+                </label>
+                <label className="set-field">
+                  <span>Last name</span>
+                  <input {...bind("lastName")} />
+                  {error("lastName")}
+                </label>
+                <label className="set-field">
+                  <span>Login phone number</span>
+                  <input value={BUSINESS_INFO.phone} readOnly className="set-readonly" />
+                  <small className="set-hint">Contact support to change your login number.</small>
+                </label>
+                <label className="set-field">
+                  <span>Email <em>Optional</em></span>
+                  <input {...bind("accountEmail")} type="email" />
+                  {error("accountEmail")}
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Change password" desc="Use at least 8 characters with a mix of letters and numbers.">
+              <form
+                className="set-grid"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setNotice("Password changes will be available once sign-in is connected to the Pendo server.");
+                  setPasswords({ current: "", next: "", confirm: "" });
+                }}
+              >
+                <label className="set-field set-span-2">
+                  <span>Current password</span>
+                  <input type="password" autoComplete="current-password" value={passwords.current} onChange={(event) => setPasswords((current) => ({ ...current, current: event.target.value }))} />
+                </label>
+                <label className="set-field">
+                  <span>New password</span>
+                  <input type="password" autoComplete="new-password" value={passwords.next} onChange={(event) => setPasswords((current) => ({ ...current, next: event.target.value }))} />
+                  {passwords.next && passwords.next.length < 8 && <small className="set-error"><CircleAlert size={12} /> Use at least 8 characters.</small>}
+                </label>
+                <label className="set-field">
+                  <span>Confirm new password</span>
+                  <input type="password" autoComplete="new-password" value={passwords.confirm} onChange={(event) => setPasswords((current) => ({ ...current, confirm: event.target.value }))} />
+                  {passwords.confirm && passwords.confirm !== passwords.next && <small className="set-error"><CircleAlert size={12} /> Passwords do not match.</small>}
+                </label>
+                <div className="set-span-2 set-inline-actions">
+                  <button
+                    type="submit"
+                    className="button button-secondary"
+                    disabled={!passwords.current || passwords.next.length < 8 || passwords.next !== passwords.confirm}
+                  >
+                    <KeyRound size={14} /> Update password
+                  </button>
+                </div>
+              </form>
+            </SettingsCard>
+
+            <SettingsCard title="Signed-in devices">
+              <div className="set-device">
+                <span className="set-row-icon"><Globe size={15} /></span>
+                <span className="set-row-copy">
+                  <strong>This browser</strong>
+                  <small>Active now · Kayenze, Geita</small>
+                </span>
+                <span className="set-pill open">Current</span>
+              </div>
+              <div className="set-inline-actions">
+                <button type="button" className="button button-secondary set-danger" onClick={onLogout}>
+                  <LogOut size={14} /> Log out
+                </button>
+              </div>
+            </SettingsCard>
+          </>
+        )}
+
+        {active === "notifications" && (
+          <>
+            <SettingsCard title="Team alerts" desc="How Pendo staff hear about activity in the workspace.">
+              <div className="set-channel-row">
+                {[["alertEmail", "Email", Mail], ["alertSms", "SMS", Smartphone]].map(([key, label, Icon]) => (
+                  <button key={key} type="button" className={`set-channel ${draft[key] ? "on" : ""}`} onClick={() => set(key)(!draft[key])} aria-pressed={draft[key]}>
+                    <Icon size={15} /> {label}
+                    {draft[key] && <Check size={13} />}
+                  </button>
+                ))}
+              </div>
+              {toggleRow("alertNewBooking", "New bookings", "When a customer books or an order is created", CalendarCheck)}
+              {toggleRow("alertPayment", "Payments received", "M-Pesa, cash and bank payments", Wallet)}
+              {toggleRow("alertLowStock", "Low stock", "When an item drops below 20% availability", Package)}
+              {toggleRow("alertDailySummary", "Daily summary", "One message each evening with the day’s totals", ChartNoAxesCombined)}
+            </SettingsCard>
+
+            <SettingsCard title="Customer SMS" desc="Automatic messages sent to customers.">
+              {toggleRow("customerConfirm", "Booking confirmation", "Sent as soon as a booking is confirmed", Check)}
+              <div className="set-toggle-row">
+                <span className="set-row-icon"><Clock3 size={15} /></span>
+                <span className="set-row-copy">
+                  <strong>Return reminders</strong>
+                  <small>Reminds customers before items are due back</small>
+                </span>
+                <select className="set-mini-select" {...bind("reminderLead")} disabled={!draft.customerReminders}>
+                  {["Same day", "1 day before", "2 days before"].map((option) => <option key={option}>{option}</option>)}
+                </select>
+                <SettingSwitch checked={draft.customerReminders} onChange={set("customerReminders")} label="Return reminders" />
+              </div>
+              {toggleRow("customerDelivery", "Delivery updates", "When a driver is on the way or has delivered", Truck)}
+              {toggleRow("customerThanks", "Thank-you message", "After items are returned", Sparkles)}
+              <label className="set-field set-sender">
+                <span>SMS sender name</span>
+                <input {...bind("smsSender")} maxLength={11} />
+                {error("smsSender") || <small className="set-hint">Shown as the sender on customers’ phones (max 11 characters).</small>}
+              </label>
+            </SettingsCard>
+          </>
+        )}
+
+        {active === "policies" && (
+          <>
+            <SettingsCard title="Bookings">
+              <div className="set-grid set-grid-3">
+                <label className="set-field">
+                  <span>Minimum rental</span>
+                  <span className="set-affix"><input type="number" min="1" {...bind("minDays")} /><i>days</i></span>
+                </label>
+                <label className="set-field">
+                  <span>Deposit</span>
+                  <span className="set-affix"><input type="number" min="0" max="100" {...bind("depositPercent")} /><i>%</i></span>
+                  {error("depositPercent")}
+                </label>
+                <label className="set-field">
+                  <span>Book up to</span>
+                  <span className="set-affix"><input type="number" min="1" {...bind("advanceDays")} /><i>days ahead</i></span>
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Returns & late fees">
+              <div className="set-grid">
+                <label className="set-field">
+                  <span>Late fee</span>
+                  <span className="set-affix"><b>TSh</b><input type="number" min="0" {...bind("lateFee")} /><i>per day</i></span>
+                </label>
+                <label className="set-field">
+                  <span>Grace period</span>
+                  <span className="set-affix"><input type="number" min="0" {...bind("gracePeriod")} /><i>hours</i></span>
+                </label>
+                <label className="set-field set-span-2">
+                  <span>Damage & loss policy</span>
+                  <textarea rows="3" {...bind("damagePolicy")} />
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Cancellations">
+              <div className="set-grid">
+                <label className="set-field">
+                  <span>Free cancellation</span>
+                  <select {...bind("freeCancelHours")}>
+                    {[["24", "Up to 24 hours before"], ["48", "Up to 48 hours before"], ["72", "Up to 72 hours before"], ["168", "Up to 7 days before"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <label className="set-field">
+                  <span>Refund after that</span>
+                  <span className="set-affix"><input type="number" min="0" max="100" {...bind("refundPercent")} /><i>% of deposit</i></span>
+                  {error("refundPercent")}
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Delivery">
+              <div className="set-grid set-grid-3">
+                <label className="set-field">
+                  <span>Base delivery fee</span>
+                  <span className="set-affix"><b>TSh</b><input type="number" min="0" {...bind("deliveryFee")} /></span>
+                </label>
+                <label className="set-field">
+                  <span>Per kilometre</span>
+                  <span className="set-affix"><b>TSh</b><input type="number" min="0" {...bind("perKmFee")} /></span>
+                </label>
+                <label className="set-field">
+                  <span>Free delivery in</span>
+                  <select {...bind("freeDeliveryArea")}>
+                    {["No free area", ...CUSTOMER_AREAS.filter((area) => area !== "Other area")].map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+              </div>
+            </SettingsCard>
+          </>
+        )}
+
+        {active === "payments" && (
+          <>
+            <SettingsCard title="Payment methods" desc="Methods customers can use. Shown on invoices and receipts.">
+              <div className="set-methods">
+                {[["payMpesa", "M-Pesa", Smartphone], ["payTigo", "Tigo Pesa", Smartphone], ["payAirtel", "Airtel Money", Smartphone], ["payCash", "Cash", Banknote], ["payBank", "Bank transfer", Landmark], ["payCard", "Card", CreditCard]].map(([key, label, Icon]) => (
+                  <button key={key} type="button" className={`set-method ${draft[key] ? "on" : ""}`} onClick={() => set(key)(!draft[key])} aria-pressed={draft[key]}>
+                    <span className="set-row-icon"><Icon size={15} /></span>
+                    <strong>{label}</strong>
+                    <span className="set-check">{draft[key] && <Check size={12} />}</span>
+                  </button>
+                ))}
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Mobile money & bank details">
+              <div className="set-grid">
+                <label className="set-field">
+                  <span>M-Pesa Lipa Namba</span>
+                  <input {...bind("lipaNumber")} placeholder="e.g. 5123456" inputMode="numeric" disabled={!draft.payMpesa} />
+                </label>
+                <label className="set-field">
+                  <span>Registered name</span>
+                  <input {...bind("lipaName")} disabled={!draft.payMpesa} />
+                </label>
+                <label className="set-field">
+                  <span>Bank</span>
+                  <select {...bind("bankName")} disabled={!draft.payBank}>
+                    {["CRDB Bank", "NMB Bank", "NBC Bank", "Equity Bank", "Stanbic Bank", "Exim Bank"].map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+                <label className="set-field">
+                  <span>Account number</span>
+                  <input {...bind("bankAccountNumber")} placeholder="e.g. 0150 1234 5678 00" inputMode="numeric" disabled={!draft.payBank} />
+                </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Currency & tax">
+              <div className="set-toggle-row">
+                <span className="set-row-icon"><Banknote size={15} /></span>
+                <span className="set-row-copy"><strong>Currency</strong><small>All amounts are shown in Tanzanian shillings</small></span>
+                <span className="set-pill open">TSh</span>
+              </div>
+              <div className="set-toggle-row">
+                <span className="set-row-icon"><Percent size={15} /></span>
+                <span className="set-row-copy"><strong>Charge VAT</strong><small>Adds VAT to invoices and receipts</small></span>
+                {draft.vatEnabled && (
+                  <span className="set-affix set-affix-small"><input type="number" min="0" max="100" {...bind("vatRate")} aria-label="VAT rate" /><i>%</i></span>
+                )}
+                <SettingSwitch checked={draft.vatEnabled} onChange={set("vatEnabled")} label="Charge VAT" />
+              </div>
+              {error("vatRate")}
+            </SettingsCard>
+
+            <SettingsCard
+              title="Tithe (Zaka)"
+              desc="Set aside a share of every customer payment as tithe."
+              aside={<SettingSwitch checked={draft.titheEnabled} onChange={set("titheEnabled")} label="Set aside tithe" />}
             >
-              <span>
-                <strong>{title}</strong>
-                <small>{detail}</small>
-              </span>
-              <i className={`toggle ${settings[key] ? "on" : ""}`} />
-            </button>
-          ))}
-          <div className="settings-actions">
-            <button className="button button-secondary">Cancel</button>
-            <button className="button button-primary">Save changes</button>
+              {draft.titheEnabled ? (
+                <div className="set-tithe">
+                  <label className="set-field">
+                    <span>Tithe percentage</span>
+                    <span className="set-affix"><input type="number" min="0.1" max="100" step="0.5" {...bind("tithePercent")} aria-label="Tithe percentage" /><i>% of each payment</i></span>
+                    {error("tithePercent") || <small className="set-hint">Applied to every payment received from customers. Usually 10%.</small>}
+                    <span className="set-presets">
+                      {["5", "10", "15", "20"].map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={draft.tithePercent === value ? "active" : ""}
+                          onClick={() => set("tithePercent")(value)}
+                        >
+                          {value}%
+                        </button>
+                      ))}
+                    </span>
+                  </label>
+                  {(() => {
+                    const payment = 248000;
+                    const rate = Number(draft.tithePercent) || 0;
+                    const tithe = Math.round(payment * rate) / 100;
+                    return (
+                      <div className="set-tithe-example" aria-label="Tithe example">
+                        <small>Example payment</small>
+                        <div><span>Customer pays</span><strong>{formatTSh(payment)}</strong></div>
+                        <div className="tithe"><span>Tithe ({rate}%)</span><strong>− {formatTSh(tithe)}</strong></div>
+                        <div className="net"><span>Remaining for business</span><strong>{formatTSh(payment - tithe)}</strong></div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <p className="set-off-note"><Info size={14} /> Tithe is turned off. Payments are not set aside.</p>
+              )}
+            </SettingsCard>
+
+            <SettingsCard title="Receipts & invoices">
+              <div className="set-receipt-layout">
+                <div className="set-grid">
+                  <label className="set-field">
+                    <span>Receipt number prefix</span>
+                    <input {...bind("receiptPrefix")} maxLength={8} />
+                  </label>
+                  <label className="set-field">
+                    <span>Invoice number prefix</span>
+                    <input {...bind("invoicePrefix")} maxLength={8} />
+                  </label>
+                  <label className="set-field set-span-2">
+                    <span>Receipt footer</span>
+                    <textarea rows="3" {...bind("receiptFooter")} />
+                  </label>
+                </div>
+                <div className="set-receipt-preview" aria-label="Receipt preview">
+                  <span className="set-receipt-top">
+                    <strong>Pendo<b>rentals</b></strong>
+                    <small>{draft.receiptPrefix || "RCT-"}0159</small>
+                  </span>
+                  <small>{draft.address}, {draft.region} · {draft.phone}</small>
+                  <span className="set-receipt-amount"><small>Amount received</small><strong>TSh 248,000</strong></span>
+                  {draft.vatEnabled && <small>Includes VAT {draft.vatRate}%</small>}
+                  <p>{draft.receiptFooter}</p>
+                </div>
+              </div>
+            </SettingsCard>
+          </>
+        )}
+
+        {active === "integrations" && (
+          <SettingsCard title="Connected services" desc="Connect these once the Pendo server is set up.">
+            <div className="set-integrations">
+              {[
+                [MessageSquareText, "SMS gateway", "Send booking and reminder SMS through Beem Africa or Africa’s Talking."],
+                [Smartphone, "M-Pesa payments", "Confirm Lipa Namba payments automatically and issue receipts."],
+                [Cloud, "Google Drive backup", "Daily backup of orders, customers and receipts."],
+                [HardDriveDownload, "Data export", "Download all workspace data as Excel files."],
+              ].map(([Icon, title, text]) => (
+                <article className="set-integration" key={title}>
+                  <span className="set-integration-icon"><Icon size={18} /></span>
+                  <strong>{title}</strong>
+                  <p>{text}</p>
+                  <div>
+                    <span className="set-pill"><CircleDot size={10} /> Not connected</span>
+                    <button type="button" className="button button-secondary" onClick={() => setNotice(`${title} needs the Pendo server. Call ${BUSINESS_INFO.phone} to request setup.`)}>
+                      Set up
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </SettingsCard>
+        )}
+
+        {(dirty || showErrors) && (
+          <div className="set-savebar" role="region" aria-label="Unsaved changes">
+            <span>
+              {showErrors && Object.keys(errors).length
+                ? <><CircleAlert size={15} /> Fix the highlighted fields to save</>
+                : <><Info size={15} /> You have unsaved changes</>}
+            </span>
+            <button type="button" className="button button-secondary" onClick={discard}>Discard</button>
+            <button type="button" className="button button-primary" onClick={save}><Save size={14} /> Save changes</button>
           </div>
-        </div>
-      </section>
+        )}
+
+        {toast && <div className="set-toast" role="status"><Check size={15} /> {toast}</div>}
+      </div>
     </div>
   );
 }
 
-function LoginPreview({ signedIn, setSignedIn }) {
-  return (
-    <section className="login-preview panel">
-      <div className="login-art">
-        <div className="login-brand">
-          <BrandMark />
-          <strong>Pendo Rentals</strong>
-          <small>Rent · Celebrate · Grow</small>
-        </div>
-        <div className="login-art-copy">
-          <span>MADE FOR THE MOMENTS OUTSIDE</span>
-          <h2>Your one-stop rental solution</h2>
-          <p>
-            From tents and tables to lighting, bikes and more, we make your
-            adventures and projects easier.
-          </p>
-        </div>
-        <div className="login-art-bottom">
-          <span>Rent more. Worry less.</span>
-          <span>© 2026 Pendo Rentals</span>
-        </div>
-      </div>
-      <form
-        className="login-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setSignedIn(true);
-        }}
-      >
-        <div className="login-form-brand">
-          <BrandMark />
-          <strong>Pendo Rentals</strong>
-          <span>Rent · Celebrate · Grow</span>
-        </div>
-        <h1>{signedIn ? "You’re signed in" : "Welcome back"}</h1>
-        <p>
-          {signedIn
-            ? "Your workspace is ready."
-            : "Log in to your account to manage your rentals with ease."}
-        </p>
-        {!signedIn && (
-          <>
-            <label>
-              Username or email
-              <input type="email" required placeholder="you@example.com" />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                required
-                placeholder="Enter your password"
-              />
-            </label>
-            <div className="login-remember">
-              <label>
-                <input type="checkbox" defaultChecked /> Remember me
-              </label>
-              <button type="button">Forgot password?</button>
-            </div>
-            <button
-              className="button button-primary login-submit"
-              type="submit"
-            >
-              Log in <ArrowRight size={15} />
-            </button>
-          </>
-        )}
-        {signedIn && (
-          <button
-            className="button button-primary login-submit"
-            type="button"
-            onClick={() => setSignedIn(false)}
-          >
-            Back to login
-          </button>
-        )}
-        <small className="login-terms">
-          By continuing, you agree to Pendo Rentals’ terms and privacy policy.
-        </small>
-      </form>
-    </section>
-  );
-}
-
-function MobilePreview({ onNavigate }) {
-  return (
-    <section className="mobile-preview-page">
-      <div className="mobile-preview-heading">
-        <div>
-          <div className="panel-kicker">PENDO RENTALS ON THE GO</div>
-          <h2>Mobile app experience</h2>
-          <p>Booking and rental management, wherever the day takes you.</p>
-        </div>
-        <span className="status-pill green">
-          <i />
-          Installable PWA
-        </span>
-      </div>
-      <div className="phone-gallery">
-        <PhoneMockup title="Welcome" />
-        <PhoneMockup title="Sign in" />
-        <PhoneMockup title="My orders" />
-        <PhoneMockup title="Inventory" />
-      </div>
-      <div className="pwa-note panel">
-        <span className="template-icon">
-          <Download size={17} />
-        </span>
-        <div>
-          <strong>Ready to install</strong>
-          <span>
-            Customers can add Pendo Rentals to their home screen directly from
-            their browser.
-          </span>
-        </div>
-        <button
-          className="button button-primary"
-          onClick={() => onNavigate("Login / Splash Screen")}
-        >
-          Preview login
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function PhoneMockup({ title }) {
-  return (
-    <article className="phone-mockup">
-      <div className="phone-screen">
-        <div className="phone-notch" />
-        <div className="phone-mini-brand">
-          <BrandMark />
-          <strong>Pendo</strong>
-        </div>
-        {title === "Welcome" ? (
-          <>
-            <div className="phone-hero-image" />
-            <h3>Make room for adventure.</h3>
-            <p>Everything you need for your next great day outside.</p>
-            <button>Get started</button>
-          </>
-        ) : title === "Sign in" ? (
-          <>
-            <h3>Welcome back</h3>
-            <p>Log in to your account</p>
-            <span className="phone-input">Email address</span>
-            <span className="phone-input">Password</span>
-            <button>Log in</button>
-          </>
-        ) : (
-          <>
-            <h3>{title === "My orders" ? "Your orders" : "Explore gear"}</h3>
-            <p>
-              {title === "My orders"
-                ? "Your next adventure is coming up."
-                : "Find something for your next outing."}
-            </p>
-            <div className="phone-product">
-              <img
-                src={`https://images.unsplash.com/${title === "Inventory" ? inventory[0].image : inventory[2].image}?auto=format&fit=crop&w=150&q=80`}
-                alt=""
-              />
-              <span>
-                <strong>
-                  {title === "Inventory"
-                    ? inventory[0].name
-                    : "Coastal weekend"}
-                </strong>
-                <small>
-                  {title === "Inventory" ? "$85 / day" : "Oct 02 – Oct 05"}
-                </small>
-              </span>
-            </div>
-            <div className="phone-product">
-              <img
-                src={`https://images.unsplash.com/${inventory[1].image}?auto=format&fit=crop&w=150&q=80`}
-                alt=""
-              />
-              <span>
-                <strong>
-                  {title === "Inventory" ? inventory[1].name : "Order details"}
-                </strong>
-                <small>
-                  {title === "Inventory" ? "$24 / day" : "3 items · Confirmed"}
-                </small>
-              </span>
-            </div>
-            <div className="phone-bottom-nav">
-              <span>⌂</span>
-              <span>▦</span>
-              <span>♡</span>
-              <span>○</span>
-            </div>
-          </>
-        )}
-      </div>
-      <span className="phone-caption">{title}</span>
-    </article>
-  );
-}
+const settingsFieldSection = {
+  businessName: "profile", phone: "profile", whatsapp: "profile", email: "profile",
+  firstName: "account", lastName: "account", accountEmail: "account",
+  smsSender: "notifications",
+  depositPercent: "policies", refundPercent: "policies",
+  vatRate: "payments", tithePercent: "payments",
+};
 
 function Pagination() {
   return (
