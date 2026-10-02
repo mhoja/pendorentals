@@ -5204,3 +5204,149 @@ button:not(.nav-link):not(.button-primary):not(.danger) {
 .auth-features li {
     text-shadow: 0 2px 16px #060d17e6;
 }
+
+/* Login & sign-up: compact sizing */
+.auth-flow {
+    width: min(380px, 100%);
+    gap: 14px;
+}
+
+.auth-signup {
+    gap: 13px;
+}
+
+.auth-heading h1 {
+    font-size: 21px;
+}
+
+.auth-heading p {
+    margin-top: 4px;
+    font-size: 13px;
+}
+
+.auth-form {
+    gap: 11px;
+}
+
+.auth-input {
+    height: 40px;
+    gap: 9px;
+    padding: 0 8px 0 13px;
+    border-radius: 9px;
+}
+
+.auth-input svg {
+    width: 15px;
+    height: 15px;
+}
+
+.auth-input input,
+.auth-select select {
+    font-size: 13.5px;
+}
+
+.auth-reveal {
+    width: 28px;
+    height: 28px;
+}
+
+.auth-primary,
+.auth-outline {
+    height: 42px;
+    gap: 8px;
+    border-radius: 9px;
+    font-size: 14px;
+}
+
+.auth-primary svg,
+.auth-outline svg {
+    width: 15px;
+    height: 15px;
+}
+
+.auth-check {
+    gap: 7px;
+    font-size: 12.5px;
+}
+
+.auth-check input {
+    width: 15px;
+    height: 15px;
+}
+
+.auth-link,
+.auth-switch,
+.auth-switch .auth-link {
+    font-size: 12.5px;
+}
+
+.auth-divider {
+    gap: 16px;
+    font-size: 12px;
+}
+
+.auth-error,
+.auth-notice {
+    padding: 8px 11px;
+    font-size: 12px;
+}
+
+.auth-help {
+    gap: 10px;
+    padding: 11px 13px;
+    border-radius: 10px;
+}
+
+.auth-help-icon {
+    width: 36px;
+    height: 36px;
+}
+
+.auth-help-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.auth-help-head strong {
+    font-size: 14px;
+}
+
+.auth-help-head small {
+    font-size: 12px;
+}
+
+.auth-help-contacts a {
+    padding: 8px 11px;
+}
+
+.auth-help-contacts strong {
+    font-size: 13px;
+}
+
+.auth-help-contacts small {
+    font-size: 10px;
+}
+
+.auth-field-grid {
+    gap: 10px;
+}
+
+.auth-field-error {
+    font-size: 11px;
+}
+
+.auth-strength small {
+    font-size: 11px;
+}
+
+.auth-consents .auth-check {
+    font-size: 12px;
+}
+
+.auth-kicker {
+    font-size: 10px;
+}
+
+.auth-back {
+    font-size: 12px;
+}
