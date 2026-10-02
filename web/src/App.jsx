@@ -335,41 +335,6 @@ const invoicesData = [
   },
 ];
 
-const usersData = [
-  {
-    name: "Pendo Mbolela",
-    email: "pendo@pendorentals.com",
-    role: "Admin",
-    status: "Active",
-    initials: "PM",
-    color: "peach",
-  },
-  {
-    name: "Grace Chen",
-    email: "grace@pendorentals.com",
-    role: "Store manager",
-    status: "Active",
-    initials: "GC",
-    color: "lilac",
-  },
-  {
-    name: "Daniel Kim",
-    email: "daniel@pendorentals.com",
-    role: "Inventory staff",
-    status: "Active",
-    initials: "DK",
-    color: "mint",
-  },
-  {
-    name: "Ava Patel",
-    email: "ava@pendorentals.com",
-    role: "Delivery staff",
-    status: "Invited",
-    initials: "AP",
-    color: "blue",
-  },
-];
-
 function BrandMark() {
   return (
     <div className="brand-mark">
@@ -1844,7 +1809,7 @@ function Workspace({ onLogout }) {
               </p>
             </div>
             <div className="welcome-actions">
-              {!["Reports", "Settings"].includes(activePage) && (
+              {!["Reports", "Settings", "Users & Roles"].includes(activePage) && (
                 <button
                   className="button button-secondary"
                   onClick={handleExport}
@@ -2343,7 +2308,7 @@ function WorkspacePage({ page, query, onModal, onOrderView, orders, setOrders, o
   if (page === "Reports")
     return <ReportsPage period={period} setPeriod={setPeriod} />;
   if (page === "Users & Roles")
-    return <UsersPage query={query} onInvite={() => onModal("user")} />;
+    return <UsersPage query={query} />;
   if (page === "Settings")
     return <SettingsPage onLogout={onLogout} />;
   return (
@@ -4150,54 +4115,204 @@ function ReceiptPreview({ payment, onClose }) {
   );
 }
 
-function UsersPage({ query, onInvite }) {
-  const rows = usersData.filter((user) =>
-    `${user.name} ${user.email} ${user.role}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+const TEAM_ROLES = [
+  {
+    name: "Admin",
+    tone: "blue",
+    desc: "Full access, including finance, settings and team management.",
+    access: ["Dashboard", "Orders", "Inventory", "Customers", "Invoices", "Finance & receipts", "Reports", "Users & roles", "Settings"],
+  },
+  {
+    name: "Store manager",
+    tone: "purple",
+    desc: "Runs daily operations, bookings and customer payments.",
+    access: ["Dashboard", "Orders", "Inventory", "Customers", "Invoices", "Finance & receipts", "Reports"],
+  },
+  {
+    name: "Inventory staff",
+    tone: "green",
+    desc: "Keeps tents, chairs and equipment ready and in stock.",
+    access: ["Dashboard", "Orders", "Inventory"],
+  },
+  {
+    name: "Delivery staff",
+    tone: "amber",
+    desc: "Delivers and collects rentals; sees today’s orders.",
+    access: ["Dashboard", "Orders"],
+  },
+  {
+    name: "Customer",
+    tone: "pink",
+    customer: true,
+    desc: "People who rent from Pendo. They sign up themselves and only see their own bookings and payments.",
+    access: ["Browse rentals", "Book & request quotes", "My bookings", "My receipts & invoices", "Payment history", "My profile"],
+  },
+];
+
+const STAFF_ROLES = TEAM_ROLES.filter((role) => !role.customer);
+
+const ALL_PERMISSIONS = ["Dashboard", "Orders", "Inventory", "Customers", "Invoices", "Finance & receipts", "Reports", "Users & roles", "Settings"];
+const CUSTOMER_PERMISSIONS = ["Browse rentals", "Book & request quotes", "My bookings", "My receipts & invoices", "Payment history", "My profile", "Other customers’ data", "Staff workspace"];
+
+const initialTeam = [
+  { id: "pendo", name: "Pendo Mbolela", email: "pendo@pendorentals.com", phone: "0622 882 278", role: "Admin", status: "Active", lastActive: "Active now", initials: "PM", color: "peach" },
+  { id: "grace", name: "Grace Chen", email: "grace@pendorentals.com", phone: "0754 210 455", role: "Store manager", status: "Active", lastActive: "2 hours ago", initials: "GC", color: "lilac" },
+  { id: "neema", name: "Neema Joseph", email: "neema@pendorentals.com", phone: "0713 908 221", role: "Store manager", status: "Active", lastActive: "Yesterday", initials: "NJ", color: "mint" },
+  { id: "daniel", name: "Daniel Kim", email: "daniel@pendorentals.com", phone: "0765 330 812", role: "Inventory staff", status: "Active", lastActive: "Today, 9:40 am", initials: "DK", color: "blue" },
+  { id: "juma", name: "Juma Mussa", email: "juma@pendorentals.com", phone: "0688 451 093", role: "Delivery staff", status: "Inactive", lastActive: "3 weeks ago", initials: "JM", color: "peach" },
+  { id: "ava", name: "Ava Patel", email: "ava@pendorentals.com", phone: "0744 120 676", role: "Delivery staff", status: "Invited", lastActive: "Invite sent Sep 29", initials: "AP", color: "lilac" },
+];
+
+const memberTones = { Active: "green", Invited: "amber", Inactive: "red" };
+
+function InviteMemberModal({ onClose, onInvite, existingPhones }) {
+  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", email: "", role: "" });
+  const [submitted, setSubmitted] = useState(false);
+  const errors = {};
+  if (!form.firstName.trim()) errors.firstName = "Enter a first name.";
+  if (!form.lastName.trim()) errors.lastName = "Enter a last name.";
+  const phone = normalizePhone(form.phone);
+  if (!/^0[67]\d{8}$/.test(phone)) errors.phone = "Enter a valid phone number.";
+  else if (existingPhones.includes(phone)) errors.phone = "This number is already on the team.";
+  if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = "Enter a valid email or leave it empty.";
+  if (!form.role) errors.role = "Choose a role.";
+  const show = (key) => submitted && errors[key] ? <small className="set-error"><CircleAlert size={12} /> {errors[key]}</small> : null;
+  const bind = (key) => ({
+    value: form[key],
+    onChange: (event) => setForm((current) => ({ ...current, [key]: event.target.value })),
+    "aria-invalid": Boolean(submitted && errors[key]),
+  });
+  const selectedRole = TEAM_ROLES.find((role) => role.name === form.role);
+
+  useEffect(() => {
+    const onKey = (event) => event.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="modal team-modal" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+        <div className="modal-heading">
+          <div>
+            <span className="modal-kicker">TEAM ACCESS</span>
+            <h2 id="invite-title">Invite team member</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close"><X size={19} /></button>
+        </div>
+        <form
+          className="team-form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSubmitted(true);
+            if (Object.keys(errors).length) return;
+            onInvite({
+              name: `${form.firstName.trim()} ${form.lastName.trim()}`,
+              email: form.email.trim(),
+              phone: phone.replace(/^(\d{4})(\d{3})(\d{3})$/, "$1 $2 $3"),
+              role: form.role,
+            });
+          }}
+        >
+          <div className="set-grid">
+            <label className="set-field"><span>First name</span><input {...bind("firstName")} autoFocus />{show("firstName")}</label>
+            <label className="set-field"><span>Last name</span><input {...bind("lastName")} />{show("lastName")}</label>
+            <label className="set-field"><span>Phone number</span><input {...bind("phone")} inputMode="tel" placeholder="e.g. 0712 345 678" />{show("phone")}</label>
+            <label className="set-field"><span>Email <em>Optional</em></span><input {...bind("email")} type="email" placeholder="name@example.com" />{show("email")}</label>
+          </div>
+          <div className="set-field">
+            <span>Role</span>
+            <div className="team-role-picker" role="radiogroup" aria-label="Role">
+              {STAFF_ROLES.map((role) => (
+                <button
+                  key={role.name}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.role === role.name}
+                  className={`team-role-option ${role.tone} ${form.role === role.name ? "selected" : ""}`}
+                  onClick={() => setForm((current) => ({ ...current, role: role.name }))}
+                >
+                  <ShieldCheck size={14} />
+                  <span><strong>{role.name}</strong><small>{role.access.length} areas</small></span>
+                </button>
+              ))}
+            </div>
+            {show("role")}
+            {selectedRole && <small className="set-hint">{selectedRole.desc}</small>}
+          </div>
+          <p className="team-form-note"><Info size={13} /> They’ll get an SMS invite on their phone to set a password. Customers create their own accounts from the Sign Up page.</p>
+          <div className="modal-actions">
+            <button type="button" className="button button-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="button button-primary"><Send size={14} /> Send invite</button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
   );
+}
+
+function UsersPage({ query }) {
+  const [team, setTeam] = useState(initialTeam);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("All roles");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("Admin");
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(""), 2600);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const text = `${query} ${search}`.trim().toLowerCase();
+  const rows = team.filter((member) => {
+    const haystack = `${member.name} ${member.email} ${member.phone} ${member.role}`.toLowerCase();
+    return text.split(/\s+/).every((word) => haystack.includes(word))
+      && (roleFilter === "All roles" || member.role === roleFilter)
+      && (statusFilter === "All statuses" || member.status === statusFilter);
+  });
+  const count = (status) => team.filter((member) => member.status === status).length;
+  const update = (id, changes) => setTeam((current) => current.map((member) => (member.id === id ? { ...member, ...changes } : member)));
+  const activeRole = TEAM_ROLES.find((role) => role.name === selectedRole);
+  const filtersActive = search || roleFilter !== "All roles" || statusFilter !== "All statuses";
+
   return (
     <>
       <PageSummary
+        className="team-summary"
         items={[
-          {
-            icon: Users,
-            label: "Team members",
-            value: "6",
-            change: "1 invited",
-            kind: "up",
-            color: "blue-icon",
-            caption: "",
-          },
-          {
-            icon: ShieldCheck,
-            label: "Roles",
-            value: "4",
-            change: "Configured",
-            kind: "up",
-            color: "mint-icon",
-            caption: "",
-          },
-          {
-            icon: Clock3,
-            label: "Pending invites",
-            value: "1",
-            change: "Expires in 6 days",
-            kind: "down",
-            color: "orange-icon",
-            caption: "",
-          },
+          { icon: Users, label: "Team members", value: String(team.length), change: `${count("Active")} active`, kind: "up", color: "blue-icon", caption: "" },
+          { icon: ShieldCheck, label: "Roles", value: String(TEAM_ROLES.length), change: `${STAFF_ROLES.length} staff · 1 customer`, kind: "up", color: "mint-icon", caption: "" },
+          { icon: Clock3, label: "Pending invites", value: String(count("Invited")), change: count("Invited") ? "Awaiting sign-up" : "All accepted", kind: count("Invited") ? "down" : "up", color: "orange-icon", caption: "" },
+          { icon: UserCog, label: "Inactive accounts", value: String(count("Inactive")), change: count("Inactive") ? "No access" : "None", kind: count("Inactive") ? "down" : "up", color: "purple-icon", caption: "" },
         ]}
       />
-      <section className="panel workspace-table-panel">
-        <div className="workspace-toolbar">
+
+      <section className="panel workspace-table-panel team-panel">
+        <div className="team-toolbar">
           <div>
             <div className="panel-kicker">TEAM ACCESS</div>
-            <h2 className="toolbar-title">Users &amp; roles</h2>
+            <h2 className="toolbar-title">Team members <span className="heading-count">{rows.length}</span></h2>
           </div>
-          <button className="button button-primary" onClick={onInvite}>
-            <Plus size={15} /> Invite user
-          </button>
+          <div className="team-toolbar-actions">
+            <label className="report-search team-search">
+              <Search size={14} />
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone or email" aria-label="Search team" />
+            </label>
+            <select className="team-select" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} aria-label="Filter by role">
+              {["All roles", ...STAFF_ROLES.map((role) => role.name)].map((option) => <option key={option}>{option}</option>)}
+            </select>
+            <select className="team-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status">
+              {["All statuses", "Active", "Invited", "Inactive"].map((option) => <option key={option}>{option}</option>)}
+            </select>
+            <button className="button button-primary" onClick={() => setInviteOpen(true)}>
+              <Plus size={15} /> Invite user
+            </button>
+          </div>
         </div>
         <DataTable
           columns={[
@@ -4206,54 +4321,128 @@ function UsersPage({ query, onInvite }) {
               label: "TEAM MEMBER",
               render: (row) => (
                 <div className="customer-cell">
-                  <div className={`customer-avatar ${row.color}`}>
-                    {row.initials}
-                  </div>
+                  <div className={`customer-avatar ${row.color}`}>{row.initials}</div>
                   <span>
-                    <strong>{row.name}</strong>
-                    <small>{row.email}</small>
+                    <strong>{row.name}{row.id === initialTeam[0].id && <em className="team-you">You</em>}</strong>
+                    <small>{row.email || "No email"}</small>
                   </span>
                 </div>
               ),
             },
-            { key: "role", label: "ROLE" },
+            { key: "phone", label: "PHONE", render: (row) => <span className="team-muted">{row.phone}</span> },
             {
-              key: "status",
-              label: "STATUS",
-              render: (row) => (
-                <span
-                  className={`status-pill ${row.status === "Active" ? "green" : "amber"}`}
-                >
-                  <i />
-                  {row.status}
-                </span>
-              ),
+              key: "role",
+              label: "ROLE",
+              render: (row) => {
+                const role = TEAM_ROLES.find((item) => item.name === row.role);
+                return <span className={`team-role-pill ${role?.tone || "blue"}`}><ShieldCheck size={11} /> {row.role}</span>;
+              },
             },
+            { key: "status", label: "STATUS", render: (row) => <span className={`status-pill ${memberTones[row.status]}`}><i />{row.status}</span> },
+            { key: "lastActive", label: "LAST ACTIVE", render: (row) => <span className="team-muted">{row.lastActive}</span> },
           ]}
           rows={rows}
-          rowKey="email"
+          rowKey="id"
+          renderActions={(row) => {
+            if (row.id === initialTeam[0].id) return [{ label: "This is you", onClick: () => {} }];
+            return [
+              ...STAFF_ROLES.filter((role) => role.name !== row.role).map((role) => ({
+                label: `Make ${role.name}`,
+                onClick: () => {
+                  update(row.id, { role: role.name });
+                  setToast(`${row.name.split(" ")[0]} is now ${role.name}`);
+                },
+              })),
+              ...(row.status === "Invited" ? [{ label: "Resend invite", onClick: () => setToast(`Invite resent to ${row.phone}`) }] : []),
+              row.status === "Inactive"
+                ? { label: "Reactivate", onClick: () => { update(row.id, { status: "Active", lastActive: "Reactivated just now" }); setToast(`${row.name.split(" ")[0]} reactivated`); } }
+                : { label: "Deactivate", danger: true, onClick: () => { update(row.id, { status: "Inactive", lastActive: "Deactivated just now" }); setToast(`${row.name.split(" ")[0]} deactivated`); } },
+              { label: "Remove from team", danger: true, onClick: () => { setTeam((current) => current.filter((member) => member.id !== row.id)); setToast(`${row.name} removed`); } },
+            ];
+          }}
         />
         <div className="table-bottom">
-          <span>
-            Showing <strong>{rows.length}</strong> team members
-          </span>
-          <Pagination />
+          <span>Showing <strong>{rows.length}</strong> of {team.length} team members</span>
+          {filtersActive && (
+            <button className="report-clear" onClick={() => { setSearch(""); setRoleFilter("All roles"); setStatusFilter("All statuses"); }}>
+              <RotateCcw size={12} /> Clear filters
+            </button>
+          )}
         </div>
       </section>
-      <section className="role-strip">
-        {[
-          "Admin",
-          "Store manager",
-          "Inventory staff",
-          "Delivery staff",
-        ].map((role) => (
-          <div className="role-chip" key={role}>
-            <ShieldCheck size={15} />
-            <span>{role}</span>
-            <ChevronRight size={14} />
+
+      <section className="panel team-roles">
+        <div className="team-roles-head">
+          <div className="panel-kicker">ROLES & PERMISSIONS</div>
+          <h2 className="toolbar-title">What each role can access</h2>
+        </div>
+        <div className="team-roles-body">
+          <div className="team-role-list" role="tablist" aria-label="Roles">
+            {TEAM_ROLES.map((role) => {
+              const members = role.customer
+                ? customerReportData.map((customer) => ({
+                  id: customer.name,
+                  initials: customer.name.split(" ").map((part) => part[0]).join("").slice(0, 2),
+                  color: ["peach", "lilac", "mint", "blue"][customer.name.length % 4],
+                }))
+                : team.filter((member) => member.role === role.name);
+              const noun = role.customer ? "customer" : "member";
+              return (
+                <button
+                  key={role.name}
+                  role="tab"
+                  aria-selected={selectedRole === role.name}
+                  className={`team-role-card ${role.tone} ${selectedRole === role.name ? "active" : ""}`}
+                  onClick={() => setSelectedRole(role.name)}
+                >
+                  <span className="team-role-icon"><ShieldCheck size={16} /></span>
+                  <span className="team-role-copy">
+                    <strong>{role.name}</strong>
+                    <small>{members.length} {noun}{members.length === 1 ? "" : "s"} · {role.access.length} areas</small>
+                  </span>
+                  <span className="team-role-avatars" aria-hidden="true">
+                    {members.slice(0, 3).map((member) => <i key={member.id} className={member.color}>{member.initials}</i>)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        ))}
+          <div className="team-permissions" role="tabpanel" aria-label={`${activeRole.name} permissions`}>
+            <div className="team-permissions-head">
+              <span className={`team-role-pill ${activeRole.tone}`}><ShieldCheck size={11} /> {activeRole.name}</span>
+              <p>{activeRole.desc}</p>
+            </div>
+            <ul>
+              {(activeRole.customer ? CUSTOMER_PERMISSIONS : ALL_PERMISSIONS).map((permission) => {
+                const allowed = activeRole.access.includes(permission);
+                return (
+                  <li key={permission} className={allowed ? "allowed" : ""}>
+                    <span>{allowed ? <Check size={12} /> : <X size={12} />}</span>
+                    {permission}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
       </section>
+
+      {inviteOpen && (
+        <InviteMemberModal
+          onClose={() => setInviteOpen(false)}
+          existingPhones={team.map((member) => normalizePhone(member.phone))}
+          onInvite={(member) => {
+            const initials = member.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+            setTeam((current) => [
+              ...current,
+              { ...member, id: `invite-${Date.now()}`, status: "Invited", lastActive: "Invite sent just now", initials, color: ["peach", "lilac", "mint", "blue"][current.length % 4] },
+            ]);
+            setInviteOpen(false);
+            setToast(`Invite sent to ${member.name}`);
+          }}
+        />
+      )}
+      {toast && <div className="set-toast" role="status"><Check size={15} /> {toast}</div>}
     </>
   );
 }
