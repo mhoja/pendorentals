@@ -1,0 +1,260 @@
+name: Pendo Rentals Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Build Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            web/package-lock.json
+
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build web
+        working-directory: web
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pendorentals-web-dist
+          path: web/dist
+          retention-days: 1
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.ref == 'refs/heads/main'
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '13.222.191.203' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'ec2-user' }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+      WEB_NGINX_PORT: 8282
+      PENDO_PORT: 18282
+      CONTAINER_NAME: pendorentals-api-8282
+      DEPLOY_DIR: /home/ec2-user/pendorentals-deploy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pendorentals-web-dist
+          path: web/dist
+
+      - name: Validate deploy credentials
+        env:
+          DEPLOY_HOST: ${{ env.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ env.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -eu
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
+            eval "value=\${$name}"
+            if [ -z "$value" ]; then
+              echo "Required deployment value is missing: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Set up SSH
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          ssh-keyscan -H -p "${DEPLOY_SSH_PORT:-22}" "$DEPLOY_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Prepare isolated deployment directories
+        run: |
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -p "${DEPLOY_SSH_PORT:-22}" \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'mkdir -p "$HOME/pendorentals-deploy/api" "$HOME/pendorentals-deploy/web"'
+
+      - name: Ship API source and web artifact
+        run: |
+          ssh_args="ssh -i $HOME/.ssh/deploy_key -p ${DEPLOY_SSH_PORT:-22} -o StrictHostKeyChecking=yes"
+          rsync -az -e "$ssh_args" \
+            --exclude node_modules --exclude .env --exclude .env.* \
+            api/Dockerfile api/package.json api/package-lock.json api/src \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/api/"
+          rsync -az --delete -e "$ssh_args" \
+            web/dist/ \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/web/"
+
+      - name: Build API and install isolated Nginx block
+        run: |
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -p "${DEPLOY_SSH_PORT:-22}" \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sh -s -- '$DEPLOY_DIR' '$CONTAINER_NAME' '$PENDO_PORT' '$WEB_NGINX_PORT' '$GITHUB_SHA'" <<'REMOTE_SCRIPT'
+          set -eu
+          deploy_dir="$1"
+          container="$2"
+          api_port="$3"
+          nginx_port="$4"
+          release_id="$5"
+          previous="${container}-previous"
+          owner_label="com.pendorentals.service=api"
+          nginx_config="/etc/nginx/conf.d/pendorentals-8282.conf"
+          nginx_backup="/tmp/pendorentals-8282-nginx.previous"
+          web_root="/var/www/pendorentals-8282"
+          web_release="$web_root/releases/$release_id"
+          had_nginx_config="no"
+          old_web_release=""
+
+          mkdir -p "$deploy_dir/api" "$deploy_dir/web"
+          sudo -n nginx -t >/dev/null
+          sudo -n test -d /etc/nginx/conf.d
+
+          if sudo -n test -f "$nginx_config"; then
+            if ! sudo -n grep -q 'Managed by GitHub Actions: pendorentals-8282' "$nginx_config"; then
+              echo "Refusing to replace unmanaged Nginx config: $nginx_config" >&2
+              exit 1
+            fi
+            had_nginx_config="yes"
+            sudo -n cp "$nginx_config" "$nginx_backup"
+          elif sudo -n nginx -T 2>/dev/null | grep -Eq "^[[:space:]]*listen[[:space:]]+([^;]*[[:space:]:])${nginx_port}([[:space:];])"; then
+            echo "Nginx already has a listener on port $nginx_port; refusing to alter existing routing." >&2
+            exit 1
+          fi
+
+          if docker inspect "$container" >/dev/null 2>&1; then
+            owner="$(docker inspect -f '{{ index .Config.Labels "com.pendorentals.service" }}' "$container")"
+            if [ "$owner" != "api" ]; then
+              echo "Refusing to replace unrelated container '$container'." >&2
+              exit 1
+            fi
+          fi
+          if docker inspect "$previous" >/dev/null 2>&1; then
+            previous_owner="$(docker inspect -f '{{ index .Config.Labels "com.pendorentals.service" }}' "$previous")"
+            if [ "$previous_owner" != "api" ]; then
+              echo "Refusing to replace unrelated rollback container '$previous'." >&2
+              exit 1
+            fi
+          fi
+
+          docker build -t pendorentals-api:latest "$deploy_dir/api"
+          docker rm -f "$previous" >/dev/null 2>&1 || true
+          if docker inspect "$container" >/dev/null 2>&1; then
+            docker stop "$container" >/dev/null
+            docker rename "$container" "$previous"
+          fi
+
+          restore_api() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            if docker inspect "$previous" >/dev/null 2>&1; then
+              docker rename "$previous" "$container"
+              docker start "$container" >/dev/null
+            fi
+          }
+
+          if ! docker run -d \
+            --name "$container" \
+            --label "$owner_label" \
+            --restart unless-stopped \
+            -p "127.0.0.1:$api_port:5001" \
+            pendorentals-api:latest; then
+            restore_api
+            exit 1
+          fi
+
+          attempts=0
+          until curl -fsS "http://127.0.0.1:$api_port/api/health" >/dev/null; do
+            attempts=$((attempts + 1))
+            if [ "$attempts" -ge 12 ]; then
+              echo "API health check failed; restoring previous API container." >&2
+              restore_api
+              exit 1
+            fi
+            sleep 5
+          done
+
+          sudo -n install -d -m 0755 "$web_release"
+          sudo -n rsync -a --delete "$deploy_dir/web/" "$web_release/"
+          if sudo -n test -L "$web_root/current"; then
+            old_web_release="$(sudo -n readlink "$web_root/current")"
+          fi
+          sudo -n ln -sfn "$web_release" "$web_root/current-new"
+          sudo -n mv -Tf "$web_root/current-new" "$web_root/current"
+
+          nginx_candidate="$(mktemp)"
+          cat > "$nginx_candidate" <<NGINX_CONFIG
+          # Managed by GitHub Actions: pendorentals-8282
+          server {
+              listen $nginx_port;
+              server_name 13.222.191.203;
+
+              root $web_root/current;
+              index index.html;
+
+              location /api/ {
+                  proxy_pass http://127.0.0.1:$api_port;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+
+              location / {
+                  try_files \$uri \$uri/ /index.html;
+              }
+          }
+          NGINX_CONFIG
+          sudo -n install -m 0644 "$nginx_candidate" "$nginx_config"
+          rm -f "$nginx_candidate"
+
+          if ! sudo -n nginx -t || ! sudo -n systemctl reload nginx; then
+            echo "Nginx validation/reload failed; restoring previous Nginx and API state." >&2
+            if [ "$had_nginx_config" = "yes" ]; then
+              sudo -n install -m 0644 "$nginx_backup" "$nginx_config"
+            else
+              sudo -n rm -f "$nginx_config"
+            fi
+            if [ -n "$old_web_release" ]; then
+              sudo -n ln -sfn "$old_web_release" "$web_root/current-rollback"
+              sudo -n mv -Tf "$web_root/current-rollback" "$web_root/current"
+            else
+              sudo -n rm -f "$web_root/current"
+            fi
+            sudo -n nginx -t && sudo -n systemctl reload nginx || true
+            restore_api
+            exit 1
+          fi
+
+          docker rm -f "$previous" >/dev/null 2>&1 || true
+          sudo -n rm -f "$nginx_backup"
+          echo "Pendo Rentals deployed at http://13.222.191.203:$nginx_port/"
+          REMOTE_SCRIPT
+
+      - name: Smoke test through Nginx
+        run: |
+          curl -fsS "http://$DEPLOY_HOST:$WEB_NGINX_PORT/api/health"
+          curl -fsSI "http://$DEPLOY_HOST:$WEB_NGINX_PORT/" | head -n 1
