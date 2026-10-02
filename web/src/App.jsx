@@ -36,6 +36,27 @@ import {
   Send,
   CalendarClock,
   CircleDollarSign,
+  Printer,
+  Table2,
+  ChartColumnBig,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  FileSpreadsheet,
+  FileText,
+  RotateCcw,
+  ArrowLeft,
+  ListFilter,
+  Eye,
+  EyeOff,
+  Phone,
+  Lock,
+  LogOut,
+  LoaderCircle,
+  CircleAlert,
+  KeyRound,
+  Tent,
+  BadgeCheck,
 } from "lucide-react";
 
 const navigation = [
@@ -292,11 +313,11 @@ const invoicesData = [
 
 const usersData = [
   {
-    name: "Alex Morgan",
-    email: "alex@pendorentals.com",
-    role: "Administrator",
+    name: "Pendo Mbolela",
+    email: "pendo@pendorentals.com",
+    role: "Admin",
     status: "Active",
-    initials: "AM",
+    initials: "PM",
     color: "peach",
   },
   {
@@ -328,7 +349,7 @@ const usersData = [
 function BrandMark() {
   return (
     <div className="brand-mark">
-      <span>P</span>
+      <span>PR</span>
       <i />
     </div>
   );
@@ -394,7 +415,7 @@ function getReportData(page, orders) {
   };
 }
 
-async function downloadTableReport(title, columns, rows, format) {
+async function downloadTableReport(title, columns, rows, format, options = {}) {
   const fileName = `pendo-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${new Date().toISOString().slice(0, 10)}`;
 
   if (format === "excel") {
@@ -406,7 +427,13 @@ async function downloadTableReport(title, columns, rows, format) {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&apos;");
     const columnName = (index) => String.fromCharCode(65 + index);
-    const sheetRows = [columns, ...rows]
+    const sheetData = [
+      ...(options.subtitle ? [[`Pendo Rentals - ${title}`], [options.subtitle], []] : []),
+      columns,
+      ...rows,
+      ...(options.footer ? [options.footer] : []),
+    ];
+    const sheetRows = sheetData
       .map((row, rowIndex) => {
         const cells = row.map((value, columnIndex) => {
           const reference = `${columnName(columnIndex)}${rowIndex + 1}`;
@@ -442,17 +469,789 @@ async function downloadTableReport(title, columns, rows, format) {
   const pdfDocument = new jsPDF({ orientation: "landscape" });
   pdfDocument.setFontSize(16);
   pdfDocument.text(`Pendo Rentals - ${title}`, 14, 16);
+  if (options.subtitle) {
+    pdfDocument.setFontSize(8);
+    pdfDocument.setTextColor(107, 122, 144);
+    pdfDocument.text(pdfDocument.splitTextToSize(options.subtitle, 265), 14, 22);
+  }
   autoTable(pdfDocument, {
     head: [columns],
     body: rows,
-    startY: 23,
+    ...(options.footer ? { foot: [options.footer], showFoot: "lastPage" } : {}),
+    startY: options.subtitle ? 29 : 23,
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [38, 116, 237] },
+    footStyles: { fillColor: [238, 245, 255], textColor: [16, 48, 94], fontStyle: "bold" },
   });
   pdfDocument.save(`${fileName}.pdf`);
 }
 
+const REPORT_TODAY = "2026-10-01";
+const BUSINESS_INFO = {
+  name: "Pendo Rentals",
+  workspace: "Pendo Outdoors",
+  email: "hello@pendooutdoors.com",
+  phone: "0622 882 278",
+  address: "Kayenze, Geita, Tanzania",
+};
+
+const paymentsData = [
+  { receipt: "RCT-0158", date: "2026-10-01", customer: "Jordan Mitchell", phone: "+255 754 120 124", reference: "ORD-1048", invoice: "INV-000125", method: "M-Pesa", amount: 248, status: "Paid", cashier: "Pendo Mbolela" },
+  { receipt: "RCT-0157", date: "2026-10-01", customer: "Avery Sinclair", phone: "+255 713 555 182", reference: "ORD-1047", invoice: "INV-000124", method: "Card", amount: 200, status: "Partially paid", cashier: "Grace Chen" },
+  { receipt: "RCT-0156", date: "2026-09-30", customer: "Riley Lawson", phone: "+255 684 555 156", reference: "ORD-1046", invoice: "INV-000123", method: "Cash", amount: 186, status: "Paid", cashier: "Pendo Mbolela" },
+  { receipt: "RCT-0155", date: "2026-09-29", customer: "Sam Kim", phone: "+255 765 555 109", reference: "ORD-1045", invoice: "INV-000121", method: "Bank transfer", amount: 568, status: "Paid", cashier: "Grace Chen" },
+  { receipt: "RCT-0154", date: "2026-09-27", customer: "Morgan Lee", phone: "+255 715 555 141", reference: "ORD-1044", invoice: "INV-000122", method: "M-Pesa", amount: 66, status: "Partially paid", cashier: "Daniel Kim" },
+  { receipt: "RCT-0153", date: "2026-09-24", customer: "Taylor Brooks", phone: "+255 744 555 177", reference: "ORD-1041", invoice: "INV-000119", method: "Cash", amount: 320, status: "Paid", cashier: "Pendo Mbolela" },
+  { receipt: "RCT-0152", date: "2026-09-20", customer: "Jordan Mitchell", phone: "+255 754 120 124", reference: "ORD-1038", invoice: "INV-000116", method: "M-Pesa", amount: 154, status: "Refunded", cashier: "Grace Chen" },
+  { receipt: "RCT-0151", date: "2026-09-15", customer: "Casey Nguyen", phone: "+255 787 555 163", reference: "ORD-1035", invoice: "INV-000113", method: "Card", amount: 412, status: "Paid", cashier: "Daniel Kim" },
+  { receipt: "RCT-0150", date: "2026-09-08", customer: "Avery Sinclair", phone: "+255 713 555 182", reference: "ORD-1031", invoice: "INV-000109", method: "Bank transfer", amount: 275, status: "Paid", cashier: "Pendo Mbolela" },
+  { receipt: "RCT-0149", date: "2026-08-29", customer: "Riley Lawson", phone: "+255 684 555 156", reference: "ORD-1027", invoice: "INV-000104", method: "M-Pesa", amount: 198, status: "Paid", cashier: "Grace Chen" },
+];
+
+const salesReportData = [
+  { order: "ORD-1048", date: "2026-10-01", customer: "Jordan Mitchell", items: "Canvas bell tent, 2 chairs", category: "Shelter", channel: "Walk-in", days: 3, total: 248, status: "Active" },
+  { order: "ORD-1047", date: "2026-10-01", customer: "Avery Sinclair", items: "Oak tables, linens, lights", category: "Furniture", channel: "Online", days: 2, total: 412, status: "Active" },
+  { order: "ORD-1046", date: "2026-09-30", customer: "Riley Lawson", items: "Paddleboards, safety kit", category: "Outdoor gear", channel: "Phone", days: 4, total: 186, status: "Active" },
+  { order: "ORD-1045", date: "2026-09-29", customer: "Sam Kim", items: "Tables, chairs, festoon lights", category: "Furniture", channel: "Online", days: 2, total: 568, status: "Completed" },
+  { order: "ORD-1044", date: "2026-09-27", customer: "Morgan Lee", items: "Camp kitchen, cooler", category: "Outdoor gear", channel: "Walk-in", days: 3, total: 132, status: "Completed" },
+  { order: "ORD-1041", date: "2026-09-24", customer: "Taylor Brooks", items: "Bell tent, lanterns", category: "Shelter", channel: "Online", days: 2, total: 320, status: "Completed" },
+  { order: "ORD-1038", date: "2026-09-20", customer: "Jordan Mitchell", items: "Folding chairs x10", category: "Furniture", channel: "Phone", days: 1, total: 154, status: "Cancelled" },
+  { order: "ORD-1035", date: "2026-09-15", customer: "Casey Nguyen", items: "Lanterns, string lights", category: "Lighting", channel: "Online", days: 2, total: 412, status: "Completed" },
+  { order: "ORD-1031", date: "2026-09-08", customer: "Avery Sinclair", items: "Bell tent, rugs", category: "Shelter", channel: "Walk-in", days: 3, total: 275, status: "Completed" },
+  { order: "ORD-1027", date: "2026-08-29", customer: "Riley Lawson", items: "Kayak, dry bags", category: "Outdoor gear", channel: "Phone", days: 2, total: 198, status: "Completed" },
+];
+
+const expenseReportData = [
+  { date: "2026-10-01", category: "Equipment maintenance", description: "Tent repairs & cleaning", vendor: "CleanCanvas Ltd", method: "Business card", amount: 420, status: "Approved" },
+  { date: "2026-09-30", category: "Delivery & transport", description: "Fuel and vehicle costs", vendor: "Puma Energy", method: "Business card", amount: 285.5, status: "Approved" },
+  { date: "2026-09-28", category: "Supplies", description: "Replacement tent pegs", vendor: "Geita Hardware", method: "Bank transfer", amount: 128, status: "Approved" },
+  { date: "2026-09-25", category: "Marketing", description: "Instagram promotion", vendor: "Meta", method: "Business card", amount: 150, status: "Approved" },
+  { date: "2026-09-22", category: "Delivery & transport", description: "Driver allowance", vendor: "Staff", method: "M-Pesa", amount: 90, status: "Pending" },
+  { date: "2026-09-18", category: "Equipment maintenance", description: "Lantern battery packs", vendor: "Geita Hardware", method: "Cash", amount: 64, status: "Approved" },
+  { date: "2026-09-12", category: "Rent & utilities", description: "Warehouse electricity", vendor: "TANESCO", method: "Bank transfer", amount: 210, status: "Approved" },
+  { date: "2026-09-05", category: "Supplies", description: "Cleaning detergents", vendor: "Geita Supermarket", method: "Cash", amount: 46, status: "Approved" },
+  { date: "2026-08-30", category: "Rent & utilities", description: "Warehouse rent", vendor: "Kayenze Properties", method: "Bank transfer", amount: 900, status: "Pending" },
+];
+
+const inventoryReportData = [
+  { name: "Canvas Bell Tent", category: "Shelter", sku: "SHE-1042", quantity: 12, rented: 9, utilization: 75, revenue: 1843, status: "Available" },
+  { name: "Oak Folding Table", category: "Furniture", sku: "FUR-2081", quantity: 18, rented: 11, utilization: 61, revenue: 980, status: "Available" },
+  { name: "Alpine Camp Chair", category: "Furniture", sku: "FUR-1064", quantity: 6, rented: 6, utilization: 100, revenue: 642, status: "Rented" },
+  { name: "Warm Glow Lantern", category: "Lighting", sku: "LGT-3016", quantity: 9, rented: 4, utilization: 44, revenue: 388, status: "Available" },
+  { name: "Festoon String Lights", category: "Lighting", sku: "LGT-3022", quantity: 14, rented: 10, utilization: 71, revenue: 712, status: "Available" },
+  { name: "Inflatable Paddleboard", category: "Outdoor gear", sku: "OUT-4410", quantity: 5, rented: 3, utilization: 60, revenue: 534, status: "Available" },
+  { name: "Two-Person Kayak", category: "Outdoor gear", sku: "OUT-4415", quantity: 3, rented: 0, utilization: 0, revenue: 198, status: "Maintenance" },
+  { name: "Camp Kitchen Set", category: "Outdoor gear", sku: "OUT-4302", quantity: 4, rented: 2, utilization: 50, revenue: 264, status: "Available" },
+];
+
+const customerReportData = [
+  { name: "Jordan Mitchell", phone: "+255 754 120 124", segment: "VIP", lastOrder: "2026-10-01", orders: 12, spent: 2480, status: "Active" },
+  { name: "Avery Sinclair", phone: "+255 713 555 182", segment: "VIP", lastOrder: "2026-10-01", orders: 8, spent: 1920, status: "Active" },
+  { name: "Riley Lawson", phone: "+255 684 555 156", segment: "Regular", lastOrder: "2026-09-30", orders: 6, spent: 1145, status: "Active" },
+  { name: "Sam Kim", phone: "+255 765 555 109", segment: "Regular", lastOrder: "2026-09-29", orders: 5, spent: 980, status: "Active" },
+  { name: "Casey Nguyen", phone: "+255 787 555 163", segment: "Regular", lastOrder: "2026-09-15", orders: 3, spent: 640, status: "Active" },
+  { name: "Taylor Brooks", phone: "+255 744 555 177", segment: "New", lastOrder: "2026-09-24", orders: 1, spent: 320, status: "Active" },
+  { name: "Morgan Lee", phone: "+255 715 555 141", segment: "New", lastOrder: "2026-09-27", orders: 1, spent: 132, status: "Active" },
+  { name: "Jamie Ortiz", phone: "+255 719 555 120", segment: "Regular", lastOrder: "2026-06-14", orders: 4, spent: 710, status: "Inactive" },
+];
+
+const deliveryReportData = [
+  { id: "DLV-0312", date: "2026-10-01", customer: "Avery Sinclair", area: "Kayenze", driver: "Ava Patel", distance: 3.2, fee: 25, status: "In transit" },
+  { id: "DLV-0311", date: "2026-10-01", customer: "Jordan Mitchell", area: "Geita Town", driver: "Daniel Kim", distance: 14.6, fee: 20, status: "Scheduled" },
+  { id: "DLV-0310", date: "2026-09-30", customer: "Riley Lawson", area: "Katoro", driver: "Ava Patel", distance: 38.5, fee: 45, status: "Delivered" },
+  { id: "DLV-0309", date: "2026-09-29", customer: "Sam Kim", area: "Kalangalala", driver: "Daniel Kim", distance: 12.8, fee: 25, status: "Delivered" },
+  { id: "DLV-0308", date: "2026-09-27", customer: "Morgan Lee", area: "Nyankumbu", driver: "Ava Patel", distance: 16.4, fee: 30, status: "Delivered" },
+  { id: "DLV-0307", date: "2026-09-24", customer: "Taylor Brooks", area: "Nyarugusu", driver: "Daniel Kim", distance: 27.3, fee: 40, status: "Failed" },
+  { id: "DLV-0306", date: "2026-09-15", customer: "Casey Nguyen", area: "Kayenze", driver: "Ava Patel", distance: 3.5, fee: 25, status: "Delivered" },
+  { id: "DLV-0305", date: "2026-09-08", customer: "Avery Sinclair", area: "Geita Town", driver: "Daniel Kim", distance: 14.6, fee: 25, status: "Delivered" },
+  { id: "DLV-0304", date: "2026-08-29", customer: "Riley Lawson", area: "Katoro", driver: "Ava Patel", distance: 38.5, fee: 45, status: "Delivered" },
+];
+
+const sumBy = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+const formatTSh = (value) =>
+  `TSh ${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatReportDate = (iso) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+
+function formatReportValue(value, type) {
+  if (value === undefined || value === null || value === "") return "";
+  if (type === "money") return formatTSh(value);
+  if (type === "date") return formatReportDate(value);
+  if (type === "percent") return `${value}%`;
+  if (type === "km") return `${Number(value).toFixed(1)} km`;
+  return String(value);
+}
+
+const statusTones = {
+  Paid: "green", Completed: "green", Delivered: "green", Approved: "green", Active: "green", Available: "green",
+  "Partially paid": "amber", Pending: "amber", Maintenance: "amber",
+  Scheduled: "blue", "In transit": "blue", Rented: "blue",
+  Refunded: "red", Cancelled: "red", Failed: "red", Inactive: "red",
+};
+
+const reportDefinitions = [
+  {
+    id: "finance",
+    icon: Receipt,
+    title: "Finance & receipts",
+    desc: "Payments received, receipts issued and collections by method.",
+    tag: "FINANCE",
+    rows: paymentsData,
+    rowKey: "receipt",
+    dateKey: "date",
+    amountKey: "amount",
+    amountLabel: "Collected",
+    receipts: true,
+    searchKeys: ["receipt", "customer", "phone", "reference", "invoice"],
+    filters: [
+      { key: "method", label: "Payment method" },
+      { key: "status", label: "Payment status" },
+      { key: "cashier", label: "Received by" },
+    ],
+    columns: [
+      { key: "receipt", label: "RECEIPT", type: "id" },
+      { key: "date", label: "DATE", type: "date" },
+      { key: "customer", label: "CUSTOMER" },
+      { key: "reference", label: "ORDER" },
+      { key: "invoice", label: "INVOICE" },
+      { key: "method", label: "METHOD" },
+      { key: "cashier", label: "RECEIVED BY" },
+      { key: "status", label: "STATUS", type: "status" },
+      { key: "amount", label: "AMOUNT", type: "money", total: true },
+    ],
+    groupBy: [
+      { key: "method", label: "Collections by payment method" },
+      { key: "status", label: "By payment status" },
+      { key: "customer", label: "Top paying customers" },
+    ],
+    metrics: (rows) => {
+      const kept = rows.filter((row) => row.status !== "Refunded");
+      const collected = sumBy(kept, "amount");
+      return [
+        { label: "Total collected", value: formatTSh(collected), hint: `${kept.length} payments` },
+        { label: "Receipts issued", value: rows.length, hint: "in selection" },
+        { label: "Average receipt", value: formatTSh(kept.length ? collected / kept.length : 0), hint: "excluding refunds" },
+        { label: "Refunded", value: formatTSh(sumBy(rows.filter((row) => row.status === "Refunded"), "amount")), hint: `${rows.filter((row) => row.status === "Refunded").length} refund${rows.filter((row) => row.status === "Refunded").length === 1 ? "" : "s"}`, tone: "negative" },
+      ];
+    },
+  },
+  {
+    id: "sales",
+    icon: CircleDollarSign,
+    title: "Sales report",
+    desc: "Revenue, order volume, channels and top-performing categories.",
+    tag: "FINANCE",
+    rows: salesReportData,
+    rowKey: "order",
+    dateKey: "date",
+    amountKey: "total",
+    amountLabel: "Revenue",
+    searchKeys: ["order", "customer", "items"],
+    filters: [
+      { key: "category", label: "Category" },
+      { key: "channel", label: "Channel" },
+      { key: "status", label: "Order status" },
+    ],
+    columns: [
+      { key: "order", label: "ORDER", type: "id" },
+      { key: "date", label: "DATE", type: "date" },
+      { key: "customer", label: "CUSTOMER" },
+      { key: "items", label: "ITEMS" },
+      { key: "category", label: "CATEGORY" },
+      { key: "channel", label: "CHANNEL" },
+      { key: "days", label: "DAYS", type: "number", total: true },
+      { key: "status", label: "STATUS", type: "status" },
+      { key: "total", label: "TOTAL", type: "money", total: true },
+    ],
+    groupBy: [
+      { key: "category", label: "Revenue by category" },
+      { key: "channel", label: "Revenue by channel" },
+      { key: "customer", label: "Top customers" },
+    ],
+    metrics: (rows) => {
+      const kept = rows.filter((row) => row.status !== "Cancelled");
+      const revenue = sumBy(kept, "total");
+      return [
+        { label: "Revenue", value: formatTSh(revenue), hint: "excluding cancelled" },
+        { label: "Orders", value: rows.length, hint: `${kept.length} not cancelled` },
+        { label: "Average order", value: formatTSh(kept.length ? revenue / kept.length : 0), hint: "per order" },
+        { label: "Cancelled", value: rows.length - kept.length, hint: formatTSh(sumBy(rows.filter((row) => row.status === "Cancelled"), "total")), tone: "negative" },
+      ];
+    },
+  },
+  {
+    id: "expenses",
+    icon: Wallet,
+    title: "Expense report",
+    desc: "Operating costs by category, vendor and payment method.",
+    tag: "FINANCE",
+    rows: expenseReportData,
+    rowKey: "description",
+    dateKey: "date",
+    amountKey: "amount",
+    amountLabel: "Spent",
+    searchKeys: ["description", "vendor", "category"],
+    filters: [
+      { key: "category", label: "Category" },
+      { key: "method", label: "Paid with" },
+      { key: "status", label: "Approval" },
+    ],
+    columns: [
+      { key: "date", label: "DATE", type: "date" },
+      { key: "category", label: "CATEGORY" },
+      { key: "description", label: "DESCRIPTION" },
+      { key: "vendor", label: "VENDOR" },
+      { key: "method", label: "PAID WITH" },
+      { key: "status", label: "STATUS", type: "status" },
+      { key: "amount", label: "AMOUNT", type: "money", total: true },
+    ],
+    groupBy: [
+      { key: "category", label: "Spend by category" },
+      { key: "method", label: "Spend by payment method" },
+      { key: "vendor", label: "Top vendors" },
+    ],
+    metrics: (rows) => {
+      const total = sumBy(rows, "amount");
+      const byCategory = groupTotals(rows, "category", "amount");
+      return [
+        { label: "Total expenses", value: formatTSh(total), hint: `${rows.length} entries` },
+        { label: "Largest category", value: byCategory[0]?.label || "—", hint: byCategory[0] ? formatTSh(byCategory[0].value) : "" },
+        { label: "Average expense", value: formatTSh(rows.length ? total / rows.length : 0), hint: "per entry" },
+        { label: "Pending approval", value: formatTSh(sumBy(rows.filter((row) => row.status === "Pending"), "amount")), hint: `${rows.filter((row) => row.status === "Pending").length} entries`, tone: "negative" },
+      ];
+    },
+  },
+  {
+    id: "inventory",
+    icon: Package,
+    title: "Items & availability",
+    desc: "Rental utilization, availability and revenue per item.",
+    tag: "INVENTORY",
+    rows: inventoryReportData,
+    rowKey: "sku",
+    labelKey: "name",
+    amountKey: "revenue",
+    amountLabel: "Revenue",
+    searchKeys: ["name", "sku", "category"],
+    filters: [
+      { key: "category", label: "Category" },
+      { key: "status", label: "Status" },
+    ],
+    columns: [
+      { key: "name", label: "ITEM" },
+      { key: "sku", label: "SKU", type: "id" },
+      { key: "category", label: "CATEGORY" },
+      { key: "quantity", label: "QTY", type: "number", total: true },
+      { key: "rented", label: "RENTED", type: "number", total: true },
+      { key: "utilization", label: "UTILIZATION", type: "percent" },
+      { key: "status", label: "STATUS", type: "status" },
+      { key: "revenue", label: "REVENUE", type: "money", total: true },
+    ],
+    groupBy: [
+      { key: "category", label: "Revenue by category" },
+      { key: "status", label: "Revenue by status" },
+    ],
+    metrics: (rows) => {
+      const quantity = sumBy(rows, "quantity");
+      const rented = sumBy(rows, "rented");
+      return [
+        { label: "Units in stock", value: quantity, hint: `${rows.length} items` },
+        { label: "Units rented", value: rented, hint: `${quantity - rented} available` },
+        { label: "Utilization", value: `${quantity ? Math.round((rented / quantity) * 100) : 0}%`, hint: "rented / in stock" },
+        { label: "Rental revenue", value: formatTSh(sumBy(rows, "revenue")), hint: "lifetime" },
+      ];
+    },
+  },
+  {
+    id: "customers",
+    icon: Users,
+    title: "Customer report",
+    desc: "Customer activity, segments, retention and lifetime value.",
+    tag: "CUSTOMERS",
+    rows: customerReportData,
+    rowKey: "name",
+    dateKey: "lastOrder",
+    dateLabel: "Last order",
+    amountKey: "spent",
+    amountLabel: "Lifetime spend",
+    searchKeys: ["name", "phone"],
+    filters: [
+      { key: "segment", label: "Segment" },
+      { key: "status", label: "Status" },
+    ],
+    columns: [
+      { key: "name", label: "CUSTOMER" },
+      { key: "phone", label: "PHONE" },
+      { key: "segment", label: "SEGMENT" },
+      { key: "lastOrder", label: "LAST ORDER", type: "date" },
+      { key: "orders", label: "ORDERS", type: "number", total: true },
+      { key: "status", label: "STATUS", type: "status" },
+      { key: "spent", label: "LIFETIME SPEND", type: "money", total: true },
+    ],
+    groupBy: [
+      { key: "segment", label: "Spend by segment" },
+      { key: "name", label: "Top customers" },
+    ],
+    metrics: (rows) => {
+      const spent = sumBy(rows, "spent");
+      return [
+        { label: "Customers", value: rows.length, hint: `${rows.filter((row) => row.status === "Active").length} active` },
+        { label: "Lifetime spend", value: formatTSh(spent), hint: `${sumBy(rows, "orders")} orders` },
+        { label: "Average value", value: formatTSh(rows.length ? spent / rows.length : 0), hint: "per customer" },
+        { label: "VIP customers", value: rows.filter((row) => row.segment === "VIP").length, hint: "top segment" },
+      ];
+    },
+  },
+  {
+    id: "deliveries",
+    icon: Truck,
+    title: "Delivery report",
+    desc: "Delivery schedules, completion rate, drivers and distance.",
+    tag: "OPERATIONS",
+    rows: deliveryReportData,
+    rowKey: "id",
+    dateKey: "date",
+    amountKey: "fee",
+    amountLabel: "Delivery fees",
+    searchKeys: ["id", "customer", "area"],
+    filters: [
+      { key: "driver", label: "Driver" },
+      { key: "area", label: "Area" },
+      { key: "status", label: "Status" },
+    ],
+    columns: [
+      { key: "id", label: "DELIVERY", type: "id" },
+      { key: "date", label: "DATE", type: "date" },
+      { key: "customer", label: "CUSTOMER" },
+      { key: "area", label: "AREA" },
+      { key: "driver", label: "DRIVER" },
+      { key: "distance", label: "DISTANCE", type: "km", total: true },
+      { key: "status", label: "STATUS", type: "status" },
+      { key: "fee", label: "FEE", type: "money", total: true },
+    ],
+    groupBy: [
+      { key: "driver", label: "Fees by driver" },
+      { key: "area", label: "Fees by area" },
+      { key: "status", label: "By status" },
+    ],
+    metrics: (rows) => {
+      const delivered = rows.filter((row) => row.status === "Delivered").length;
+      return [
+        { label: "Deliveries", value: rows.length, hint: `${delivered} delivered` },
+        { label: "Completion rate", value: `${rows.length ? Math.round((delivered / rows.length) * 100) : 0}%`, hint: "delivered / total" },
+        { label: "Distance covered", value: `${sumBy(rows, "distance").toFixed(1)} km`, hint: "all trips" },
+        { label: "Delivery fees", value: formatTSh(sumBy(rows, "fee")), hint: `${rows.filter((row) => row.status === "Failed").length} failed`, tone: rows.some((row) => row.status === "Failed") ? "negative" : undefined },
+      ];
+    },
+  },
+];
+
+function groupTotals(rows, key, valueKey) {
+  const totals = new Map();
+  rows.forEach((row) => {
+    const entry = totals.get(row[key]) || { label: row[key], value: 0, count: 0 };
+    entry.value += Number(row[valueKey]) || 0;
+    entry.count += 1;
+    totals.set(row[key], entry);
+  });
+  return [...totals.values()].sort((a, b) => b.value - a.value);
+}
+
+function shiftIsoDate(iso, days) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+const reportPeriods = ["All time", "Today", "Last 7 days", "Last 30 days", "This month", "Last month", "This year", "Custom range"];
+
+function getPeriodRange(period, from, to) {
+  const monthStart = `${REPORT_TODAY.slice(0, 7)}-01`;
+  const lastMonthEnd = shiftIsoDate(monthStart, -1);
+  if (period === "Today") return [REPORT_TODAY, REPORT_TODAY];
+  if (period === "Last 7 days") return [shiftIsoDate(REPORT_TODAY, -6), REPORT_TODAY];
+  if (period === "Last 30 days") return [shiftIsoDate(REPORT_TODAY, -29), REPORT_TODAY];
+  if (period === "This month") return [monthStart, REPORT_TODAY];
+  if (period === "Last month") return [`${lastMonthEnd.slice(0, 7)}-01`, lastMonthEnd];
+  if (period === "This year") return [`${REPORT_TODAY.slice(0, 4)}-01-01`, REPORT_TODAY];
+  if (period === "Custom range") return [from, to];
+  return ["", ""];
+}
+
+const escapeHtml = (value) => String(value ?? "")
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;");
+
+const receiptPrintStyles = `
+  @page { size: A5; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "DM Sans", Arial, sans-serif; color: #1c2a3f; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .receipt { position: relative; page-break-after: always; padding: 4mm 2mm; }
+  .receipt:last-child { page-break-after: auto; }
+  .r-head { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 2px solid #2674ed; }
+  .r-brand strong { display: block; font-size: 20px; letter-spacing: -0.5px; }
+  .r-brand strong span { color: #2674ed; }
+  .r-brand small, .r-meta small { display: block; color: #6b7a90; font-size: 10px; line-height: 1.5; }
+  .r-meta { text-align: right; }
+  .r-meta b { display: block; color: #2674ed; font-size: 11px; letter-spacing: 1.5px; }
+  .r-meta em { display: block; font-style: normal; font-size: 14px; font-weight: 700; margin-top: 3px; }
+  .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin: 16px 0; }
+  .r-grid span { display: block; color: #8492a6; font-size: 9px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; }
+  .r-grid strong { display: block; margin-top: 3px; font-size: 12px; }
+  .r-amount { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-radius: 8px; background: #eef5ff; }
+  .r-amount span { color: #4b5d77; font-size: 11px; font-weight: 600; }
+  .r-amount strong { font-size: 22px; color: #10305e; }
+  .r-stamp { display: inline-block; margin-left: 10px; padding: 3px 8px; border: 2px solid currentColor; border-radius: 6px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; transform: rotate(-6deg); }
+  .r-stamp { font-style: normal; }
+  .r-stamp.green { color: #1f9a6a; } .r-stamp.amber { color: #c4851f; } .r-stamp.red { color: #d0443c; }
+  .r-foot { margin-top: 20px; padding-top: 12px; border-top: 1px dashed #c9d3e0; color: #6b7a90; font-size: 10px; text-align: center; line-height: 1.6; }
+`;
+
+function receiptMarkup(payment) {
+  const tone = statusTones[payment.status] || "green";
+  return `
+    <section class="receipt">
+      <div class="r-head">
+        <div class="r-brand">
+          <strong>Pendo<span>rentals</span></strong>
+          <small>${escapeHtml(BUSINESS_INFO.workspace)} · ${escapeHtml(BUSINESS_INFO.address)}</small>
+          <small>${escapeHtml(BUSINESS_INFO.phone)} · ${escapeHtml(BUSINESS_INFO.email)}</small>
+        </div>
+        <div class="r-meta">
+          <b>PAYMENT RECEIPT</b>
+          <em>${escapeHtml(payment.receipt)}</em>
+          <small>${escapeHtml(formatReportDate(payment.date))}</small>
+        </div>
+      </div>
+      <div class="r-grid">
+        <div><span>Received from</span><strong>${escapeHtml(payment.customer)}</strong></div>
+        <div><span>Phone</span><strong>${escapeHtml(payment.phone)}</strong></div>
+        <div><span>Order</span><strong>${escapeHtml(payment.reference)}</strong></div>
+        <div><span>Invoice</span><strong>${escapeHtml(payment.invoice)}</strong></div>
+        <div><span>Payment method</span><strong>${escapeHtml(payment.method)}</strong></div>
+        <div><span>Received by</span><strong>${escapeHtml(payment.cashier)}</strong></div>
+      </div>
+      <div class="r-amount"><span>Amount ${payment.status === "Refunded" ? "refunded" : "received"}<em class="r-stamp ${tone}">${escapeHtml(payment.status.toUpperCase())}</em></span><strong>${escapeHtml(formatTSh(payment.amount))}</strong></div>
+      <div class="r-foot">Thank you for renting with Pendo. Please keep this receipt for your records.<br />Generated ${escapeHtml(new Date().toLocaleString("en-US"))}</div>
+    </section>`;
+}
+
+function printReceipts(payments) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(frame);
+  const frameDocument = frame.contentDocument;
+  frameDocument.open();
+  frameDocument.write(`<!doctype html><html><head><meta charset="utf-8" /><title>Pendo receipts</title><style>${receiptPrintStyles}</style></head><body>${payments.map(receiptMarkup).join("")}</body></html>`);
+  frameDocument.close();
+  const cleanup = () => setTimeout(() => frame.remove(), 500);
+  frame.contentWindow.onafterprint = cleanup;
+  setTimeout(() => {
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    setTimeout(() => frame.isConnected && frame.remove(), 60000);
+  }, 150);
+}
+
+async function downloadReceiptPdf(payment) {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ format: "a5" });
+  const width = pdf.internal.pageSize.getWidth();
+  pdf.setFillColor(38, 116, 237);
+  pdf.rect(0, 0, width, 4, "F");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(18);
+  pdf.setTextColor(28, 42, 63);
+  pdf.text("Pendo", 12, 18);
+  pdf.setTextColor(38, 116, 237);
+  pdf.text("rentals", 12 + pdf.getTextWidth("Pendo"), 18);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(107, 122, 144);
+  pdf.text(`${BUSINESS_INFO.workspace} · ${BUSINESS_INFO.address}`, 12, 24);
+  pdf.text(`${BUSINESS_INFO.phone} · ${BUSINESS_INFO.email}`, 12, 28);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(9);
+  pdf.setTextColor(38, 116, 237);
+  pdf.text("PAYMENT RECEIPT", width - 12, 16, { align: "right" });
+  pdf.setFontSize(12);
+  pdf.setTextColor(28, 42, 63);
+  pdf.text(payment.receipt, width - 12, 22, { align: "right" });
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(107, 122, 144);
+  pdf.text(formatReportDate(payment.date), width - 12, 27, { align: "right" });
+  pdf.setDrawColor(38, 116, 237);
+  pdf.setLineWidth(0.6);
+  pdf.line(12, 33, width - 12, 33);
+
+  const fields = [
+    ["RECEIVED FROM", payment.customer], ["PHONE", payment.phone],
+    ["ORDER", payment.reference], ["INVOICE", payment.invoice],
+    ["PAYMENT METHOD", payment.method], ["RECEIVED BY", payment.cashier],
+    ["STATUS", payment.status], ["DATE", formatReportDate(payment.date)],
+  ];
+  fields.forEach(([label, value], index) => {
+    const x = index % 2 === 0 ? 12 : width / 2 + 2;
+    const y = 44 + Math.floor(index / 2) * 15;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7);
+    pdf.setTextColor(132, 146, 166);
+    pdf.text(label, x, y);
+    pdf.setFontSize(10);
+    pdf.setTextColor(28, 42, 63);
+    pdf.text(String(value), x, y + 5.5);
+  });
+
+  pdf.setFillColor(238, 245, 255);
+  pdf.roundedRect(12, 108, width - 24, 18, 3, 3, "F");
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.setTextColor(75, 93, 119);
+  pdf.text(payment.status === "Refunded" ? "Amount refunded" : "Amount received", 17, 119);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15);
+  pdf.setTextColor(16, 48, 94);
+  pdf.text(formatTSh(payment.amount), width - 17, 119.5, { align: "right" });
+
+  pdf.setDrawColor(201, 211, 224);
+  pdf.setLineDashPattern([1, 1], 0);
+  pdf.line(12, 138, width - 12, 138);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(107, 122, 144);
+  pdf.text("Thank you for renting with Pendo. Please keep this receipt for your records.", width / 2, 145, { align: "center" });
+  pdf.text(`Generated ${new Date().toLocaleString("en-US")}`, width / 2, 150, { align: "center" });
+  pdf.save(`pendo-receipt-${payment.receipt.toLowerCase()}.pdf`);
+}
+
+// UI-testing credentials only — replace with API authentication before real use.
+const TEST_LOGIN = { username: "0622882278", password: "12345" };
+const SESSION_KEY = "pendo-session";
+
+function normalizePhone(value) {
+  const digits = value.replace(/[^\d+]/g, "");
+  if (digits.startsWith("+255")) return `0${digits.slice(4)}`;
+  if (digits.startsWith("255") && digits.length === 12) return `0${digits.slice(3)}`;
+  return digits;
+}
+
+function readSession() {
+  try {
+    return localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(username, remember) {
+  try {
+    (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, username);
+  } catch {
+    // Storage can be unavailable (private mode); the session then lasts until reload.
+  }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Nothing stored to clear.
+  }
+}
+
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (submitting) return;
+    setError("");
+    setSubmitting(true);
+    setTimeout(() => {
+      if (normalizePhone(username) === TEST_LOGIN.username && password === TEST_LOGIN.password) {
+        writeSession(TEST_LOGIN.username, remember);
+        onLogin(TEST_LOGIN.username);
+        return;
+      }
+      setSubmitting(false);
+      setAttempt((count) => count + 1);
+      setError("Incorrect phone number or password. Please try again.");
+    }, 650);
+  }
+
+  return (
+    <main className="auth-page">
+      <section className="auth-showcase" aria-hidden="true">
+        <div className="auth-showcase-glow" />
+        <div className="auth-brand">
+          <BrandMark />
+          <span className="brand-lockup">
+            <span className="brand-name">Pendo<span>rentals</span></span>
+            <span className="brand-caption">RENTAL WORKSPACE</span>
+          </span>
+        </div>
+        <div className="auth-showcase-copy">
+          <span className="auth-eyebrow"><Tent size={13} /> RENT · CELEBRATE · GROW</span>
+          <h2>Everything your rental business needs, in one place.</h2>
+          <p>Track inventory, bookings, deliveries and payments — then print receipts and reports in a click.</p>
+          <ul className="auth-features">
+            <li><BadgeCheck size={15} /> Live availability for every tent, table and light</li>
+            <li><BadgeCheck size={15} /> Receipts, invoices and M-Pesa collections</li>
+            <li><BadgeCheck size={15} /> Finance, sales and delivery reports</li>
+          </ul>
+        </div>
+        <div className="auth-stat-row">
+          <div><strong>248</strong><span>items tracked</span></div>
+          <div><strong>72%</strong><span>utilization</span></div>
+          <div><strong>1,284</strong><span>customers</span></div>
+        </div>
+        <footer className="auth-showcase-foot">
+          <span>Kayenze, Geita · Tanzania</span>
+          <span>© 2026 Pendo Rentals</span>
+        </footer>
+      </section>
+
+      <section className="auth-panel">
+        <form className="auth-card" onSubmit={handleSubmit} noValidate>
+          <div className="auth-card-brand">
+            <BrandMark />
+            <span className="brand-name">Pendo<span>rentals</span></span>
+          </div>
+          <span className="auth-kicker">WELCOME BACK</span>
+          <h1>Sign in to your workspace</h1>
+          <p className="auth-lede">Use your registered phone number and password.</p>
+
+          <label className="auth-field">
+            <span>Phone number</span>
+            <span className={`auth-input ${error ? "has-error" : ""}`}>
+              <Phone size={15} />
+              <input
+                type="tel"
+                inputMode="tel"
+                autoComplete="username"
+                placeholder="e.g. 0622 882 278"
+                value={username}
+                onChange={(event) => {
+                  setUsername(event.target.value);
+                  setError("");
+                }}
+                required
+                autoFocus
+              />
+            </span>
+          </label>
+
+          <label className="auth-field">
+            <span>Password</span>
+            <span className={`auth-input ${error ? "has-error" : ""}`}>
+              <Lock size={15} />
+              <input
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setError("");
+                }}
+                required
+              />
+              <button
+                type="button"
+                className="auth-reveal"
+                onClick={() => setShowPassword((shown) => !shown)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </span>
+          </label>
+
+          {error && (
+            <p className="auth-error" role="alert" key={attempt}>
+              <CircleAlert size={14} /> {error}
+            </p>
+          )}
+
+          <div className="auth-row">
+            <label className="auth-check">
+              <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+              <span>Keep me signed in</span>
+            </label>
+            <button
+              type="button"
+              className="auth-link"
+              onClick={() => setError(`Forgot your password? Call ${BUSINESS_INFO.phone} to reset it.`)}
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          <button
+            className="button button-primary auth-submit"
+            type="submit"
+            disabled={submitting || !username || !password}
+          >
+            {submitting ? (
+              <><LoaderCircle size={16} className="auth-spin" /> Signing in…</>
+            ) : (
+              <>Sign in <ArrowRight size={16} /></>
+            )}
+          </button>
+
+          <div className="auth-test-hint">
+            <KeyRound size={14} />
+            <span>
+              <strong>Test account</strong>
+              <small>0622882278 · 12345</small>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setUsername(TEST_LOGIN.username);
+                setPassword(TEST_LOGIN.password);
+                setError("");
+              }}
+            >
+              Fill in
+            </button>
+          </div>
+
+          <small className="auth-terms">
+            <ShieldCheck size={12} /> Secure workspace for Pendo Rentals staff only.
+          </small>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function App() {
+  const [user, setUser] = useState(readSession);
+
+  if (!user) return <LoginScreen onLogin={setUser} />;
+  return (
+    <Workspace
+      onLogout={() => {
+        clearSession();
+        setUser(null);
+      }}
+    />
+  );
+}
+
+function Workspace({ onLogout }) {
   const [activePage, setActivePage] = useState("Overview");
   const [viewedOrder, setViewedOrder] = useState(null);
   const [orders, setOrders] = useState(ordersData);
@@ -494,18 +1293,11 @@ function App() {
           onClick={() => changePage("Overview")}
         >
           <BrandMark />
-          <span className="brand-name">
-            pendo<span>rentals</span>
+          <span className="brand-lockup">
+            <span className="brand-name">Pendo<span>rentals</span></span>
+            <span className="brand-caption">RENTAL WORKSPACE</span>
           </span>
         </a>
-        <div className="workspace-switcher">
-          <div className="workspace-avatar">P</div>
-          <span>
-            <strong>Pendo Outdoors</strong>
-            <small>Rental workspace</small>
-          </span>
-          <ChevronDown size={15} />
-        </div>
         <div className="nav-caption">WORKSPACE</div>
         <nav className="main-nav" aria-label="Main navigation">
           {navigation.map(({ label, icon: Icon, count }) => (
@@ -554,10 +1346,10 @@ function App() {
             className="profile-button"
             onClick={() => setModal("profile")}
           >
-            <div className="profile-avatar">AM</div>
+            <div className="profile-avatar">PM</div>
             <span>
-              <strong>Alex Morgan</strong>
-              <small>Store admin</small>
+              <strong>Pendo Mbolela</strong>
+              <small>Admin</small>
             </span>
             <Ellipsis size={19} />
           </button>
@@ -607,10 +1399,10 @@ function App() {
             </button>
             <div className="top-divider" />
             <button className="top-profile" onClick={() => setModal("profile")}>
-              <div className="profile-avatar small-avatar">AM</div>
+              <div className="profile-avatar small-avatar">PM</div>
               <span>
-                <strong>Alex Morgan</strong>
-                <small>Administrator</small>
+                <strong>Pendo Mbolela</strong>
+                <small>Admin</small>
               </span>
               <ChevronDown size={14} />
             </button>
@@ -636,7 +1428,7 @@ function App() {
                 {isInventory
                   ? "Inventory"
                   : activePage === "Overview"
-                    ? "Good morning, Alex"
+                    ? "Good morning, Pendo"
                     : activePage}
               </h1>
               <p>
@@ -648,13 +1440,15 @@ function App() {
               </p>
             </div>
             <div className="welcome-actions">
-              <button
-                className="button button-secondary"
-                onClick={handleExport}
-                aria-label={activePage === "Orders" ? "Export orders" : "Export report"}
-              >
-                <Download size={16} /> Export
-              </button>
+              {activePage !== "Reports" && (
+                <button
+                  className="button button-secondary"
+                  onClick={handleExport}
+                  aria-label={activePage === "Orders" ? "Export orders" : "Export report"}
+                >
+                  <Download size={16} /> Export
+                </button>
+              )}
               {(isInventory || activePage === "Overview") && (
                 <button
                   className="button button-primary"
@@ -980,6 +1774,7 @@ function App() {
           }}
           exportError={exportError}
           exportTitle={activePage}
+          onLogout={onLogout}
         />
       )}
     </div>
@@ -1149,7 +1944,7 @@ function WorkspacePage({ page, query, onModal, onNavigate, onOrderView, orders, 
   if (page === "SMS & Notifications")
     return <MessagingPage onEdit={() => onModal("template")} />;
   if (page === "Reports")
-    return <ReportsPage period={period} setPeriod={setPeriod} onOpen={() => onModal("report")} />;
+    return <ReportsPage period={period} setPeriod={setPeriod} />;
   if (page === "Users & Roles")
     return <UsersPage query={query} onInvite={() => onModal("user")} />;
   if (page === "Settings")
@@ -2358,53 +3153,34 @@ function MessagingPage({ onEdit }) {
   );
 }
 
-function ReportsPage({ period, setPeriod, onOpen }) {
+function ReportsPage({ period, setPeriod }) {
   const [category, setCategory] = useState("All reports");
   const [reportQuery, setReportQuery] = useState("");
-  const reports = [
-    {
-      icon: CircleDollarSign,
-      title: "Sales report",
-      desc: "Revenue, order volume, and top-performing items.",
-      tag: "FINANCE",
-    },
-    {
-      icon: ChartNoAxesCombined,
-      title: "Expense report",
-      desc: "Review operating costs and expense categories.",
-      tag: "FINANCE",
-    },
-    {
-      icon: Package,
-      title: "Items & availability",
-      desc: "Rental utilization and inventory performance.",
-      tag: "INVENTORY",
-    },
-    {
-      icon: Users,
-      title: "Customer report",
-      desc: "Customer activity, retention, and lifetime value.",
-      tag: "CUSTOMERS",
-    },
-    {
-      icon: Truck,
-      title: "Delivery report",
-      desc: "Delivery schedules, completion, and distance.",
-      tag: "OPERATIONS",
-    },
-    {
-      icon: ClipboardList,
-      title: "Custom report",
-      desc: "Choose the fields and date range you need.",
-      tag: "CUSTOM",
-    },
-  ];
-  const categories = ["All reports", "Finance", "Inventory", "Customers", "Operations", "Custom"];
-  const visibleReports = reports.filter((report) => {
+  const [activeReportId, setActiveReportId] = useState(null);
+  const activeReport = reportDefinitions.find((report) => report.id === activeReportId);
+  const categories = ["All reports", "Finance", "Inventory", "Customers", "Operations"];
+  const visibleReports = reportDefinitions.filter((report) => {
     const matchesCategory = category === "All reports" || report.tag.toLowerCase() === category.toLowerCase();
     const matchesQuery = `${report.title} ${report.desc} ${report.tag}`.toLowerCase().includes(reportQuery.toLowerCase());
     return matchesCategory && matchesQuery;
   });
+
+  function openReport(id) {
+    setActiveReportId(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  if (activeReport) {
+    return (
+      <ReportDetail
+        key={activeReport.id}
+        report={activeReport}
+        onBack={() => setActiveReportId(null)}
+        onSwitch={openReport}
+      />
+    );
+  }
+
   return (
     <>
       <section className="report-performance">
@@ -2478,25 +3254,505 @@ function ReportsPage({ period, setPeriod, onOpen }) {
         </div>
         {visibleReports.length > 0 ? (
           <div className="report-grid">
-            {visibleReports.map(({ icon: Icon, title, desc, tag }) => (
-              <article className="panel report-card" key={title}>
-                <div className="report-card-top">
-                  <span className="template-icon"><Icon size={17} /></span>
-                  <span className="report-tag">{tag}</span>
-                </div>
-                <h3>{title}</h3>
-                <p>{desc}</p>
-                <button className="text-action" onClick={onOpen}>
-                  Open report <ArrowRight size={14} />
-                </button>
-              </article>
-            ))}
+            {visibleReports.map((report) => {
+              const Icon = report.icon;
+              const headline = report.metrics(report.rows)[0];
+              return (
+                <article className="panel report-card" key={report.id}>
+                  <div className="report-card-top">
+                    <span className="template-icon"><Icon size={17} /></span>
+                    <span className="report-tag">{report.tag}</span>
+                  </div>
+                  <h3>{report.title}</h3>
+                  <p>{report.desc}</p>
+                  <div className="report-card-stat">
+                    <span>{headline.label}</span>
+                    <strong>{headline.value}</strong>
+                  </div>
+                  <div className="report-card-actions">
+                    <button className="text-action" onClick={() => openReport(report.id)}>
+                      Open report <ArrowRight size={14} />
+                    </button>
+                    {report.receipts && (
+                      <span className="report-card-badge"><Printer size={11} /> Receipts</span>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="empty-state">No reports match your search.</div>
         )}
       </section>
     </>
+  );
+}
+
+function ReportDetail({ report, onBack, onSwitch }) {
+  const emptySelections = Object.fromEntries(report.filters.map((filter) => [filter.key, "All"]));
+  const [view, setView] = useState("table");
+  const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState("All time");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [selections, setSelections] = useState(emptySelections);
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
+  const [sort, setSort] = useState({ key: report.dateKey || report.amountKey, dir: "desc" });
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [receipt, setReceipt] = useState(null);
+  const Icon = report.icon;
+
+  useEffect(() => {
+    if (!exportOpen) return undefined;
+    const close = (event) => {
+      if (!event.target.closest(".report-export-wrap")) setExportOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [exportOpen]);
+
+  const [from, to] = getPeriodRange(period, customFrom, customTo);
+  const filterOptions = Object.fromEntries(
+    report.filters.map((filter) => [filter.key, [...new Set(report.rows.map((row) => row[filter.key]))].sort()]),
+  );
+  const filteredRows = report.rows.filter((row) => {
+    const text = report.searchKeys.map((key) => row[key]).join(" ").toLowerCase();
+    if (query && !text.includes(query.toLowerCase())) return false;
+    if (report.dateKey && from && row[report.dateKey] < from) return false;
+    if (report.dateKey && to && row[report.dateKey] > to) return false;
+    if (report.filters.some((filter) => selections[filter.key] !== "All" && row[filter.key] !== selections[filter.key])) return false;
+    if (minAmount !== "" && Number(row[report.amountKey]) < Number(minAmount)) return false;
+    if (maxAmount !== "" && Number(row[report.amountKey]) > Number(maxAmount)) return false;
+    return true;
+  });
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    const left = a[sort.key];
+    const right = b[sort.key];
+    const result = typeof left === "number" && typeof right === "number"
+      ? left - right
+      : String(left).localeCompare(String(right));
+    return sort.dir === "asc" ? result : -result;
+  });
+
+  const activeFilters = [
+    query && `Search: “${query}”`,
+    report.dateKey && period !== "All time" && (period === "Custom range"
+      ? `${report.dateLabel || "Date"}: ${from ? formatReportDate(from) : "start"} – ${to ? formatReportDate(to) : "today"}`
+      : `${report.dateLabel || "Period"}: ${period}`),
+    ...report.filters.filter((filter) => selections[filter.key] !== "All").map((filter) => `${filter.label}: ${selections[filter.key]}`),
+    minAmount !== "" && `Min ${report.amountLabel.toLowerCase()}: ${formatTSh(minAmount)}`,
+    maxAmount !== "" && `Max ${report.amountLabel.toLowerCase()}: ${formatTSh(maxAmount)}`,
+  ].filter(Boolean);
+
+  function clearFilters() {
+    setQuery("");
+    setPeriod("All time");
+    setCustomFrom("");
+    setCustomTo("");
+    setSelections(emptySelections);
+    setMinAmount("");
+    setMaxAmount("");
+  }
+
+  function toggleSort(key) {
+    setSort((current) => ({ key, dir: current.key === key && current.dir === "desc" ? "asc" : "desc" }));
+  }
+
+  const totalsRow = report.columns.map((column, index) => {
+    if (column.total) return formatReportValue(sumBy(sortedRows, column.key), column.type);
+    return index === 0 ? `Total (${sortedRows.length})` : "";
+  });
+
+  async function exportReport(format) {
+    setExporting(format);
+    setExportError("");
+    try {
+      await downloadTableReport(
+        report.title,
+        report.columns.map((column) => column.label),
+        sortedRows.map((row) => report.columns.map((column) => formatReportValue(row[column.key], column.type))),
+        format,
+        {
+          subtitle: `${activeFilters.length ? activeFilters.join(" · ") : "All records"} · ${sortedRows.length} rows · Generated ${new Date().toLocaleString("en-US")}`,
+          footer: totalsRow,
+        },
+      );
+      setExportOpen(false);
+    } catch {
+      setExportError("Export failed. Please try again.");
+    } finally {
+      setExporting("");
+    }
+  }
+
+  return (
+    <>
+      <section className="report-detail-header panel">
+        <div className="report-detail-title">
+          <button className="report-back" onClick={onBack} aria-label="Back to all reports">
+            <ArrowLeft size={15} />
+          </button>
+          <span className="template-icon"><Icon size={17} /></span>
+          <div>
+            <span className="panel-kicker">{report.tag} REPORT</span>
+            <h2>{report.title}</h2>
+            <p>{report.desc}</p>
+          </div>
+        </div>
+        <div className="report-detail-actions">
+          <label className="report-switcher">
+            <span className="sr-only">Switch report</span>
+            <select value={report.id} onChange={(event) => onSwitch(event.target.value)} aria-label="Switch report">
+              {reportDefinitions.map((option) => (
+                <option key={option.id} value={option.id}>{option.title}</option>
+              ))}
+            </select>
+          </label>
+          <div className="message-tabs report-view-toggle" role="tablist" aria-label="Report view">
+            {[["table", "Table", Table2], ["analytics", "Analytics", ChartColumnBig]].map(([value, label, ViewIcon]) => (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={view === value}
+                className={view === value ? "active" : ""}
+                onClick={() => setView(value)}
+              >
+                <ViewIcon size={13} /> {label}
+              </button>
+            ))}
+          </div>
+          {report.receipts && (
+            <button
+              className="button button-secondary"
+              onClick={() => printReceipts(sortedRows)}
+              disabled={sortedRows.length === 0}
+            >
+              <Printer size={15} /> Print receipts ({sortedRows.length})
+            </button>
+          )}
+          <div className="report-export-wrap">
+            <button
+              className="button button-primary"
+              onClick={() => setExportOpen((open) => !open)}
+              aria-expanded={exportOpen}
+              disabled={sortedRows.length === 0}
+            >
+              <Download size={15} /> Export <ChevronDown size={13} />
+            </button>
+            {exportOpen && (
+              <div className="report-export-menu" role="menu">
+                <button role="menuitem" onClick={() => exportReport("excel")} disabled={Boolean(exporting)}>
+                  <FileSpreadsheet size={16} />
+                  <span><strong>{exporting === "excel" ? "Preparing…" : "Excel workbook"}</strong><small>.xlsx · {sortedRows.length} rows with totals</small></span>
+                </button>
+                <button role="menuitem" onClick={() => exportReport("pdf")} disabled={Boolean(exporting)}>
+                  <FileText size={16} />
+                  <span><strong>{exporting === "pdf" ? "Preparing…" : "PDF document"}</strong><small>Print-ready, filters noted</small></span>
+                </button>
+                {exportError && <p className="export-error" role="alert">{exportError}</p>}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="report-filter-panel panel" aria-label="Report filters">
+        <div className="report-filter-row">
+          <label className="report-search report-filter-search">
+            <Search size={14} />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Search ${report.searchKeys.join(", ")}`}
+              aria-label="Search report"
+            />
+          </label>
+          {report.dateKey && (
+            <label className="report-filter-field">
+              <span>{report.dateLabel || "Period"}</span>
+              <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+                {reportPeriods.map((option) => <option key={option}>{option}</option>)}
+              </select>
+            </label>
+          )}
+          {report.dateKey && period === "Custom range" && (
+            <>
+              <label className="report-filter-field">
+                <span>From</span>
+                <input type="date" value={customFrom} max={customTo || undefined} onChange={(event) => setCustomFrom(event.target.value)} />
+              </label>
+              <label className="report-filter-field">
+                <span>To</span>
+                <input type="date" value={customTo} min={customFrom || undefined} onChange={(event) => setCustomTo(event.target.value)} />
+              </label>
+            </>
+          )}
+          {report.filters.map((filter) => (
+            <label className="report-filter-field" key={filter.key}>
+              <span>{filter.label}</span>
+              <select
+                value={selections[filter.key]}
+                onChange={(event) => setSelections((current) => ({ ...current, [filter.key]: event.target.value }))}
+              >
+                <option value="All">All</option>
+                {filterOptions[filter.key].map((option) => <option key={option}>{option}</option>)}
+              </select>
+            </label>
+          ))}
+          <label className="report-filter-field report-filter-amount">
+            <span>{report.amountLabel} (TSh)</span>
+            <span className="report-amount-range">
+              <input type="number" min="0" inputMode="decimal" placeholder="Min" value={minAmount} onChange={(event) => setMinAmount(event.target.value)} aria-label={`Minimum ${report.amountLabel}`} />
+              <i>–</i>
+              <input type="number" min="0" inputMode="decimal" placeholder="Max" value={maxAmount} onChange={(event) => setMaxAmount(event.target.value)} aria-label={`Maximum ${report.amountLabel}`} />
+            </span>
+          </label>
+        </div>
+        <div className="report-filter-status">
+          <span className="report-result-count">
+            <ListFilter size={13} /> Showing <strong>{sortedRows.length}</strong> of {report.rows.length} records
+          </span>
+          {activeFilters.map((label) => <span className="report-chip" key={label}>{label}</span>)}
+          {activeFilters.length > 0 && (
+            <button className="report-clear" onClick={clearFilters}>
+              <RotateCcw size={12} /> Clear all
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="report-kpis">
+        {report.metrics(sortedRows).map((metric) => (
+          <article key={metric.label}>
+            <span>{metric.label}</span>
+            <strong>{metric.value}</strong>
+            <small className={metric.tone === "negative" ? "negative-text" : ""}>{metric.hint}</small>
+          </article>
+        ))}
+      </section>
+
+      {view === "table" ? (
+        <section className="panel report-table-panel">
+          <div className="table-scroll">
+            <table className="data-table report-table">
+              <thead>
+                <tr>
+                  {report.columns.map((column) => (
+                    <th key={column.key} className={["money", "number", "km", "percent"].includes(column.type) ? "numeric" : ""}>
+                      <button className="report-sort" onClick={() => toggleSort(column.key)} aria-label={`Sort by ${column.label.toLowerCase()}`}>
+                        {column.label}
+                        {sort.key === column.key
+                          ? sort.dir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                          : <ArrowUpDown size={11} className="report-sort-idle" />}
+                      </button>
+                    </th>
+                  ))}
+                  {report.receipts && <th className="report-receipt-head">RECEIPT</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRows.map((row) => (
+                  <tr key={row[report.rowKey]}>
+                    {report.columns.map((column) => (
+                      <td key={column.key} className={["money", "number", "km", "percent"].includes(column.type) ? "numeric" : ""}>
+                        {column.type === "status" ? (
+                          <span className={`status-pill ${statusTones[row[column.key]] || "blue"}`}><i />{row[column.key]}</span>
+                        ) : column.type === "money" ? (
+                          <strong className="table-primary">{formatReportValue(row[column.key], column.type)}</strong>
+                        ) : column.type === "percent" ? (
+                          <span className="report-meter"><span><i style={{ width: `${row[column.key]}%` }} /></span>{row[column.key]}%</span>
+                        ) : column.type === "id" ? (
+                          <span className="report-id">{row[column.key]}</span>
+                        ) : (
+                          formatReportValue(row[column.key], column.type)
+                        )}
+                      </td>
+                    ))}
+                    {report.receipts && (
+                      <td className="report-receipt-cell">
+                        <button className="report-receipt-button" onClick={() => setReceipt(row)} aria-label={`View receipt ${row.receipt}`}>
+                          <Receipt size={13} /> View
+                        </button>
+                        <button className="report-icon-button" onClick={() => printReceipts([row])} aria-label={`Print receipt ${row.receipt}`} title="Print receipt">
+                          <Printer size={13} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              {sortedRows.length > 0 && (
+                <tfoot>
+                  <tr>
+                    {totalsRow.map((value, index) => (
+                      <td key={report.columns[index].key} className={report.columns[index].total ? "numeric" : ""}>{value}</td>
+                    ))}
+                    {report.receipts && <td />}
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+            {sortedRows.length === 0 && (
+              <div className="empty-state report-empty">
+                No records match these filters.
+                <button className="text-action" onClick={clearFilters}>Clear filters</button>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : (
+        <ReportAnalytics report={report} rows={sortedRows} onClear={clearFilters} />
+      )}
+
+      {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+    </>
+  );
+}
+
+function ReportAnalytics({ report, rows, onClear }) {
+  if (rows.length === 0) {
+    return (
+      <section className="panel empty-state report-empty">
+        No data to chart for these filters.
+        <button className="text-action" onClick={onClear}>Clear filters</button>
+      </section>
+    );
+  }
+  const trend = report.dateKey
+    ? groupTotals(rows, report.dateKey, report.amountKey).sort((a, b) => a.label.localeCompare(b.label))
+    : groupTotals(rows, report.labelKey, report.amountKey);
+  const peak = Math.max(...trend.map((entry) => entry.value), 1);
+  const total = sumBy(rows, report.amountKey);
+
+  return (
+    <section className="report-analytics">
+      <article className="panel report-chart-card">
+        <div className="report-chart-heading">
+          <div>
+            <span className="panel-kicker">{report.dateKey ? "TREND" : "PER ITEM"}</span>
+            <h3>{report.amountLabel} {report.dateKey ? `by ${(report.dateLabel || "date").toLowerCase()}` : "by item"}</h3>
+          </div>
+          <strong>{formatTSh(total)}</strong>
+        </div>
+        <div className="report-bars" role="img" aria-label={`${report.amountLabel} chart`}>
+          {trend.map((entry) => (
+            <div className="report-bar" key={entry.label} title={`${report.dateKey ? formatReportDate(entry.label) : entry.label}: ${formatTSh(entry.value)}`}>
+              <span className="report-bar-value">{Math.round(entry.value).toLocaleString("en-US")}</span>
+              <div className="report-bar-track">
+                <i style={{ height: `${Math.max((entry.value / peak) * 100, 2)}%` }} className={entry.value === peak ? "peak" : ""} />
+              </div>
+              <span className="report-bar-label">
+                {report.dateKey
+                  ? new Date(`${entry.label}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : entry.label.split(" ").slice(-1)[0]}
+              </span>
+            </div>
+          ))}
+        </div>
+      </article>
+      <div className="report-breakdowns">
+        {report.groupBy.map((group) => {
+          const entries = groupTotals(rows, group.key, report.amountKey).slice(0, 6);
+          return (
+            <article className="panel report-breakdown" key={group.key}>
+              <h3>{group.label}</h3>
+              <ul>
+                {entries.map((entry) => {
+                  const share = total ? Math.round((entry.value / total) * 100) : 0;
+                  return (
+                    <li key={entry.label}>
+                      <div>
+                        <span>{entry.label} <small>· {entry.count}</small></span>
+                        <strong>{formatTSh(entry.value)}</strong>
+                      </div>
+                      <span className="report-share">
+                        <i style={{ width: `${share}%` }} />
+                      </span>
+                      <small className="report-share-label">{share}%</small>
+                    </li>
+                  );
+                })}
+              </ul>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ReceiptPreview({ payment, onClose }) {
+  const [downloading, setDownloading] = useState(false);
+  const tone = statusTones[payment.status] || "green";
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="modal receipt-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
+        <div className="modal-heading">
+          <div>
+            <span className="modal-kicker">PAYMENT RECEIPT</span>
+            <h2 id="receipt-title">{payment.receipt}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={19} />
+          </button>
+        </div>
+        <div className="receipt-sheet">
+          <div className="receipt-sheet-head">
+            <div>
+              <strong className="receipt-wordmark">Pendo<span>rentals</span></strong>
+              <small>{BUSINESS_INFO.workspace} · {BUSINESS_INFO.address}</small>
+              <small>{BUSINESS_INFO.phone} · {BUSINESS_INFO.email}</small>
+            </div>
+            <span className={`receipt-stamp ${tone}`}>{payment.status}</span>
+          </div>
+          <dl className="receipt-fields">
+            <div><dt>Received from</dt><dd>{payment.customer}</dd></div>
+            <div><dt>Phone</dt><dd>{payment.phone}</dd></div>
+            <div><dt>Date</dt><dd>{formatReportDate(payment.date)}</dd></div>
+            <div><dt>Payment method</dt><dd>{payment.method}</dd></div>
+            <div><dt>Order</dt><dd>{payment.reference}</dd></div>
+            <div><dt>Invoice</dt><dd>{payment.invoice}</dd></div>
+            <div><dt>Received by</dt><dd>{payment.cashier}</dd></div>
+            <div><dt>Receipt no.</dt><dd>{payment.receipt}</dd></div>
+          </dl>
+          <div className="receipt-total">
+            <span>Amount {payment.status === "Refunded" ? "refunded" : "received"}</span>
+            <strong>{formatTSh(payment.amount)}</strong>
+          </div>
+          <p className="receipt-note">Thank you for renting with Pendo. Please keep this receipt for your records.</p>
+        </div>
+        <div className="modal-actions receipt-actions">
+          <button
+            className="button button-secondary"
+            disabled={downloading}
+            onClick={async () => {
+              setDownloading(true);
+              try {
+                await downloadReceiptPdf(payment);
+              } finally {
+                setDownloading(false);
+              }
+            }}
+          >
+            <FileText size={15} /> {downloading ? "Preparing…" : "Download PDF"}
+          </button>
+          <button className="button button-primary" onClick={() => printReceipts([payment])}>
+            <Printer size={15} /> Print receipt
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -2592,7 +3848,7 @@ function UsersPage({ query, onInvite }) {
       </section>
       <section className="role-strip">
         {[
-          "Administrator",
+          "Admin",
           "Store manager",
           "Inventory staff",
           "Delivery staff",
@@ -2906,7 +4162,7 @@ function Pagination() {
   );
 }
 
-function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle }) {
+function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle, onLogout }) {
   const isItem = type === "item";
   const isBooking = type === "booking";
   const formTitles = {
@@ -3054,14 +4310,23 @@ function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitl
               {type === "notifications"
                 ? "You’re all caught up. New booking and inventory updates will show here."
                 : type === "profile"
-                  ? "Signed in as Alex Morgan, Store administrator."
+                  ? "Signed in as Pendo Mbolela (0622 882 278), Admin."
                   : type === "help"
                     ? "Our support team is ready to help with your rentals, bookings, and workspace."
                     : "Your report is ready to export for the selected date range."}
             </p>
-            <button className="button button-primary" onClick={onClose}>
-              {type === "help" ? "Contact support" : "Got it"}
-            </button>
+            {type === "profile" ? (
+              <div className="modal-actions profile-actions">
+                <button className="button button-secondary logout-button" onClick={onLogout}>
+                  <LogOut size={15} /> Log out
+                </button>
+                <button className="button button-primary" onClick={onClose}>Got it</button>
+              </div>
+            ) : (
+              <button className="button button-primary" onClick={onClose}>
+                {type === "help" ? "Contact support" : "Got it"}
+              </button>
+            )}
           </div>
         )}
       </section>
