@@ -57,7 +57,6 @@ import {
   CircleAlert,
   Tent,
   BadgeCheck,
-  UserPlus,
   Headset,
   Mail,
   MapPin,
@@ -83,6 +82,24 @@ import {
   CircleDot,
   Info,
   MessageSquare,
+  Armchair,
+  PanelTop,
+  Shirt,
+  Lightbulb,
+  Footprints,
+  RectangleHorizontal,
+  Speaker,
+  Mic,
+  Monitor,
+  Camera,
+  Lamp,
+  CookingPot,
+  PhoneCall,
+  ClipboardCheck,
+  Minus,
+  PackageCheck,
+  StickyNote,
+  Flag,
 } from "lucide-react";
 
 const navigation = [
@@ -151,7 +168,7 @@ const bookings = [
     detail: "Weekend camping · 4 items",
     item: "Bell tent, chairs + 2",
     date: "Today, 10:30 am",
-    amount: "$248",
+    amount: "TSh 248",
     status: "Ready for pickup",
     tone: "amber",
     color: "peach",
@@ -162,7 +179,7 @@ const bookings = [
     detail: "Backyard gathering · 8 items",
     item: "Tables, linens + more",
     date: "Today, 1:00 pm",
-    amount: "$412",
+    amount: "TSh 412",
     status: "Out for delivery",
     tone: "blue",
     color: "lilac",
@@ -173,7 +190,7 @@ const bookings = [
     detail: "Coastal weekend · 3 items",
     item: "Paddleboards + gear",
     date: "Tomorrow, 9:00 am",
-    amount: "$186",
+    amount: "TSh 186",
     status: "Confirmed",
     tone: "green",
     color: "mint",
@@ -184,7 +201,7 @@ const bookings = [
     detail: "Garden dinner · 12 items",
     item: "Tables, chairs + lights",
     date: "Oct 04, 2:00 pm",
-    amount: "$568",
+    amount: "TSh 568",
     status: "Confirmed",
     tone: "green",
     color: "blue",
@@ -1017,9 +1034,28 @@ async function downloadReceiptPdf(payment) {
   pdf.save(`pendo-receipt-${payment.receipt.toLowerCase()}.pdf`);
 }
 
-// UI-testing credentials only — replace with API authentication before real use.
-const TEST_LOGIN = { username: "0622882278", password: "12345" };
 const SESSION_KEY = "pendo-session";
+
+async function api(path, { method = "GET", body, token } = {}) {
+  let response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error("Can’t reach Pendo right now. Check your internet connection and try again.");
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw Object.assign(new Error(data.error || "Something went wrong. Please try again."), { status: response.status, fields: data.fields });
+  }
+  return data;
+}
 
 function normalizePhone(value) {
   const digits = value.replace(/[^\d+]/g, "");
@@ -1030,15 +1066,17 @@ function normalizePhone(value) {
 
 function readSession() {
   try {
-    return localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || "null");
+    return session?.token && session?.role ? session : null;
   } catch {
     return null;
   }
 }
 
-function writeSession(username, remember) {
+function writeSession(session, remember) {
   try {
-    (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, username);
+    clearSession();
+    (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, JSON.stringify(session));
   } catch {
     // Storage can be unavailable (private mode); the session then lasts until reload.
   }
@@ -1115,113 +1153,199 @@ function AuthShowcase({ variant = "staff" }) {
   );
 }
 
-function getPasswordStrength(password) {
-  if (!password) return { score: 0, label: "" };
-  let score = 0;
-  if (password.length >= 8) score += 1;
-  if (password.length >= 12) score += 1;
-  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
-  if (/\d/.test(password)) score += 1;
-  if (/[^A-Za-z0-9]/.test(password)) score += 1;
-  const level = Math.min(4, Math.max(1, score));
-  return { score: level, label: ["", "Weak", "Fair", "Good", "Strong"][level] };
+const RENTAL_ITEMS = [
+  { name: "Tents", icon: Tent, unit: "pcs", start: 1 },
+  { name: "Chairs", icon: Armchair, unit: "pcs", start: 50 },
+  { name: "Tables", icon: PanelTop, unit: "pcs", start: 10 },
+  { name: "Seat covers", icon: Shirt, unit: "pcs", start: 50 },
+  { name: "Lights", icon: Lightbulb, unit: "pcs", start: 10 },
+  { name: "Red carpet", icon: Footprints, unit: "m", start: 10 },
+  { name: "Carpet", icon: RectangleHorizontal, unit: "m", start: 10 },
+  { name: "PA system", icon: Speaker, unit: "sets", start: 1 },
+  { name: "Microphone", icon: Mic, unit: "pcs", start: 2 },
+  { name: "LED screen", icon: Monitor, unit: "pcs", start: 1 },
+  { name: "Camera", icon: Camera, unit: "pcs", start: 1 },
+  { name: "Light box", icon: Lamp, unit: "pcs", start: 1 },
+  { name: "Utensils (cooking vessels)", label: "Utensils", sub: "Cooking vessels", icon: CookingPot, unit: "sets", start: 1 },
+];
+
+const orderStatusInfo = {
+  "New request": { tone: "blue", text: "We received your request and will call you to confirm the price." },
+  Confirmed: { tone: "green", text: "Your booking is confirmed." },
+  "Ready for pickup": { tone: "amber", text: "Your items are ready." },
+  "Out for delivery": { tone: "blue", text: "Your items are on the way." },
+  Completed: { tone: "green", text: "Thank you for renting with Pendo." },
+  Cancelled: { tone: "red", text: "This request was cancelled." },
+};
+
+const itemLabel = (name) => RENTAL_ITEMS.find((item) => item.name === name)?.label || name;
+const itemUnit = (name) => RENTAL_ITEMS.find((item) => item.name === name)?.unit || "pcs";
+const itemDisplay = (item) => item.custom || itemLabel(item.name);
+const formatEventDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+function localTodayIso() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
-function validateSignup(form) {
+function validateRentRequest(form) {
   const errors = {};
+  if (form.items.length === 0) errors.items = "Choose at least one item to rent.";
+  else if (form.items.some((item) => item.name === "Other" && item.custom.trim().length < 2)) errors.items = "Tell us which item you need for “Other”.";
+  if (!form.eventDate) errors.eventDate = "Choose the event date.";
+  else if (form.eventDate < localTodayIso()) errors.eventDate = "The event date cannot be in the past.";
+  if (!(Number(form.days) >= 1 && Number(form.days) <= 30)) errors.days = "Between 1 and 30 days.";
+  if (!form.area) errors.area = "Choose your area.";
+  if (form.area === "Other area" && !form.place.trim()) errors.place = "Tell us where the event is.";
   if (!form.firstName.trim()) errors.firstName = "Enter your first name.";
   if (!form.lastName.trim()) errors.lastName = "Enter your last name.";
   if (!/^0[67]\d{8}$/.test(normalizePhone(form.phone))) errors.phone = "Enter a valid phone number, e.g. 0712 345 678.";
-  if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = "Enter a valid email address or leave it empty.";
-  if (!form.area) errors.area = "Choose your area so we can plan deliveries.";
-  if (form.password.length < 8) errors.password = "Use at least 8 characters.";
-  if (!form.confirm) errors.confirm = "Re-enter your password.";
-  else if (form.confirm !== form.password) errors.confirm = "Passwords do not match.";
-  if (!form.terms) errors.terms = "Please accept the rental terms to continue.";
+  if (!form.agree) errors.agree = "Please agree so we can contact you.";
   return errors;
 }
 
-function SignupScreen({ onBackToLogin }) {
+function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign in" }) {
   const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    area: "",
-    password: "",
-    confirm: "",
-    terms: false,
-    updates: true,
+    items: [],
+    eventDate: "",
+    days: "1",
+    area: prefill?.area || "",
+    place: prefill?.place || "",
+    firstName: prefill?.firstName || "",
+    lastName: prefill?.lastName || "",
+    phone: prefill?.phone || "",
+    notes: "",
+    agree: Boolean(prefill),
   });
-  const [touched, setTouched] = useState({});
   const [submitted, setSubmitted] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [serverErrors, setServerErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [created, setCreated] = useState(null);
+  const [result, setResult] = useState(null);
 
-  const errors = validateSignup(form);
-  const strength = getPasswordStrength(form.password);
-  const showError = (field) => (submitted || touched[field]) && errors[field];
+  const errors = { ...validateRentRequest(form), ...Object.fromEntries(Object.entries(serverErrors).filter(([, message]) => message)) };
+  const show = (key) => (submitted && errors[key] ? <small className="auth-field-error"><CircleAlert size={12} /> {errors[key]}</small> : null);
+  const invalid = (key) => Boolean(submitted && errors[key]);
+  const update = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setServerErrors((current) => ({ ...current, [key]: undefined }));
+  };
+  const [picker, setPicker] = useState("");
+  const selectedCount = form.items.length;
+  const available = RENTAL_ITEMS.filter((item) => !form.items.some((selected) => selected.name === item.name));
 
-  function update(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
+  function setItems(change) {
+    setForm((current) => ({ ...current, items: change(current.items) }));
+    setServerErrors((current) => ({ ...current, items: undefined }));
   }
 
-  function touch(field) {
-    setTouched((current) => ({ ...current, [field]: true }));
+  function addItem(name) {
+    setPicker("");
+    if (!name) return;
+    if (name === "Other") {
+      setItems((items) => [...items, { key: `other-${Date.now()}`, name: "Other", custom: "", quantity: 1 }]);
+      return;
+    }
+    const catalogItem = RENTAL_ITEMS.find((item) => item.name === name);
+    setItems((items) => [...items, { key: name, name, custom: "", quantity: catalogItem.start }]);
   }
 
-  function handleSubmit(event) {
+  function setQuantity(key, value) {
+    const quantity = Math.max(1, Math.min(10000, Math.round(Number(value) || 1)));
+    setItems((items) => items.map((item) => (item.key === key ? { ...item, quantity } : item)));
+  }
+
+  async function handleSubmit(event) {
     event.preventDefault();
     setSubmitted(true);
-    if (Object.keys(errors).length > 0 || submitting) {
-      const firstInvalid = event.currentTarget.querySelector("[aria-invalid='true']");
-      firstInvalid?.focus();
+    setSubmitError("");
+    const clientErrors = validateRentRequest(form);
+    if (Object.keys(clientErrors).length) {
+      const first = event.currentTarget.querySelector("[aria-invalid='true'], .rent-picker select");
+      first?.focus();
       return;
     }
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      setCreated({
-        firstName: form.firstName.trim(),
-        name: `${form.firstName.trim()} ${form.lastName.trim()}`,
-        phone: normalizePhone(form.phone).replace(/^(\d{4})(\d{3})(\d{3})$/, "$1 $2 $3"),
-        email: form.email.trim(),
-        area: form.area,
+    try {
+      const data = await api("/rental-requests", {
+        method: "POST",
+        body: {
+          items: form.items.map(({ name, custom, quantity }) => ({ name, quantity, ...(name === "Other" ? { custom: custom.trim() } : {}) })),
+          eventDate: form.eventDate,
+          days: Number(form.days),
+          area: form.area,
+          place: form.place,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          phone: form.phone,
+          notes: form.notes,
+        },
       });
-    }, 900);
+      setResult(data);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      if (error.fields) setServerErrors(error.fields);
+      setSubmitError(error.message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function fieldMessage(field) {
-    return showError(field) ? (
-      <small className="auth-field-error" id={`signup-${field}-error`}><CircleAlert size={12} /> {errors[field]}</small>
-    ) : null;
-  }
-
-  if (created) {
+  if (result) {
+    const { order, account, sms, session } = result;
     return (
       <main className="auth-page">
         <AuthShowcase variant="customer" />
         <section className="auth-panel">
-          <div className="auth-flow auth-success">
-            <div className="auth-success-badge"><PartyPopper size={30} /></div>
+          <div className="auth-flow auth-success rent-success">
+            <div className="auth-success-badge"><PackageCheck size={30} /></div>
             <div className="auth-heading">
-              <h1>Karibu, {created.firstName}!</h1>
-              <p>Your Pendo Rentals account has been created.</p>
+              <h1>Asante, {form.firstName.trim()}!</h1>
+              <p>Your request <strong>{order.id}</strong> has been received.</p>
             </div>
             <dl className="auth-summary">
-              <div><dt><UserRound size={14} /> Name</dt><dd>{created.name}</dd></div>
-              <div><dt><Phone size={14} /> Phone</dt><dd>{created.phone}</dd></div>
-              {created.email && <div><dt><Mail size={14} /> Email</dt><dd>{created.email}</dd></div>}
-              <div><dt><MapPin size={14} /> Area</dt><dd>{created.area}</dd></div>
+              <div><dt><ClipboardCheck size={14} /> Request</dt><dd>{order.id}</dd></div>
+              <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatEventDate(order.eventDate)} · {order.days} day{order.days === 1 ? "" : "s"}</dd></div>
+              <div><dt><MapPin size={14} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
+              <div className="rent-summary-items">
+                <dt><Package size={14} /> Items</dt>
+                <dd>{order.items.map((item) => <span key={item.custom || item.name}>{itemDisplay(item)} × {item.quantity}</span>)}</dd>
+              </div>
             </dl>
-            <ol className="auth-next-steps">
-              <li><span><MessageSquare size={15} /></span><div><strong>Watch for our SMS</strong><small>We’ll confirm your account on {created.phone}.</small></div></li>
-              <li><span><CalendarCheck size={15} /></span><div><strong>Book your first rental</strong><small>Call or visit us in Kayenze to reserve tents, chairs and décor.</small></div></li>
-            </ol>
-            <button type="button" className="auth-primary" onClick={onBackToLogin}>
-              Back to sign in <ArrowRight size={17} />
+            {sms.status === "sent" ? (
+              <div className="rent-sms-card sent">
+                <span><MessageSquareText size={16} /></span>
+                <div>
+                  <strong>SMS sent to {account.phone}</strong>
+                  <small>{account.isNew ? "It has your request details and your login: your phone number and a password." : "It has your request details. Sign in with your phone number and your password."}</small>
+                </div>
+              </div>
+            ) : account.temporaryPassword ? (
+              <div className="rent-sms-card login">
+                <span><KeyRound size={16} /></span>
+                <div>
+                  <strong>Your account is ready — save these details</strong>
+                  <small>We couldn’t send the SMS right now, so here are your login details.</small>
+                  <div className="rent-credentials">
+                    <span>Username <b>{account.phone}</b></span>
+                    <span>Password <b>{account.temporaryPassword}</b></span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rent-sms-card">
+                <span><Info size={16} /></span>
+                <div>
+                  <strong>Request added to your account</strong>
+                  <small>Sign in with {account.phone} and your password to track it.</small>
+                </div>
+              </div>
+            )}
+            <p className="rent-next"><PhoneCall size={14} /> Our team will call you shortly to confirm availability and price.</p>
+            <button type="button" className="auth-primary" onClick={() => onSignedIn(session)}>
+              View my requests <ArrowRight size={17} />
             </button>
+            <button type="button" className="auth-link rent-center-link" onClick={onBack}>{backLabel}</button>
           </div>
         </section>
       </main>
@@ -1232,201 +1356,302 @@ function SignupScreen({ onBackToLogin }) {
     <main className="auth-page">
       <AuthShowcase variant="customer" />
       <section className="auth-panel">
-        <div className="auth-flow auth-signup">
-          <button type="button" className="auth-back" onClick={onBackToLogin}>
-            <ArrowLeft size={15} /> Back to sign in
+        <div className="auth-flow auth-signup rent-flow">
+          <button type="button" className="auth-back" onClick={onBack}>
+            <ArrowLeft size={15} /> {backLabel}
           </button>
           <div className="auth-card-brand">
             <BrandMark />
             <span className="brand-name">Pendo<span>rentals</span></span>
           </div>
           <div className="auth-heading">
-            <span className="auth-kicker">CUSTOMER ACCOUNT</span>
-            <h1>Create your account</h1>
-            <p>Rent tents, chairs and décor for your events in Geita.</p>
+            <span className="auth-kicker">RENT NOW</span>
+            <h1>Request your rental</h1>
+            <p>Tell us what you need. We’ll confirm the price and send you an SMS.</p>
           </div>
 
-          <form className="auth-form" onSubmit={handleSubmit} noValidate>
-            <div className="auth-field-grid">
-              <div className="auth-field">
-                <label className={`auth-input ${showError("firstName") ? "has-error" : ""}`}>
-                  <UserRound size={17} />
-                  <span className="sr-only">First name</span>
-                  <input
-                    autoComplete="given-name"
-                    placeholder="First name"
-                    value={form.firstName}
-                    onChange={(event) => update("firstName", event.target.value)}
-                    onBlur={() => touch("firstName")}
-                    aria-invalid={Boolean(showError("firstName"))}
-                    aria-describedby={showError("firstName") ? "signup-firstName-error" : undefined}
-                    autoFocus
-                  />
-                </label>
-                {fieldMessage("firstName")}
-              </div>
-              <div className="auth-field">
-                <label className={`auth-input ${showError("lastName") ? "has-error" : ""}`}>
-                  <UserRound size={17} />
-                  <span className="sr-only">Last name</span>
-                  <input
-                    autoComplete="family-name"
-                    placeholder="Last name"
-                    value={form.lastName}
-                    onChange={(event) => update("lastName", event.target.value)}
-                    onBlur={() => touch("lastName")}
-                    aria-invalid={Boolean(showError("lastName"))}
-                    aria-describedby={showError("lastName") ? "signup-lastName-error" : undefined}
-                  />
-                </label>
-                {fieldMessage("lastName")}
-              </div>
-            </div>
+          <form className="auth-form rent-form" onSubmit={handleSubmit} noValidate>
+            <fieldset className="rent-section">
+              <legend><span>1</span> What do you need?</legend>
+              <label className={`auth-input auth-select rent-picker ${invalid("items") ? "has-error" : ""}`}>
+                <Package size={17} />
+                <span className="sr-only">Add an item</span>
+                <select
+                  value={picker}
+                  onChange={(event) => addItem(event.target.value)}
+                  aria-invalid={invalid("items")}
+                  className="is-placeholder"
+                >
+                  <option value="">{selectedCount ? "Add another item…" : "Choose an item to rent…"}</option>
+                  {available.map((item) => (
+                    <option key={item.name} value={item.name}>{item.label ? `${item.label} (${item.sub.toLowerCase()})` : item.name}</option>
+                  ))}
+                  <option value="Other">Other (not listed)…</option>
+                </select>
+                <ChevronDown size={15} className="auth-select-caret" />
+              </label>
+              {selectedCount > 0 && (
+                <div className="rent-selected">
+                  {form.items.map((item) => {
+                    const catalogItem = RENTAL_ITEMS.find((entry) => entry.name === item.name);
+                    const Icon = catalogItem?.icon || Sparkles;
+                    const unit = catalogItem?.unit || "pcs";
+                    return (
+                      <div className={`rent-item selected ${item.name === "Other" ? "rent-item-other" : ""}`} key={item.key}>
+                        <div className="rent-item-head">
+                          <span className="rent-item-icon"><Icon size={18} /></span>
+                          {item.name === "Other" ? (
+                            <input
+                              className="rent-other-input"
+                              placeholder="Which item? e.g. Flowers"
+                              value={item.custom}
+                              maxLength={60}
+                              autoFocus
+                              aria-label="Other item name"
+                              aria-invalid={Boolean(submitted && item.custom.trim().length < 2)}
+                              onChange={(event) => setItems((items) => items.map((entry) => (entry.key === item.key ? { ...entry, custom: event.target.value } : entry)))}
+                            />
+                          ) : (
+                            <span className="rent-item-name">{catalogItem.label || catalogItem.name}{catalogItem.sub && <small>{catalogItem.sub}</small>}</span>
+                          )}
+                          <button
+                            type="button"
+                            className="rent-item-remove"
+                            onClick={() => setItems((items) => items.filter((entry) => entry.key !== item.key))}
+                            aria-label={`Remove ${item.custom || item.name}`}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                        <div className="rent-qty">
+                          <button type="button" onClick={() => setQuantity(item.key, item.quantity - 1)} aria-label={`Fewer ${item.custom || item.name}`}><Minus size={12} /></button>
+                          <input
+                            type="number"
+                            min="1"
+                            inputMode="numeric"
+                            value={item.quantity}
+                            onChange={(event) => setQuantity(item.key, event.target.value)}
+                            aria-label={`${item.custom || item.name} quantity`}
+                          />
+                          <i>{unit}</i>
+                          <button type="button" onClick={() => setQuantity(item.key, item.quantity + 1)} aria-label={`More ${item.custom || item.name}`}><Plus size={12} /></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {show("items") || <small className="rent-hint">{selectedCount ? `${selectedCount} item${selectedCount === 1 ? "" : "s"} selected — add more from the list above.` : "Pick from the list. Choose “Other” if your item isn’t listed."}</small>}
+            </fieldset>
 
-            <div className="auth-field-grid">
+            <fieldset className="rent-section">
+              <legend><span>2</span> When &amp; where?</legend>
+              <div className="auth-field-grid">
+                <div className="auth-field">
+                  <label className={`auth-input ${invalid("eventDate") ? "has-error" : ""}`}>
+                    <CalendarDays size={17} />
+                    <span className="sr-only">Event date</span>
+                    <input type="date" min={localTodayIso()} value={form.eventDate} onChange={(event) => update("eventDate", event.target.value)} aria-invalid={invalid("eventDate")} />
+                  </label>
+                  {show("eventDate")}
+                </div>
+                <div className="auth-field">
+                  <label className={`auth-input auth-select ${invalid("days") ? "has-error" : ""}`}>
+                    <Clock3 size={17} />
+                    <span className="sr-only">Number of days</span>
+                    <select value={form.days} onChange={(event) => update("days", event.target.value)} aria-invalid={invalid("days")}>
+                      {Array.from({ length: 14 }, (_, index) => String(index + 1)).map((value) => (
+                        <option key={value} value={value}>{value} day{value === "1" ? "" : "s"}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} className="auth-select-caret" />
+                  </label>
+                  {show("days")}
+                </div>
+                <div className="auth-field">
+                  <label className={`auth-input auth-select ${invalid("area") ? "has-error" : ""}`}>
+                    <MapPin size={17} />
+                    <span className="sr-only">Area</span>
+                    <select value={form.area} onChange={(event) => update("area", event.target.value)} aria-invalid={invalid("area")} className={form.area ? "" : "is-placeholder"}>
+                      <option value="" disabled>Area</option>
+                      {CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}
+                    </select>
+                    <ChevronDown size={15} className="auth-select-caret" />
+                  </label>
+                  {show("area")}
+                </div>
+                <div className="auth-field">
+                  <label className={`auth-input ${invalid("place") ? "has-error" : ""}`}>
+                    <Flag size={17} />
+                    <span className="sr-only">Venue or landmark</span>
+                    <input placeholder={form.area === "Other area" ? "Town / village" : "Venue or landmark"} value={form.place} onChange={(event) => update("place", event.target.value)} aria-invalid={invalid("place")} maxLength={80} />
+                  </label>
+                  {show("place")}
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset className="rent-section">
+              <legend><span>3</span> Your details</legend>
+              <div className="auth-field-grid">
+                <div className="auth-field">
+                  <label className={`auth-input ${invalid("firstName") ? "has-error" : ""}`}>
+                    <UserRound size={17} />
+                    <span className="sr-only">First name</span>
+                    <input autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => update("firstName", event.target.value)} aria-invalid={invalid("firstName")} />
+                  </label>
+                  {show("firstName")}
+                </div>
+                <div className="auth-field">
+                  <label className={`auth-input ${invalid("lastName") ? "has-error" : ""}`}>
+                    <UserRound size={17} />
+                    <span className="sr-only">Last name</span>
+                    <input autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => update("lastName", event.target.value)} aria-invalid={invalid("lastName")} />
+                  </label>
+                  {show("lastName")}
+                </div>
+              </div>
               <div className="auth-field">
-                <label className={`auth-input ${showError("phone") ? "has-error" : ""}`}>
+                <label className={`auth-input ${invalid("phone") ? "has-error" : ""}`}>
                   <Phone size={17} />
                   <span className="sr-only">Phone number</span>
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="Phone number"
-                    value={form.phone}
-                    onChange={(event) => update("phone", event.target.value)}
-                    onBlur={() => touch("phone")}
-                    aria-invalid={Boolean(showError("phone"))}
-                    aria-describedby={showError("phone") ? "signup-phone-error" : undefined}
-                  />
+                  <input type="tel" inputMode="tel" autoComplete="tel" placeholder="Phone number" value={form.phone} onChange={(event) => update("phone", event.target.value)} aria-invalid={invalid("phone")} />
                 </label>
-                {fieldMessage("phone")}
+                {show("phone") || <small className="rent-hint">This becomes your username. We’ll SMS your request and login details here.</small>}
               </div>
-              <div className="auth-field">
-                <label className={`auth-input auth-select ${showError("area") ? "has-error" : ""}`}>
-                  <MapPin size={17} />
-                  <span className="sr-only">Area</span>
-                  <select
-                    value={form.area}
-                    onChange={(event) => {
-                      update("area", event.target.value);
-                      touch("area");
-                    }}
-                    onBlur={() => touch("area")}
-                    aria-invalid={Boolean(showError("area"))}
-                    aria-describedby={showError("area") ? "signup-area-error" : undefined}
-                    className={form.area ? "" : "is-placeholder"}
-                  >
-                    <option value="" disabled>Your area</option>
-                    {CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}
-                  </select>
-                  <ChevronDown size={15} className="auth-select-caret" />
-                </label>
-                {fieldMessage("area")}
-              </div>
-            </div>
-
-            <div className="auth-field">
-              <label className={`auth-input ${showError("email") ? "has-error" : ""}`}>
-                <Mail size={17} />
-                <span className="sr-only">Email (optional)</span>
-                <input
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Email (optional)"
-                  value={form.email}
-                  onChange={(event) => update("email", event.target.value)}
-                  onBlur={() => touch("email")}
-                  aria-invalid={Boolean(showError("email"))}
-                  aria-describedby={showError("email") ? "signup-email-error" : undefined}
-                />
+              <label className="auth-field">
+                <span className="sr-only">Notes</span>
+                <textarea className="rent-notes" rows="2" maxLength={300} placeholder="Notes (optional) — e.g. type of event, colours, delivery time" value={form.notes} onChange={(event) => update("notes", event.target.value)} />
               </label>
-              {fieldMessage("email")}
-            </div>
-
-            <div className="auth-field">
-              <label className={`auth-input ${showError("password") ? "has-error" : ""}`}>
-                <Lock size={17} />
-                <span className="sr-only">Password</span>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="Create password"
-                  value={form.password}
-                  onChange={(event) => update("password", event.target.value)}
-                  onBlur={() => touch("password")}
-                  aria-invalid={Boolean(showError("password"))}
-                  aria-describedby="signup-password-help"
-                />
-                <button
-                  type="button"
-                  className="auth-reveal"
-                  onClick={() => setShowPassword((shown) => !shown)}
-                  aria-label={showPassword ? "Hide passwords" : "Show passwords"}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </label>
-              <div className="auth-strength" id="signup-password-help" data-score={strength.score}>
-                <span className="auth-strength-bars" aria-hidden="true"><i /><i /><i /><i /></span>
-                <small>{showError("password") ? errors.password : strength.label ? `${strength.label} password` : "At least 8 characters"}</small>
-              </div>
-            </div>
-
-            <div className="auth-field">
-              <label className={`auth-input ${showError("confirm") ? "has-error" : ""} ${form.confirm && form.confirm === form.password ? "is-valid" : ""}`}>
-                <Lock size={17} />
-                <span className="sr-only">Confirm password</span>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  placeholder="Confirm password"
-                  value={form.confirm}
-                  onChange={(event) => update("confirm", event.target.value)}
-                  onBlur={() => touch("confirm")}
-                  aria-invalid={Boolean(showError("confirm"))}
-                  aria-describedby={showError("confirm") ? "signup-confirm-error" : undefined}
-                />
-                {form.confirm && form.confirm === form.password && <CircleCheck size={17} className="auth-valid-icon" />}
-              </label>
-              {fieldMessage("confirm")}
-            </div>
+            </fieldset>
 
             <div className="auth-consents">
               <label className="auth-check">
-                <input
-                  type="checkbox"
-                  checked={form.terms}
-                  onChange={(event) => {
-                    update("terms", event.target.checked);
-                    touch("terms");
-                  }}
-                  aria-invalid={Boolean(showError("terms"))}
-                />
-                <span>I agree to Pendo Rentals’ <b>rental terms</b> and <b>privacy policy</b></span>
+                <input type="checkbox" checked={form.agree} onChange={(event) => update("agree", event.target.checked)} aria-invalid={invalid("agree")} />
+                <span>I agree to Pendo Rentals’ <b>rental terms</b> and to be contacted by SMS and phone</span>
               </label>
-              {fieldMessage("terms")}
-              <label className="auth-check">
-                <input type="checkbox" checked={form.updates} onChange={(event) => update("updates", event.target.checked)} />
-                <span>Send me booking updates and offers by SMS</span>
-              </label>
+              {show("agree")}
             </div>
 
+            {submitError && <p className="auth-error" role="alert"><CircleAlert size={14} /> {submitError}</p>}
+
             <button className="auth-primary" type="submit" disabled={submitting}>
-              {submitting ? <><LoaderCircle size={17} className="auth-spin" /> Creating account…</> : <>Create account <ArrowRight size={17} /></>}
+              {submitting ? <><LoaderCircle size={17} className="auth-spin" /> Sending request…</> : <>Send request <Send size={16} /></>}
             </button>
           </form>
-
-          <p className="auth-switch">
-            Already have an account? <button type="button" className="auth-link" onClick={onBackToLogin}>Sign in</button>
-          </p>
         </div>
       </section>
     </main>
   );
 }
 
-function LoginScreen({ onLogin, onSignup }) {
+function CustomerHome({ session, onLogout, onRentMore }) {
+  const [state, setState] = useState({ loading: true, error: "", customer: null, orders: [] });
+
+  async function load() {
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const data = await api("/my/orders", { token: session.token });
+      setState({ loading: false, error: "", customer: data.customer, orders: data.orders });
+    } catch (error) {
+      if (error.status === 401) {
+        onLogout();
+        return;
+      }
+      setState((current) => ({ ...current, loading: false, error: error.message }));
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, [session.token]);
+
+  const firstName = state.customer?.firstName || session.name.split(" ")[0];
+
+  return (
+    <div className="cust-page">
+      <header className="cust-top">
+        <div className="cust-brand">
+          <BrandMark />
+          <span className="brand-name">Pendo<span>rentals</span></span>
+        </div>
+        <div className="cust-user">
+          <span className="cust-avatar">{session.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
+          <span className="cust-user-copy"><strong>{session.name}</strong><small>Customer</small></span>
+          <button type="button" className="cust-logout" onClick={onLogout}><LogOut size={14} /> Log out</button>
+        </div>
+      </header>
+
+      <main className="cust-main">
+        <section className="cust-hero">
+          <div>
+            <span className="auth-kicker">MY RENTALS</span>
+            <h1>Karibu, {firstName}!</h1>
+            <p>Track your rental requests and bookings with Pendo Rentals.</p>
+          </div>
+          <button type="button" className="auth-primary cust-rent" onClick={() => onRentMore(state.customer)}>
+            <Plus size={16} /> Rent more
+          </button>
+        </section>
+
+        <section className="cust-section">
+          <div className="cust-section-head">
+            <h2>My requests {!state.loading && <span className="heading-count">{state.orders.length}</span>}</h2>
+            <button type="button" className="cust-refresh" onClick={load} disabled={state.loading}><RotateCcw size={13} /> Refresh</button>
+          </div>
+
+          {state.loading ? (
+            <div className="cust-loading"><LoaderCircle size={18} className="auth-spin" /> Loading your requests…</div>
+          ) : state.error ? (
+            <div className="cust-empty"><CircleAlert size={20} /><strong>{state.error}</strong><button type="button" className="auth-link" onClick={load}>Try again</button></div>
+          ) : state.orders.length === 0 ? (
+            <div className="cust-empty"><Tent size={22} /><strong>No requests yet</strong><small>Tap “Rent more” to request tents, chairs and more.</small></div>
+          ) : (
+            <div className="cust-orders">
+              {state.orders.map((order) => {
+                const info = orderStatusInfo[order.status] || { tone: "blue", text: "" };
+                return (
+                  <article className="cust-order" key={order.id}>
+                    <header>
+                      <div>
+                        <strong>{order.id}</strong>
+                        <small>Requested {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</small>
+                      </div>
+                      <span className={`status-pill ${info.tone}`}><i />{order.status}</span>
+                    </header>
+                    <div className="cust-order-items">
+                      {order.items.map((item) => (
+                        <span key={item.custom || item.name}>{itemDisplay(item)} <b>× {item.quantity}</b> <i>{item.custom ? "pcs" : itemUnit(item.name)}</i></span>
+                      ))}
+                    </div>
+                    <dl>
+                      <div><dt><CalendarDays size={13} /> Event</dt><dd>{formatEventDate(order.eventDate)} · {order.days} day{order.days === 1 ? "" : "s"}</dd></div>
+                      <div><dt><MapPin size={13} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
+                      {order.notes && <div><dt><StickyNote size={13} /> Notes</dt><dd>{order.notes}</dd></div>}
+                    </dl>
+                    {info.text && <p className="cust-order-note"><Info size={13} /> {info.text}</p>}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="cust-help">
+          <span className="auth-help-icon"><Headset size={18} /></span>
+          <div>
+            <strong>Questions about your rental?</strong>
+            <small>Our team in Kayenze, Geita is happy to help.</small>
+          </div>
+          <a href={`tel:${BUSINESS_INFO.phone.replace(/\s/g, "")}`}><Phone size={14} /> {BUSINESS_INFO.phone}</a>
+          <a href={`mailto:${BUSINESS_INFO.email}`}><Mail size={14} /> Email us</a>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin, onRentNow }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -1453,22 +1678,21 @@ function LoginScreen({ onLogin, onSignup }) {
     };
   }, [helpOpen]);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     if (submitting || !username.trim() || !password) return;
     setError("");
     setNotice("");
     setSubmitting(true);
-    setTimeout(() => {
-      if (normalizePhone(username) === TEST_LOGIN.username && password === TEST_LOGIN.password) {
-        writeSession(TEST_LOGIN.username, remember);
-        onLogin(TEST_LOGIN.username);
-        return;
-      }
+    try {
+      const session = await api("/auth/login", { method: "POST", body: { phone: username, password } });
+      writeSession(session, remember);
+      onLogin(session);
+    } catch (loginError) {
       setSubmitting(false);
       setAttempt((count) => count + 1);
-      setError("Incorrect phone number or password. Please try again.");
-    }, 650);
+      setError(loginError.message);
+    }
   }
 
   return (
@@ -1484,7 +1708,7 @@ function LoginScreen({ onLogin, onSignup }) {
 
           <div className="auth-heading">
             <h1>Welcome back</h1>
-            <p>Sign in to manage your Pendo Rentals workspace.</p>
+            <p>Sign in with your phone number to manage your rentals.</p>
           </div>
 
           <form className="auth-form" onSubmit={handleSubmit} noValidate>
@@ -1559,9 +1783,9 @@ function LoginScreen({ onLogin, onSignup }) {
           <button
             type="button"
             className="auth-outline"
-            onClick={onSignup}
+            onClick={onRentNow}
           >
-            <UserPlus size={17} /> Sign Up / Create Account
+            <Tent size={17} /> Rent Now
           </button>
 
           <section className={`auth-help ${helpOpen ? "open" : ""}`} aria-label="Contact Pendo support">
@@ -1601,29 +1825,101 @@ function LoginScreen({ onLogin, onSignup }) {
 }
 
 function App() {
-  const [user, setUser] = useState(readSession);
+  const [session, setSession] = useState(readSession);
   const [authView, setAuthView] = useState("login");
+  const [rentPrefill, setRentPrefill] = useState(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [authView]);
+  }, [authView, session?.role]);
 
-  if (!user && authView === "signup") return <SignupScreen onBackToLogin={() => setAuthView("login")} />;
-  if (!user) return <LoginScreen onLogin={setUser} onSignup={() => setAuthView("signup")} />;
-  return (
-    <Workspace
-      onLogout={() => {
+  useEffect(() => {
+    if (!session) return;
+    api("/me", { token: session.token }).catch((error) => {
+      if (error.status === 401) {
         clearSession();
-        setUser(null);
-      }}
-    />
-  );
+        setSession(null);
+      }
+    });
+  }, [session?.token]);
+
+  function logout() {
+    if (session) api("/auth/logout", { method: "POST", token: session.token }).catch(() => {});
+    clearSession();
+    setSession(null);
+    setAuthView("login");
+    setRentPrefill(null);
+  }
+
+  function signIn(nextSession) {
+    writeSession(nextSession, true);
+    setSession(nextSession);
+    setAuthView("login");
+    setRentPrefill(null);
+  }
+
+  if (authView === "rent" && (!session || session.role === "customer")) {
+    return (
+      <RentNowScreen
+        prefill={rentPrefill}
+        backLabel={session ? "Back to my requests" : "Back to sign in"}
+        onBack={() => {
+          setAuthView("login");
+          setRentPrefill(null);
+        }}
+        onSignedIn={signIn}
+      />
+    );
+  }
+  if (!session) return <LoginScreen onLogin={setSession} onRentNow={() => setAuthView("rent")} />;
+  if (session.role === "customer") {
+    return (
+      <CustomerHome
+        session={session}
+        onLogout={logout}
+        onRentMore={(customer) => {
+          setRentPrefill(customer ? { ...customer, phone: customer.phone } : null);
+          setAuthView("rent");
+        }}
+      />
+    );
+  }
+  return <Workspace session={session} onLogout={logout} />;
 }
 
-function Workspace({ onLogout }) {
+function toStaffOrder(order) {
+  const end = new Date(`${order.eventDate}T00:00:00`);
+  end.setDate(end.getDate() + order.days - 1);
+  const short = (date) => date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+  const start = new Date(`${order.eventDate}T00:00:00`);
+  return {
+    id: order.id,
+    customer: order.customerName,
+    items: order.items.map((item) => `${itemDisplay(item)} ×${item.quantity}`).join(", "),
+    date: order.days > 1 ? `${short(start)} – ${short(end)}` : short(start),
+    total: "Quote pending",
+    status: order.status,
+    tone: orderStatusInfo[order.status]?.tone || "blue",
+    phone: order.customerPhone,
+    location: order.place ? `${order.place}, ${order.area}` : order.area,
+  };
+}
+
+function Workspace({ session, onLogout }) {
   const [activePage, setActivePage] = useState("Overview");
   const [viewedOrder, setViewedOrder] = useState(null);
   const [orders, setOrders] = useState(ordersData);
+
+  useEffect(() => {
+    api("/orders", { token: session.token })
+      .then(({ orders: requests }) => {
+        const incoming = requests.map(toStaffOrder);
+        setOrders((current) => [...incoming, ...current.filter((order) => !incoming.some((item) => item.id === order.id))]);
+      })
+      .catch((error) => {
+        if (error.status === 401) onLogout();
+      });
+  }, [session.token]);
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
@@ -1895,7 +2191,7 @@ function Workspace({ onLogout }) {
                     </button>
                   </div>
                   <div className="revenue-total">
-                    <strong>$8,420</strong>
+                    <strong>TSh 8,420</strong>
                     <span className="positive-pill">
                       <ArrowUpRight size={13} /> 12.8%
                     </span>
@@ -1903,11 +2199,11 @@ function Workspace({ onLogout }) {
                   </div>
                   <div className="chart-wrap">
                     <div className="chart-y-labels">
-                      <span>$2,000</span>
-                      <span>$1,500</span>
-                      <span>$1,000</span>
-                      <span>$500</span>
-                      <span>$0</span>
+                      <span>TSh 2,000</span>
+                      <span>TSh 1,500</span>
+                      <span>TSh 1,000</span>
+                      <span>TSh 500</span>
+                      <span>TSh 0</span>
                     </div>
                     <div className="chart-main">
                       <div className="chart-gridlines">
@@ -1925,7 +2221,7 @@ function Workspace({ onLogout }) {
                               style={{ height: `${item.value}%` }}
                             >
                               <span className="bar-tooltip">
-                                ${(item.value * 18).toLocaleString()}
+                                TSh {(item.value * 18).toLocaleString()}
                               </span>
                             </div>
                             <span className="bar-label">{item.day}</span>
@@ -2209,7 +2505,7 @@ function InventoryView({ items, onAdd }) {
                 <td className="sku-cell">{item.sku}</td>
                 <td>{item.category}</td>
                 <td className="amount-cell">
-                  ${item.rate}.00 <small>/ day</small>
+                  TSh {item.rate}.00 <small>/ day</small>
                 </td>
                 <td>{item.quantity} units</td>
                 <td>
@@ -2263,7 +2559,7 @@ function InventoryCard({ item }) {
         <span className="mini-category">{item.category}</span>
         <strong>{item.name}</strong>
         <span className="mini-rate">
-          ${item.rate}
+          TSh {item.rate}
           <small> / day</small>
         </span>
       </div>
@@ -2709,6 +3005,7 @@ function OrdersPage({ query, onCreate, onOrderView, orders, setOrders }) {
           <div className="filter-tabs">
             {[
               "All",
+              "New request",
               "Confirmed",
               "Ready for pickup",
               "Out for delivery",
@@ -2721,7 +3018,9 @@ function OrdersPage({ query, onCreate, onOrderView, orders, setOrders }) {
               >
                 {option}
                 <span>
-                  {option === "All"
+                  {option === "New request"
+                    ? orders.filter((order) => order.status === "New request").length
+                    : option === "All"
                     ? 186
                     : option === "Confirmed"
                       ? 42
@@ -5272,9 +5571,9 @@ function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitl
             )}
             {(type === "customer" || type === "user") && <label>Email address<input required type="email" placeholder="name@example.com" /></label>}
             {type === "customer" && <label>Phone number<input type="tel" placeholder="+1 (555) 000-0000" /></label>}
-            {isItem && <div className="form-row"><label>Category<select required defaultValue=""><option value="" disabled>Choose category</option><option>Shelter</option><option>Furniture</option><option>Lighting</option><option>Outdoor gear</option></select></label><label>Daily rate<input required type="number" min="1" placeholder="$ 0.00" /></label></div>}
+            {isItem && <div className="form-row"><label>Category<select required defaultValue=""><option value="" disabled>Choose category</option><option>Shelter</option><option>Furniture</option><option>Lighting</option><option>Outdoor gear</option></select></label><label>Daily rate<input required type="number" min="1" placeholder="TSh 0.00" /></label></div>}
             {isBooking && <div className="form-row"><label>Start date<input required type="date" defaultValue="2026-10-03" /></label><label>Duration (days)<input required type="number" min="1" placeholder="2" /></label></div>}
-            {type === "invoice" && <div className="form-row"><label>Amount<input required type="number" min="1" placeholder="$ 0.00" /></label><label>Due date<input required type="date" defaultValue="2026-10-08" /></label></div>}
+            {type === "invoice" && <div className="form-row"><label>Amount<input required type="number" min="1" placeholder="TSh 0.00" /></label><label>Due date<input required type="date" defaultValue="2026-10-08" /></label></div>}
             {type === "expense" && <><label>Category<select required defaultValue=""><option value="" disabled>Choose category</option><option>Maintenance</option><option>Delivery &amp; transport</option><option>Supplies</option><option>Other</option></select></label><label>Description<input required placeholder="What was this expense for?" /></label><div className="form-row"><label>Amount<span className="currency-input"><span>TSh</span><input required type="number" min="1" placeholder="0.00" /></span></label><label>Date<input required type="date" defaultValue="2026-10-01" /></label></div></>}
             {type === "template" && <><label>Template name<input required defaultValue="Booking confirmation" /></label><label>Message<textarea required rows="4" defaultValue="Your booking is confirmed! We can’t wait to help you get outside." /></label><label>Send this message<select defaultValue="Booking confirmed"><option>Booking confirmed</option><option>Rental return reminder</option><option>After item return</option></select></label></>}
             {type === "user" && <label>Role<select required defaultValue=""><option value="" disabled>Select a role</option><option>Store manager</option><option>Inventory staff</option><option>Delivery staff</option></select></label>}

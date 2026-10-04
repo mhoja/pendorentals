@@ -107,6 +107,33 @@ jobs:
             web/dist/ \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/web/"
 
+      - name: Ship API environment
+        env:
+          BEEM_API_KEY: ${{ secrets.BEEM_API_KEY }}
+          BEEM_SECRET_KEY: ${{ secrets.BEEM_SECRET_KEY }}
+          BEEM_SENDER_ID: ${{ secrets.BEEM_SENDER_ID }}
+          STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+        run: |
+          set -eu
+          umask 077
+          env_file="$RUNNER_TEMP/api.env"
+          echo "PUBLIC_URL=http://$DEPLOY_HOST:$WEB_NGINX_PORT" > "$env_file"
+          echo "DATA_DIR=/app/data" >> "$env_file"
+          for name in BEEM_API_KEY BEEM_SECRET_KEY BEEM_SENDER_ID STAFF_PASSWORD; do
+            eval "value=\${$name:-}"
+            if [ -n "$value" ]; then
+              printf '%s=%s\n' "$name" "$value" >> "$env_file"
+            fi
+          done
+          if [ -z "${BEEM_API_KEY:-}" ]; then
+            echo "::warning::BEEM_API_KEY secret is not set; customer SMS will not be sent."
+          fi
+          scp -i "$HOME/.ssh/deploy_key" -P "${DEPLOY_SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
+            "$env_file" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/api.env"
+          ssh -i "$HOME/.ssh/deploy_key" -p "${DEPLOY_SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "chmod 600 '$DEPLOY_DIR/api.env'"
+          rm -f "$env_file"
+
       - name: Build API and install isolated Nginx block
         run: |
           ssh -i "$HOME/.ssh/deploy_key" \
@@ -185,6 +212,8 @@ jobs:
             --name "$container" \
             --label "$owner_label" \
             --restart unless-stopped \
+            --env-file "$deploy_dir/api.env" \
+            -v pendorentals-api-data:/app/data \
             -p "$api_port:5001" \
             pendorentals-api:latest; then
             restore_api
