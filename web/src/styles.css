@@ -10338,3 +10338,54 @@ button.inv-open:hover .report-id {
         border-top: 1px solid #edf1f6;
     }
 }
+
+/* Compact report cards */
+.report-kpis.report-kpis-wide article {
+    gap: 2px;
+    padding: 8px 12px 9px;
+}
+
+.report-kpis.report-kpis-wide strong {
+    font-size: 15px;
+}
+
+.report-kpis.report-kpis-wide span {
+    font-size: 10.5px;
+}
+
+.report-kpis.report-kpis-wide small {
+    font-size: 10px;
+}
+
+.report-kpis-scope {
+    padding: 7px 12px;
+}
+
+.report-kpi-compare {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.report-kpis .report-kpi-compare i {
+    color: #66748a;
+    font-size: 10.5px;
+    font-style: normal;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.report-kpi-change {
+    padding: 1px 6px;
+    font-size: 10px;
+}
+
+.report-kpis.report-kpis-wide .report-kpis-scope strong {
+    font-size: 12.5px;
+}
+
+.report-kpis.report-kpis-wide .report-kpis-scope small {
+    font-size: 11px;
+}

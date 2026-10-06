@@ -310,13 +310,13 @@ const reportDefinitions = [
       };
       const now = totals(rows);
       const before = previous ? totals(previous) : null;
-      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], ...extra });
+      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatTSh, ...extra });
       return [
         card("Total collected", "collected", formatTSh(now.collected), `${now.payments} payment${now.payments === 1 ? "" : "s"}`),
         card("Tithe", "tithe", formatTSh(now.tithe), "set aside from payments"),
         card("Giving", "giving", formatTSh(now.giving), "set aside from payments"),
         card("Net", "net", formatTSh(now.net), "collected − tithe − giving", { tone: now.net < 0 ? "negative" : "" }),
-        card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), "including refunds"),
+        card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), "including refunds", { format: (value) => value.toLocaleString("en-US") }),
         card("Average receipt", "average", formatTSh(now.average), "excluding refunds"),
         card("Refunded", "refunded", formatTSh(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
         { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? `${formatTSh(now.topMethod.value)} collected` : "no payments" },
@@ -5002,7 +5002,9 @@ function ReportDetail({ report, onBack, onSwitch }) {
   const emptySelections = Object.fromEntries(report.filters.map((filter) => [filter.key, "All"]));
   const [view, setView] = useState("table");
   const [query, setQuery] = useState("");
-  const [period, setPeriod] = useState("All time");
+  // Monthly reports open on this month; changing any filter shows the filtered records instead.
+  const defaultPeriod = report.monthlyCards ? "This month" : "All time";
+  const [period, setPeriod] = useState(defaultPeriod);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [selections, setSelections] = useState(emptySelections);
@@ -5083,7 +5085,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
 
   const activeFilters = [
     query && `Search: “${query}”`,
-    report.dateKey && period !== "All time" && (period === "Custom range"
+    report.dateKey && period !== defaultPeriod && (period === "Custom range"
       ? `${report.dateLabel || "Date"}: ${from ? formatReportDate(from) : "start"} – ${to ? formatReportDate(to) : "today"}`
       : `${report.dateLabel || "Period"}: ${period}`),
     ...report.filters.filter((filter) => selections[filter.key] !== "All").map((filter) => `${filter.label}: ${selections[filter.key]}`),
@@ -5093,7 +5095,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
 
   function clearFilters() {
     setQuery("");
-    setPeriod("All time");
+    setPeriod(defaultPeriod);
     setCustomFrom("");
     setCustomTo("");
     setSelections(emptySelections);
@@ -5106,7 +5108,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
   }
 
   // With no filters, monthly reports show this month vs last month on the cards.
-  const monthlyView = report.monthlyCards && report.dateKey && activeFilters.length === 0;
+  const monthlyView = report.monthlyCards && report.dateKey && activeFilters.length === 0 && period === defaultPeriod;
   const today = localTodayIso();
   const monthStart = `${today.slice(0, 7)}-01`;
   const lastMonthEnd = shiftIsoDate(monthStart, -1);
@@ -5117,17 +5119,17 @@ function ReportDetail({ report, onBack, onSwitch }) {
     ? report.metrics(report.rows.filter((row) => inRange(row, monthStart, today)), report.rows.filter((row) => inRange(row, lastMonthStart, lastMonthEnd)))
     : report.metrics(sortedRows);
   const cardScope = monthlyView
-    ? { title: `This month · ${monthName(monthStart)}`, detail: `1–${Number(today.slice(8, 10))} ${monthName(monthStart)}, compared with ${monthName(lastMonthStart)}. Apply a filter to see other records.` }
+    ? { title: `This month · ${monthName(monthStart)}`, detail: `Cards and table show 1–${Number(today.slice(8, 10))} ${monthName(monthStart)}, compared with ${monthName(lastMonthStart)}. Change any filter to see other records.` }
     : { title: "Filtered records", detail: `${sortedRows.length} record${sortedRows.length === 1 ? "" : "s"} matching your filters` };
   function compareMonths(metric) {
     if (!monthlyView || metric.current === undefined || metric.previous === undefined) return null;
     const { current, previous } = metric;
-    if (previous === 0 && current === 0) return { text: `Same as ${monthName(lastMonthStart)}`, tone: "flat" };
-    if (previous === 0) return { text: `New vs ${monthName(lastMonthStart)} (0)`, tone: metric.lowerIsBetter ? "down" : "up" };
+    const last = `${monthName(lastMonthStart).slice(0, 3)}: ${(metric.format || String)(previous)}`;
+    if (previous === current) return { badge: "Same", last, tone: "flat" };
+    if (previous === 0) return { badge: "New", last, tone: metric.lowerIsBetter ? "down" : "up" };
     const percent = Math.round(((current - previous) / Math.abs(previous)) * 100);
-    if (percent === 0) return { text: `Same as ${monthName(lastMonthStart)}`, tone: "flat" };
-    const better = metric.lowerIsBetter ? percent < 0 : percent > 0;
-    return { text: `${percent > 0 ? "▲" : "▼"} ${Math.abs(percent)}% vs ${monthName(lastMonthStart)}`, tone: better ? "up" : "down" };
+    const better = metric.lowerIsBetter ? current < previous : current > previous;
+    return { badge: percent === 0 ? "≈ 0%" : `${percent > 0 ? "▲" : "▼"} ${Math.abs(percent)}%`, last, tone: better ? "up" : "down" };
   }
 
   const totalsRow = columns.map((column, index) => {
@@ -5331,7 +5333,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
               <span>{metric.label}</span>
               <strong className={metric.tone === "negative" && metric.label === "Net" ? "negative-text" : ""}>{metric.value}</strong>
               <small className={metric.tone === "negative" && metric.label !== "Net" ? "negative-text" : ""}>{metric.hint}</small>
-              {change && <em className={`report-kpi-change ${change.tone}`}>{change.text}</em>}
+              {change && <span className="report-kpi-compare"><em className={`report-kpi-change ${change.tone}`}>{change.badge}</em><i>{change.last}</i></span>}
             </article>
           );
         })}
