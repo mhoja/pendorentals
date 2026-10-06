@@ -131,13 +131,9 @@ jobs:
               printf '%s=%s\n' "$name" "$value" >> "$env_file"
             fi
           done
-          for name in DB_HOST DB_NAME DB_USER DB_PASSWORD; do
-            eval "value=\${$name:-}"
-            if [ -z "$value" ]; then
-              echo "::error::The $name secret is missing; the API needs it to reach PostgreSQL."
-              exit 1
-            fi
-          done
+          if [ -z "${DB_HOST:-}" ]; then
+            echo "::notice::DB_* secrets not set in GitHub; the server's secrets.env file will be used."
+          fi
           if [ -z "${BEEM_API_KEY:-}" ]; then
             echo "::warning::BEEM_API_KEY secret is not set; customer SMS will not be sent."
           fi
@@ -206,6 +202,18 @@ jobs:
             fi
           fi
 
+          # GitHub secrets (api.env) take priority; secrets.env on the server fills anything missing.
+          runtime_env="$deploy_dir/api.runtime.env"
+          touch "$deploy_dir/secrets.env"
+          awk -F= 'NF && !seen[$1]++' "$deploy_dir/api.env" "$deploy_dir/secrets.env" > "$runtime_env"
+          chmod 600 "$runtime_env"
+          for key in DB_HOST DB_NAME DB_USER DB_PASSWORD; do
+            if ! grep -q "^$key=." "$runtime_env"; then
+              echo "$key is not configured (GitHub secret or $deploy_dir/secrets.env); keeping the current API." >&2
+              exit 1
+            fi
+          done
+
           docker build -t pendorentals-api:latest "$deploy_dir/api"
           docker rm -f "$previous" >/dev/null 2>&1 || true
           if docker inspect "$container" >/dev/null 2>&1; then
@@ -225,7 +233,7 @@ jobs:
             --name "$container" \
             --label "$owner_label" \
             --restart unless-stopped \
-            --env-file "$deploy_dir/api.env" \
+            --env-file "$runtime_env" \
             -v pendorentals-api-data:/app/data \
             -p "$api_port:5001" \
             pendorentals-api:latest; then
