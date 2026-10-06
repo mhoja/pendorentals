@@ -2978,10 +2978,12 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
   const scoped = list.filter((order) => eventRange.matches(order.eventDate)
     && words.every((word) => `${order.id} ${order.customer.name} ${order.customer.phone} ${orderItemsText(order.items)} ${order.area || ""}`.toLowerCase().includes(word)));
   const rows = scoped.filter((order) => status === "All" || order.status === status);
+  // Tabs count within search + date; the cards also follow the selected status tab.
   const count = (value) => scoped.filter((order) => order.status === value).length;
-  const active = scoped.filter((order) => ["Confirmed", "Ready for pickup", "Out for delivery"].includes(order.status));
-  const outstanding = scoped.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + (order.balance || 0), 0);
-  const unpriced = scoped.filter((order) => !order.priced && order.status !== "Cancelled").length;
+  const shown = (value) => rows.filter((order) => order.status === value).length;
+  const active = rows.filter((order) => ["Confirmed", "Ready for pickup", "Out for delivery"].includes(order.status));
+  const outstanding = rows.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + (order.balance || 0), 0);
+  const unpriced = rows.filter((order) => !order.priced && order.status !== "Cancelled").length;
   const ordersFiltered = Boolean(search) || status !== "All" || eventRange.active;
   const clearOrderFilters = () => { setSearch(""); setStatus("All"); eventRange.reset(); };
 
@@ -3016,10 +3018,10 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
     <>
       <section className="inv-stats">
         {[
-          [Sparkles, "New requests", count("New request"), unpriced ? `${unpriced} need pricing` : "all priced", "blue"],
+          [Sparkles, "New requests", shown("New request"), unpriced ? `${unpriced} need pricing` : "all priced", "blue"],
           [CalendarDays, "Active rentals", active.length, "confirmed to out for delivery", "mint"],
           [Banknote, "Outstanding", formatShillings(outstanding), "balance still to collect", "orange"],
-          [PackageCheck, "Completed", count("Completed"), `${scoped.length} order${scoped.length === 1 ? "" : "s"}${ordersFiltered ? " matching filters" : " in total"}`, "purple"],
+          [PackageCheck, "Completed", shown("Completed"), `${rows.length} order${rows.length === 1 ? "" : "s"}${ordersFiltered ? " matching filters" : " in total"}`, "purple"],
         ].map(([Icon, label, value, hint, tone]) => (
           <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
         ))}
