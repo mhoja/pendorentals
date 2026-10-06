@@ -10,6 +10,7 @@ import {
   ChartNoAxesCombined,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   CircleHelp,
@@ -24,6 +25,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Truck,
   Users,
   X,
@@ -1827,7 +1829,7 @@ function WorkspaceShell({ session, onLogout }) {
               {activePage === "Inventory" && canEditInventory && (
                 <button className="button button-primary" onClick={() => setInventoryAddOpen(true)}><Plus size={17} /> Add items</button>
               )}
-              {activePage === "Overview" && isManager(session) && (
+              {["Overview", "Orders"].includes(activePage) && isManager(session) && (
                 <button className="button button-primary" onClick={() => openNewOrder(null)}><Plus size={17} /> New order</button>
               )}
             </div>
@@ -2324,6 +2326,8 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
                 { key: "createdAt", label: "ADDED", render: (row) => <span className="inv-updated">{new Date(row.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span> },
               ]}
               rows={visible}
+              itemLabel="items"
+              totalCount={items.length}
               rowKey="id"
               renderActions={(row) => (!canEdit ? [{ label: "View only", onClick: () => {} }] : [
                 { label: "Edit item", onClick: () => setEditing(row) },
@@ -2343,14 +2347,6 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
                 { label: "Delete item", danger: true, onClick: () => setDeleting(row) },
               ])}
             />
-            <div className="table-bottom inv-bottom">
-              <span>Showing <strong>{visible.length}</strong> of {items.length} items</span>
-              {filtersActive && (
-                <button className="report-clear" onClick={clearFilters}>
-                  <RotateCcw size={12} /> Clear filters
-                </button>
-              )}
-            </div>
           </>
         )}
       </section>
@@ -2507,7 +2503,7 @@ function ExportMenu({ title, columns, rows, disabled }) {
   );
 }
 
-function WsModal({ title, kicker, onClose, wide, busy, children }) {
+function WsModal({ title, kicker, onClose, wide, busy, className = "", children }) {
   useEffect(() => {
     const onKey = (event) => event.key === "Escape" && !busy && onClose();
     document.addEventListener("keydown", onKey);
@@ -2515,7 +2511,7 @@ function WsModal({ title, kicker, onClose, wide, busy, children }) {
   }, [onClose, busy]);
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
-      <section className={`modal team-modal ws-modal ${wide ? "ws-modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section className={`modal team-modal ws-modal ${wide ? "ws-modal-wide" : ""} ${className}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-heading">
           <div>
             {kicker && <span className="modal-kicker">{kicker}</span>}
@@ -2642,8 +2638,21 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
-  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const setItem = (key, changes) => setForm((current) => ({ ...current, items: current.items.map((item) => (item.key === key ? { ...item, ...changes } : item)) }));
+  // Editing a field clears its error message.
+  const clearError = (name) => setFieldErrors((current) => {
+    if (!current[name]) return current;
+    const next = { ...current };
+    delete next[name];
+    return next;
+  });
+  const set = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    clearError(["customerId", "newCustomer"].includes(key) ? "customer" : key);
+  };
+  const setItem = (key, changes) => {
+    setForm((current) => ({ ...current, items: current.items.map((item) => (item.key === key ? { ...item, ...changes } : item)) }));
+    clearError(`item${form.items.findIndex((item) => item.key === key)}`);
+  };
   const days = Math.max(1, Number(form.days) || 1);
   const lines = form.items.map((item) => (item.rate === "" ? null : (Number(item.rate) || 0) * (Number(item.quantity) || 0) * days));
   const priced = lines.every((line) => line !== null) && form.items.length > 0;
@@ -2706,119 +2715,129 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
   const customerOptions = customers.data?.customers || [];
 
   return (
-    <WsModal title={creating ? "New order" : `Order ${order.id}`} kicker={creating ? "ORDERS" : `${order.customer.name} · ${order.customer.phone}`} onClose={onClose} wide busy={busy}>
-      <form className="team-form ws-order-form" onSubmit={save} noValidate>
-        {creating && (
-          <section className="ws-form-section">
-            <h3>Customer</h3>
-            {prefillCustomer ? (
-              <p className="ws-chosen"><UserRound size={14} /> {prefillCustomer.name} · {prefillCustomer.phone}</p>
-            ) : (
-              <>
-                <div className="inv-tabs ws-mini-tabs" role="tablist">
-                  {[["existing", "Existing customer"], ["new", "New customer"]].map(([value, text]) => (
-                    <button type="button" key={value} role="tab" aria-selected={customerMode === value} className={customerMode === value ? "active" : ""} onClick={() => setCustomerMode(value)}>{text}</button>
-                  ))}
-                </div>
-                {customerMode === "existing" ? (
-                  <label className="set-field">
-                    <span>Customer</span>
-                    <select value={form.customerId} onChange={(event) => set("customerId", event.target.value)} aria-invalid={Boolean(fieldErrors.customer)}>
-                      <option value="">{customers.status === "loading" ? "Loading customers…" : "Choose a customer"}</option>
-                      {customerOptions.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}
-                    </select>
-                  </label>
-                ) : (
-                  <div className="set-grid">
-                    <label className="set-field"><span>First name</span><input value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
-                    <label className="set-field"><span>Last name</span><input value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
-                    <label className="set-field"><span>Phone</span><input inputMode="tel" placeholder="0712 345 678" value={form.newCustomer.phone} onChange={(event) => set("newCustomer", { ...form.newCustomer, phone: event.target.value })} /></label>
-                    <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+    <WsModal title={creating ? "New order" : `Order ${order.id}`} kicker={creating ? "ORDERS" : `${order.customer.name} · ${order.customer.phone}`} onClose={onClose} wide busy={busy} className="ws-order-modal">
+      <form className="ws-order-form" onSubmit={save} noValidate>
+        <div className="ws-order-main">
+          {creating && (
+            <section className="ws-order-card">
+              <header className="ws-order-card-head">
+                <h3><UserRound size={15} /> Customer</h3>
+                {!prefillCustomer && (
+                  <div className="inv-tabs ws-mini-tabs" role="tablist">
+                    {[["existing", "Existing"], ["new", "New customer"]].map(([value, text]) => (
+                      <button type="button" key={value} role="tab" aria-selected={customerMode === value} className={customerMode === value ? "active" : ""} onClick={() => { setCustomerMode(value); clearError("customer"); }}>{text}</button>
+                    ))}
                   </div>
                 )}
-                <FieldError message={fieldErrors.customer} />
-              </>
-            )}
-          </section>
-        )}
-
-        <section className="ws-form-section">
-          <h3>Event</h3>
-          <div className="set-grid set-grid-3">
-            <label className="set-field"><span>Event date</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /><FieldError message={fieldErrors.eventDate} /></label>
-            <label className="set-field"><span>Days</span><input type="number" min="1" max="60" value={form.days} onChange={(event) => set("days", event.target.value)} /></label>
-            <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
-            <label className="set-field set-span-2"><span>Venue / landmark</span><input value={form.place} maxLength={80} onChange={(event) => set("place", event.target.value)} /></label>
-            <label className="set-field"><span>Status</span><select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!managerView}>{ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
-          </div>
-        </section>
-
-        <section className="ws-form-section">
-          <h3>Items <small>Rates are per unit per day</small></h3>
-          <div className="ws-items">
-            <div className="ws-items-head" aria-hidden="true"><span>Item</span><span>Qty</span><span>Rate / day</span><span>Line total</span><span /></div>
-            {form.items.map((item, index) => (
-              <div className="ws-item-row" key={item.key}>
-                <div className="ws-item-pick">
-                  <select
-                    value={item.inventoryItemId || (item.isCustom ? "__custom" : "")}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (value === "__custom") return setItem(item.key, { inventoryItemId: "", isCustom: true, name: item.inventoryItemId ? "" : item.name });
-                      const stock = inventory.find((entry) => entry.id === value);
-                      return setItem(item.key, stock ? { inventoryItemId: stock.id, isCustom: false, name: stock.name, custom: "", rate: String(stock.rate) } : { inventoryItemId: "", isCustom: false, name: "", custom: "" });
-                    }}
-                    aria-label={`Item ${index + 1}`}
-                    aria-invalid={Boolean(fieldErrors[`item${index}`])}
-                  >
-                    <option value="">Choose from inventory…</option>
-                    {inventory.map((stock) => <option key={stock.id} value={stock.id}>{stock.name} · {stock.sku}{stock.status === "Maintenance" ? " (maintenance)" : ""}</option>)}
-                    <option value="__custom">Other / not in inventory…</option>
+              </header>
+              {prefillCustomer ? (
+                <p className="ws-chosen"><UserRound size={14} /> {prefillCustomer.name} · {prefillCustomer.phone}</p>
+              ) : customerMode === "existing" ? (
+                <label className="set-field">
+                  <span>Customer</span>
+                  <select value={form.customerId} onChange={(event) => set("customerId", event.target.value)} aria-invalid={Boolean(fieldErrors.customer)}>
+                    <option value="">{customers.status === "loading" ? "Loading customers…" : "Choose a customer"}</option>
+                    {customerOptions.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}
                   </select>
-                  {item.isCustom && (
-                    <input className="ws-item-name" placeholder="Item name, e.g. Flower arch" value={item.custom || item.name} maxLength={60} onChange={(event) => setItem(item.key, { name: event.target.value, custom: "" })} aria-label={`Item ${index + 1} name`} />
-                  )}
+                </label>
+              ) : (
+                <div className="ws-order-row ws-cols-4">
+                  <label className="set-field"><span>First name</span><input value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
+                  <label className="set-field"><span>Last name</span><input value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
+                  <label className="set-field"><span>Phone</span><input inputMode="tel" placeholder="0712 345 678" value={form.newCustomer.phone} onChange={(event) => set("newCustomer", { ...form.newCustomer, phone: event.target.value })} /></label>
+                  <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
                 </div>
-                <input type="number" min="1" value={item.quantity} onChange={(event) => setItem(item.key, { quantity: event.target.value })} aria-label={`Item ${index + 1} quantity`} />
-                <input type="number" min="0" placeholder="Not priced" value={item.rate} onChange={(event) => setItem(item.key, { rate: event.target.value })} aria-label={`Item ${index + 1} rate`} />
-                <span className="ws-line-total">{lines[index] === null ? "—" : formatShillings(lines[index])}</span>
-                <button type="button" className="inv-row-remove" onClick={() => setForm((current) => ({ ...current, items: current.items.length > 1 ? current.items.filter((entry) => entry.key !== item.key) : current.items }))} aria-label={`Remove item ${index + 1}`}><X size={14} /></button>
-                <FieldError message={fieldErrors[`item${index}`]} />
-              </div>
-            ))}
-          </div>
-          <button type="button" className="inv-add-another" onClick={() => setForm((current) => ({ ...current, items: [...current.items, { key: `i${Date.now()}`, inventoryItemId: "", isCustom: false, name: "", custom: "", quantity: "1", rate: "" }] }))}><Plus size={14} /> Add item</button>
-        </section>
+              )}
+              <FieldError message={fieldErrors.customer} />
+            </section>
+          )}
 
-        <section className="ws-form-section">
-          <h3>Delivery &amp; price</h3>
-          <label className="auth-check ws-check"><input type="checkbox" checked={form.deliveryRequired} onChange={(event) => set("deliveryRequired", event.target.checked)} /><span>Deliver to the customer</span></label>
-          <div className="set-grid set-grid-3">
+          <section className="ws-order-card">
+            <header className="ws-order-card-head"><h3><CalendarDays size={15} /> Event</h3></header>
+            <div className="ws-order-row ws-cols-event">
+              <label className="set-field"><span>Event date</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /></label>
+              <label className="set-field"><span>Days</span><input type="number" min="1" max="60" value={form.days} onChange={(event) => set("days", event.target.value)} /></label>
+              <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+              <label className="set-field"><span>Venue / landmark</span><input value={form.place} maxLength={80} placeholder="e.g. Kayenze Primary School" onChange={(event) => set("place", event.target.value)} /></label>
+            </div>
+            <FieldError message={fieldErrors.eventDate} />
+          </section>
+
+          <section className="ws-order-card">
+            <header className="ws-order-card-head"><h3><Package size={15} /> Items <small>rate per unit per day</small></h3></header>
+            <div className="ws-items">
+              <div className="ws-items-head" aria-hidden="true"><span>Item</span><span>Qty</span><span>Rate / day</span><span>Line total</span><span /></div>
+              {form.items.map((item, index) => (
+                <div className="ws-item-row" key={item.key}>
+                  <div className="ws-item-pick">
+                    <select
+                      value={item.inventoryItemId || (item.isCustom ? "__custom" : "")}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value === "__custom") return setItem(item.key, { inventoryItemId: "", isCustom: true, name: item.inventoryItemId ? "" : item.name });
+                        const stock = inventory.find((entry) => entry.id === value);
+                        return setItem(item.key, stock ? { inventoryItemId: stock.id, isCustom: false, name: stock.name, custom: "", rate: String(stock.rate) } : { inventoryItemId: "", isCustom: false, name: "", custom: "" });
+                      }}
+                      aria-label={`Item ${index + 1}`}
+                      aria-invalid={Boolean(fieldErrors[`item${index}`])}
+                    >
+                      <option value="">Choose from inventory…</option>
+                      {inventory.map((stock) => <option key={stock.id} value={stock.id}>{stock.name} · {stock.sku}{stock.status === "Maintenance" ? " (maintenance)" : ""}</option>)}
+                      <option value="__custom">Other / not in inventory…</option>
+                    </select>
+                    {item.isCustom && (
+                      <input className="ws-item-name" placeholder="Item name, e.g. Flower arch" value={item.custom || item.name} maxLength={60} onChange={(event) => setItem(item.key, { name: event.target.value, custom: "" })} aria-label={`Item ${index + 1} name`} />
+                    )}
+                  </div>
+                  <input type="number" min="1" value={item.quantity} onChange={(event) => setItem(item.key, { quantity: event.target.value })} aria-label={`Item ${index + 1} quantity`} />
+                  <input type="number" min="0" placeholder="Not priced" value={item.rate} onChange={(event) => setItem(item.key, { rate: event.target.value })} aria-label={`Item ${index + 1} rate`} />
+                  <span className={`ws-line-total ${lines[index] === null ? "muted" : ""}`}>{lines[index] === null ? "—" : formatShillings(lines[index])}</span>
+                  <button type="button" className="inv-row-remove" disabled={form.items.length === 1} onClick={() => setForm((current) => ({ ...current, items: current.items.length > 1 ? current.items.filter((entry) => entry.key !== item.key) : current.items }))} aria-label={`Remove item ${index + 1}`}><Trash2 size={14} /></button>
+                  <FieldError message={fieldErrors[`item${index}`]} />
+                </div>
+              ))}
+            </div>
+            <button type="button" className="inv-add-another" onClick={() => setForm((current) => ({ ...current, items: [...current.items, { key: `i${Date.now()}`, inventoryItemId: "", isCustom: false, name: "", custom: "", quantity: "1", rate: "" }] }))}><Plus size={14} /> Add item</button>
+          </section>
+
+          <label className="set-field ws-order-notes"><span>Notes <em>Optional</em></span><input value={form.notes} maxLength={500} placeholder="Setup time, colours, special requests…" onChange={(event) => set("notes", event.target.value)} /></label>
+        </div>
+
+        <aside className="ws-order-side">
+          <label className="set-field"><span>Status</span><select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!managerView}>{ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+
+          <div className="ws-side-block">
+            <label className="ws-switch">
+              <input type="checkbox" checked={form.deliveryRequired} onChange={(event) => set("deliveryRequired", event.target.checked)} />
+              <span className="ws-switch-track" aria-hidden="true" />
+              <span className="ws-switch-text"><Truck size={14} /> Deliver to the customer</span>
+            </label>
             {form.deliveryRequired && (
-              <>
-                <label className="set-field"><span>Delivery fee (TSh)</span><input type="number" min="0" value={form.deliveryFee} onChange={(event) => set("deliveryFee", event.target.value)} /></label>
-                <label className="set-field"><span>Driver</span><select value={form.driverId} onChange={(event) => set("driverId", event.target.value)}><option value="">Unassigned</option>{drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></label>
+              <div className="ws-order-row ws-cols-2">
+                <label className="set-field"><span>Fee (TSh)</span><input type="number" min="0" value={form.deliveryFee} onChange={(event) => set("deliveryFee", event.target.value)} /></label>
                 <label className="set-field"><span>Delivery status</span><select value={form.deliveryStatus === "Not needed" ? "Scheduled" : form.deliveryStatus} onChange={(event) => set("deliveryStatus", event.target.value)}>{["Scheduled", "In transit", "Delivered", "Failed"].map((status) => <option key={status}>{status}</option>)}</select></label>
-              </>
+                <label className="set-field ws-span-2"><span>Driver</span><select value={form.driverId} onChange={(event) => set("driverId", event.target.value)}><option value="">Unassigned</option>{drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></label>
+              </div>
             )}
-            <label className="set-field"><span>Discount (TSh)</span><input type="number" min="0" value={form.discount} onChange={(event) => set("discount", event.target.value)} /></label>
-            <label className="set-field set-span-2"><span>Notes</span><input value={form.notes} maxLength={500} onChange={(event) => set("notes", event.target.value)} /></label>
           </div>
+
+          <label className="set-field"><span>Discount (TSh)</span><input type="number" min="0" value={form.discount} onChange={(event) => set("discount", event.target.value)} /></label>
+
           <div className="ws-totals">
-            <span>Items ({days} day{days === 1 ? "" : "s"})<b>{formatShillings(subtotal)}</b></span>
+            <span>Items · {days} day{days === 1 ? "" : "s"}<b>{formatShillings(subtotal)}</b></span>
             {form.deliveryRequired && <span>Delivery<b>{formatShillings(delivery)}</b></span>}
             {Number(form.discount) > 0 && <span>Discount<b>− {formatShillings(form.discount)}</b></span>}
             <span className="ws-total">Total<b>{total === null ? "Set all rates" : formatShillings(total)}</b></span>
             {order && <span>Paid<b>{formatShillings(order.paid)}</b></span>}
           </div>
-        </section>
 
-        <label className="auth-check ws-check"><input type="checkbox" checked={form.notify} onChange={(event) => set("notify", event.target.checked)} /><span>{creating ? "SMS the booking details to the customer" : "SMS the customer when the status changes"}</span></label>
-        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
-        <div className="modal-actions">
-          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {creating ? "Create order" : "Save order"}</>}</button>
-        </div>
+          <label className="auth-check ws-check"><input type="checkbox" checked={form.notify} onChange={(event) => set("notify", event.target.checked)} /><span>{creating ? "SMS the booking details to the customer" : "SMS the customer when the status changes"}</span></label>
+          {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+          <div className="ws-side-actions">
+            <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {creating ? "Create order" : "Save order"}</>}</button>
+            <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          </div>
+        </aside>
       </form>
     </WsModal>
   );
@@ -2907,11 +2926,10 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
             ))}
           </div>
           <div className="inv-toolbar-actions">
-            <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order, customer, item" aria-label="Search orders" /></label>
+            <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search orders" aria-label="Search orders" /></label>
             <DateRangeFilter range={eventRange} label="Event" />
             <ClearFiltersButton active={ordersFiltered} onClear={clearOrderFilters} />
             <ExportMenu title="Orders" columns={exportColumns} rows={exportRows} />
-            {managerView && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> New order</button>}
           </div>
         </div>
         <LoadState status={orders.status} error={orders.error} onRetry={orders.reload} empty={orders.status === "ready" && list.length === 0 ? "No orders yet" : ""} emptyIcon={CalendarDays} emptyText="Orders from Rent Now and orders your team creates appear here." action={managerView && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Create the first order</button>} />
@@ -2927,6 +2945,8 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
                 { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={orderTone(row.status)}>{row.status}</StatusPill>{row.deliveryRequired && <small>Delivery: {row.deliveryStatus}</small>}</div> },
               ]}
               rows={rows}
+              itemLabel="orders"
+              totalCount={list.length}
               rowKey="id"
               renderActions={(order) => {
                 const actions = [{ label: managerView ? "View & edit" : "View order", onClick: () => setEditing(order) }];
@@ -2940,7 +2960,6 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
                 return actions;
               }}
             />
-            <div className="table-bottom inv-bottom"><span>Showing <strong>{rows.length}</strong> of {list.length} orders</span></div>
           </>
         )}
       </section>
@@ -3128,6 +3147,8 @@ function CustomersPage({ query, onNewOrder }) {
                 { key: "spent", label: "PAID", render: (row) => <strong className="inv-qty">{formatShillings(row.spent)}</strong> },
               ]}
               rows={rows}
+              itemLabel="customers"
+              totalCount={list.length}
               rowKey="id"
               renderActions={(row) => [
                 { label: "New order", onClick: () => onNewOrder(row) },
@@ -3136,7 +3157,6 @@ function CustomersPage({ query, onNewOrder }) {
                 ...(session.staffRole === "Admin" ? [{ label: "Delete customer", danger: true, onClick: () => setDeleting(row) }] : []),
               ]}
             />
-            <div className="table-bottom inv-bottom"><span>Showing <strong>{rows.length}</strong> of {list.length} customers</span></div>
           </>
         )}
       </section>
@@ -3340,6 +3360,8 @@ function InvoicesPage({ query, settings }) {
                 { key: "status", label: "STATUS", render: (row) => <StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill> },
               ]}
               rows={rows}
+              itemLabel="invoices"
+              totalCount={list.length}
               rowKey="id"
               renderActions={(row) => [
                 ...(row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
@@ -3353,7 +3375,6 @@ function InvoicesPage({ query, settings }) {
                 } }] : []),
               ]}
             />
-            <div className="table-bottom inv-bottom"><span>Showing <strong>{rows.length}</strong> of {list.length} invoices</span></div>
           </>
         )}
       </section>
@@ -3490,6 +3511,7 @@ function FinancePage({ query, session }) {
                   { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "Approved" ? "green" : "amber"}>{row.status}</StatusPill> },
                 ]}
                 rows={expenseRows}
+                itemLabel="expenses"
                 rowKey="id"
                 renderActions={(row) => [
                   { label: "Edit expense", onClick: () => setEditing(row) },
@@ -3513,6 +3535,7 @@ function FinancePage({ query, session }) {
                   { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "Paid" ? "green" : "red"}>{row.status}</StatusPill> },
                 ]}
                 rows={paymentRows}
+                itemLabel="payments"
                 rowKey="id"
                 renderActions={(row) => [
                   { label: "View receipt", onClick: () => setReceipt(row) },
@@ -3639,6 +3662,7 @@ function MessagingPage({ session, settingsResource }) {
                   { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" ? "amber" : "red"}>{row.status === "sent" ? "Sent" : row.status === "not_configured" ? "Not configured" : "Failed"}</StatusPill> },
                 ]}
                 rows={list}
+                itemLabel="messages"
                 rowKey="id"
                 renderActions={(row) => [{ label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) }]}
               />
@@ -3849,9 +3873,33 @@ function PageSummary({ items, className = "" }) {
   );
 }
 
-function DataTable({ columns, rows, rowKey, renderActions }) {
+const PAGE_SIZES = [10, 25, 50, 100];
+
+// Page numbers to show, with "…" gaps: 1 … 4 5 6 … 12
+function pageList(page, pages) {
+  if (pages <= 7) return Array.from({ length: pages }, (_, index) => index + 1);
+  const list = [1];
+  const start = Math.max(2, Math.min(page - 1, pages - 4));
+  const end = Math.min(pages - 1, Math.max(page + 1, 5));
+  if (start > 2) list.push("…");
+  for (let number = start; number <= end; number += 1) list.push(number);
+  if (end < pages - 1) list.push("…");
+  list.push(pages);
+  return list;
+}
+
+function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", totalCount, footerExtra }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [panelPosition, setPanelPosition] = useState({});
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const current = Math.min(page, pages);
+  const first = (current - 1) * pageSize;
+  const pageRows = rows.slice(first, first + pageSize);
+
+  // Filters and searches start again from the first page.
+  useEffect(() => { setPage(1); }, [rows.length]);
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -3876,7 +3924,7 @@ function DataTable({ columns, rows, rowKey, renderActions }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {pageRows.map((row) => {
             const actions = renderActions ? renderActions(row) : [];
             const rowId = row[rowKey];
             return (
@@ -3964,6 +4012,28 @@ function DataTable({ columns, rows, rowKey, renderActions }) {
       {rows.length === 0 && (
         <div className="empty-state">No results found.</div>
       )}
+      <div className="table-bottom dt-pager">
+        <span>
+          {rows.length === 0 ? <>Showing <strong>0</strong></> : <>Showing <strong>{first + 1}–{first + pageRows.length}</strong> of <strong>{rows.length}</strong></>}
+          {" "}{itemLabel}{totalCount !== undefined && totalCount !== rows.length ? ` (filtered from ${totalCount})` : ""}
+        </span>
+        {footerExtra}
+        <div className="dt-pager-controls">
+          <label className="dt-page-size">
+            Rows per page
+            <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} aria-label="Rows per page">
+              {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          <nav className="dt-pages" aria-label="Pages">
+            <button type="button" onClick={() => setPage(current - 1)} disabled={current === 1} aria-label="Previous page"><ChevronLeft size={15} /></button>
+            {pageList(current, pages).map((number, index) => (number === "…"
+              ? <span key={`gap-${index}`} className="dt-gap">…</span>
+              : <button type="button" key={number} className={number === current ? "active" : ""} aria-current={number === current ? "page" : undefined} onClick={() => setPage(number)}>{number}</button>))}
+            <button type="button" onClick={() => setPage(current + 1)} disabled={current === pages} aria-label="Next page"><ChevronRight size={15} /></button>
+          </nav>
+        </div>
+      </div>
     </div>
   );
 }
@@ -4834,6 +4904,13 @@ function UsersPage({ query, session }) {
             { key: "lastActive", label: "LAST ACTIVE", render: (row) => <span className="team-muted">{row.lastActive}</span> },
           ]}
           rows={rows}
+          itemLabel="team members"
+          totalCount={team.length}
+          footerExtra={filtersActive && (
+            <button className="report-clear" onClick={() => { setSearch(""); setRoleFilter("All roles"); setStatusFilter("All statuses"); }}>
+              <RotateCcw size={12} /> Clear filters
+            </button>
+          )}
           rowKey="id"
           renderActions={(row) => {
             if (row.id === session.id) return [{ label: "This is you", onClick: () => {} }];
@@ -4860,14 +4937,6 @@ function UsersPage({ query, session }) {
             ];
           }}
         />
-        <div className="table-bottom">
-          <span>Showing <strong>{rows.length}</strong> of {team.length} team members</span>
-          {filtersActive && (
-            <button className="report-clear" onClick={() => { setSearch(""); setRoleFilter("All roles"); setStatusFilter("All statuses"); }}>
-              <RotateCcw size={12} /> Clear filters
-            </button>
-          )}
-        </div>
       </section>
 
       <section className="panel team-roles">
