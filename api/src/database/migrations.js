@@ -215,6 +215,14 @@ const migrations = [
               and area not in (select name from service_areas);
         `,
     },
+    {
+        id: 4,
+        name: 'editable payment methods',
+        sql: `
+            -- Methods are now managed in Settings, so payments accept any configured name.
+            alter table payments drop constraint if exists payments_method_check;
+        `,
+    },
 ];
 
 export async function migrate() {

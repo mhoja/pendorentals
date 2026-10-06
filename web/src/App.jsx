@@ -2509,7 +2509,17 @@ const isManager = (session) => MANAGER_ROLES.includes(session?.staffRole);
 const ORDER_STATUSES = ["New request", "Confirmed", "Ready for pickup", "Out for delivery", "Completed", "Cancelled"];
 const orderTone = (status) => ({ "New request": "blue", Confirmed: "green", "Ready for pickup": "amber", "Out for delivery": "blue", Completed: "green", Cancelled: "red" }[status] || "blue");
 const invoiceTone = (status) => ({ Paid: "green", "Partially paid": "amber", Unpaid: "blue", Overdue: "red", Cancelled: "red" }[status] || "blue");
-const PAYMENT_METHODS = [["payMpesa", "M-Pesa"], ["payTigo", "Tigo Pesa"], ["payAirtel", "Airtel Money"], ["payCash", "Cash"], ["payBank", "Bank transfer"], ["payCard", "Card"]];
+// Payment methods are edited in Settings → Payments & receipts.
+const PAYMENT_METHOD_TYPES = [["mobile", "Mobile money"], ["bank", "Bank"], ["cash", "Cash"], ["card", "Card"], ["other", "Other"]];
+const enabledMethods = (settings) => (settings?.paymentMethods || []).filter((method) => method.enabled);
+// How a customer pays with this method, e.g. "Lipa Namba 5566778 · Pendo Rentals".
+function paymentMethodDetail(method) {
+  const owner = method.accountName ? ` · ${method.accountName}` : "";
+  if (method.type === "mobile") return method.number ? `Lipa Namba ${method.number}${owner}` : "Ask us for the number";
+  if (method.type === "bank") return `${method.provider ? `${method.provider} · ` : ""}${method.number ? `Acc ${method.number}` : "ask us for the account"}${owner}`;
+  if (method.number) return `${method.number}${owner}`;
+  return method.type === "other" ? "Ask us for details" : "At our office";
+}
 const shortDate = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const orderItemsText = (items) => items.map((item) => `${item.custom || itemLabel(item.name)} ×${item.quantity}`).join(", ");
 const orderDates = (order) => {
@@ -2641,7 +2651,7 @@ function TempPasswordNote({ phone, password }) {
 // ===== Record payment =====
 function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
   const { call } = useApi();
-  const methods = PAYMENT_METHODS.filter(([key]) => settings?.[key] !== false).map(([, label]) => label);
+  const methods = enabledMethods(settings).map((method) => method.name);
   const balance = invoice ? invoice.balance : order?.balance;
   const [form, setForm] = useState({ amount: balance ? String(balance) : "", method: methods[0] || "Cash", reference: "", paidOn: localTodayIso(), notify: true });
   const [errors, setErrors] = useState({});
@@ -3587,15 +3597,7 @@ function invoiceContent({ invoice, order, payments, customer }, settings = {}) {
     ...(adjustment ? [["Adjustment", adjustment]] : []),
   ];
   // Every payment method switched on in Settings → Payments & receipts, with its number.
-  const lipa = (number, name) => (number ? `Lipa Namba ${number}${name ? ` · ${name}` : ""}` : "Ask us for the number");
-  const howToPay = [
-    ["payMpesa", "M-Pesa", lipa(settings.lipaNumber, settings.lipaName)],
-    ["payTigo", "Tigo Pesa", lipa(settings.tigoNumber, settings.tigoName)],
-    ["payAirtel", "Airtel Money", lipa(settings.airtelNumber, settings.airtelName)],
-    ["payBank", "Bank transfer", settings.bankAccountNumber ? `${settings.bankName || "Bank"} · Acc ${settings.bankAccountNumber}${settings.bankAccountName ? ` · ${settings.bankAccountName}` : ""}` : `${settings.bankName || "Bank"} · ask us for the account`],
-    ["payCash", "Cash", "At our office"],
-    ["payCard", "Card", "At our office"],
-  ].filter(([key]) => settings[key] !== false && settings[key] !== undefined).map(([, label, detail]) => [label, detail]);
+  const howToPay = enabledMethods(settings).map((method) => [method.name, paymentMethodDetail(method)]);
   const event = order ? `${orderDates(order)} · ${days} day${days === 1 ? "" : "s"}` : "—";
   const venue = order ? [order.place, order.area].filter(Boolean).join(", ") : [customer?.place, customer?.area].filter(Boolean).join(", ");
   const business = {
@@ -5840,6 +5842,7 @@ const DEFAULT_SETTINGS = {
   receiptPrefix: "RCT-",
   invoicePrefix: "INV-",
   receiptFooter: "Thank you for renting with Pendo. Please keep this receipt for your records.",
+  paymentMethods: [],
 };
 
 const settingsSections = [
@@ -5867,6 +5870,11 @@ function validateSettings(values) {
   if (Number(values.refundPercent) < 0 || Number(values.refundPercent) > 100) errors.refundPercent = "Between 0 and 100.";
   if (values.vatEnabled && !(Number(values.vatRate) > 0 && Number(values.vatRate) <= 100)) errors.vatRate = "Enter a VAT rate.";
   if (values.titheEnabled && !(values.tithePercent !== "" && Number(values.tithePercent) > 0 && Number(values.tithePercent) <= 100)) errors.tithePercent = "Enter a percentage between 0.1 and 100.";
+  const methods = values.paymentMethods || [];
+  const names = methods.map((method) => method.name.trim().toLowerCase());
+  if (methods.some((method) => method.name.trim().length < 2)) errors.paymentMethods = "Give every payment method a name.";
+  else if (names.some((name, index) => names.indexOf(name) !== index)) errors.paymentMethods = "Two payment methods have the same name.";
+  else if (methods.length && !methods.some((method) => method.enabled)) errors.paymentMethods = "Keep at least one payment method switched on.";
   return errors;
 }
 
@@ -6135,6 +6143,67 @@ function CategoryManager({ session }) {
         />
       )}
       {toast}
+    </SettingsCard>
+  );
+}
+
+function PaymentMethodsEditor({ methods, onChange, error }) {
+  const [ask, confirmDialog] = useConfirm();
+  const update = (id, changes) => onChange(methods.map((method) => (method.id === id ? { ...method, ...changes } : method)));
+  const move = (index, step) => {
+    const next = [...methods];
+    [next[index], next[index + step]] = [next[index + step], next[index]];
+    onChange(next);
+  };
+  const add = () => onChange([...methods, { id: `m${Date.now()}`, name: "", type: "mobile", provider: "", number: "", accountName: BUSINESS_INFO.name, enabled: true }]);
+  async function remove(method) {
+    if (!(await ask({ title: `Remove ${method.name || "this payment method"}?`, message: "It disappears from invoices and the payment form once you save. Past payments keep their method name.", confirmLabel: "Yes, remove", danger: true }))) return;
+    onChange(methods.filter((entry) => entry.id !== method.id));
+  }
+  const numberLabel = (type) => ({ mobile: "Lipa Namba", bank: "Account number" }[type] || "Number / details");
+  const icon = (type) => ({ mobile: Smartphone, bank: Landmark, cash: Banknote, card: CreditCard }[type] || Wallet);
+
+  return (
+    <SettingsCard
+      title="Payment methods"
+      desc="How customers can pay you. Switched-on methods appear on the payment form, on invoices under “How to pay” and in invoice SMS. Changes apply when you save."
+      aside={<button type="button" className="button button-primary" onClick={add}><Plus size={14} /> Add method</button>}
+    >
+      <div className="pm-list">
+        {methods.map((method, index) => {
+          const Icon = icon(method.type);
+          return (
+            <div key={method.id} className={`pm-row ${method.enabled ? "" : "off"}`}>
+              <div className="pm-head">
+                <span className="set-row-icon"><Icon size={15} /></span>
+                <input className="pm-name" value={method.name} maxLength={30} placeholder="Method name, e.g. HaloPesa" onChange={(event) => update(method.id, { name: event.target.value })} aria-label={`Payment method ${index + 1} name`} />
+                <select value={method.type} onChange={(event) => update(method.id, { type: event.target.value })} aria-label={`${method.name || "Method"} type`}>
+                  {PAYMENT_METHOD_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <span className="pm-tools">
+                  <button type="button" className="report-icon-button" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move ${method.name} up`} title="Move up"><ArrowUp size={13} /></button>
+                  <button type="button" className="report-icon-button" onClick={() => move(index, 1)} disabled={index === methods.length - 1} aria-label={`Move ${method.name} down`} title="Move down"><ArrowDown size={13} /></button>
+                  <button type="button" className="report-icon-button cat-delete" onClick={() => remove(method)} aria-label={`Remove ${method.name}`} title="Remove"><Trash2 size={13} /></button>
+                  <SettingSwitch checked={method.enabled} onChange={(value) => update(method.id, { enabled: value })} label={`${method.name || "Method"} on or off`} />
+                </span>
+              </div>
+              {["mobile", "bank", "other"].includes(method.type) && (
+                <div className={`pm-fields ${method.type === "bank" ? "bank" : ""}`}>
+                  {method.type === "bank" && (
+                    <label className="set-field"><span>Bank</span><input value={method.provider} maxLength={40} list="pm-banks" placeholder="e.g. CRDB Bank" onChange={(event) => update(method.id, { provider: event.target.value })} /></label>
+                  )}
+                  <label className="set-field"><span>{numberLabel(method.type)}</span><input value={method.number} maxLength={40} inputMode={method.type === "other" ? "text" : "numeric"} placeholder={method.type === "mobile" ? "e.g. 5123456" : method.type === "bank" ? "e.g. 0150 1234 5678 00" : ""} onChange={(event) => update(method.id, { number: event.target.value })} /></label>
+                  <label className="set-field"><span>{method.type === "bank" ? "Account name" : "Registered name"}</span><input value={method.accountName} maxLength={60} onChange={(event) => update(method.id, { accountName: event.target.value })} /></label>
+                </div>
+              )}
+              <p className="pm-preview"><Eye size={12} /> On invoices: <b>{method.name || "—"}</b> · {paymentMethodDetail(method)}{method.enabled ? "" : " (hidden while off)"}</p>
+            </div>
+          );
+        })}
+      </div>
+      <datalist id="pm-banks">{["CRDB Bank", "NMB Bank", "NBC Bank", "Equity Bank", "Stanbic Bank", "Exim Bank", "Azania Bank", "DTB Bank"].map((bank) => <option key={bank} value={bank} />)}</datalist>
+      {error}
+      {confirmDialog}
     </SettingsCard>
   );
 }
@@ -6577,40 +6646,7 @@ function SettingsPage({ onLogout, session, settingsResource }) {
 
         {active === "payments" && (
           <>
-            <SettingsCard title="Payment methods" desc="Methods customers can use. Shown on invoices and receipts.">
-              <div className="set-methods">
-                {[["payMpesa", "M-Pesa", Smartphone], ["payTigo", "Tigo Pesa", Smartphone], ["payAirtel", "Airtel Money", Smartphone], ["payCash", "Cash", Banknote], ["payBank", "Bank transfer", Landmark], ["payCard", "Card", CreditCard]].map(([key, label, Icon]) => (
-                  <button key={key} type="button" className={`set-method ${draft[key] ? "on" : ""}`} onClick={() => set(key)(!draft[key])} aria-pressed={draft[key]}>
-                    <span className="set-row-icon"><Icon size={15} /></span>
-                    <strong>{label}</strong>
-                    <span className="set-check">{draft[key] && <Check size={12} />}</span>
-                  </button>
-                ))}
-              </div>
-            </SettingsCard>
-
-            <SettingsCard title="Mobile money & bank details" desc="Printed on invoices under “How to pay” and sent in invoice SMS. Turned-off methods are hidden.">
-              <div className="set-pay-numbers">
-                {[["payMpesa", "M-Pesa", "lipaNumber", "lipaName", "e.g. 5123456"], ["payTigo", "Tigo Pesa", "tigoNumber", "tigoName", "e.g. 6123456"], ["payAirtel", "Airtel Money", "airtelNumber", "airtelName", "e.g. 7123456"]].map(([flag, label, numberKey, nameKey, example]) => (
-                  <div key={flag} className={`set-pay-row ${draft[flag] ? "" : "off"}`}>
-                    <span className="set-pay-label"><Smartphone size={14} /> {label}{!draft[flag] && <em>Off</em>}</span>
-                    <label className="set-field"><span>Lipa Namba</span><input {...bind(numberKey)} placeholder={example} inputMode="numeric" disabled={!draft[flag]} /></label>
-                    <label className="set-field"><span>Registered name</span><input {...bind(nameKey)} disabled={!draft[flag]} /></label>
-                  </div>
-                ))}
-                <div className={`set-pay-row bank ${draft.payBank ? "" : "off"}`}>
-                  <span className="set-pay-label"><Landmark size={14} /> Bank transfer{!draft.payBank && <em>Off</em>}</span>
-                  <label className="set-field">
-                    <span>Bank</span>
-                    <select {...bind("bankName")} disabled={!draft.payBank}>
-                      {["CRDB Bank", "NMB Bank", "NBC Bank", "Equity Bank", "Stanbic Bank", "Exim Bank"].map((option) => <option key={option}>{option}</option>)}
-                    </select>
-                  </label>
-                  <label className="set-field"><span>Account number</span><input {...bind("bankAccountNumber")} placeholder="e.g. 0150 1234 5678 00" inputMode="numeric" disabled={!draft.payBank} /></label>
-                  <label className="set-field"><span>Account name</span><input {...bind("bankAccountName")} disabled={!draft.payBank} /></label>
-                </div>
-              </div>
-            </SettingsCard>
+            <PaymentMethodsEditor methods={draft.paymentMethods || []} onChange={set("paymentMethods")} error={error("paymentMethods")} />
 
             <SettingsCard title="Currency & tax">
               <div className="set-toggle-row">
@@ -6752,7 +6788,7 @@ const settingsFieldSection = {
   firstName: "account", lastName: "account", accountEmail: "account",
   smsSender: "notifications",
   depositPercent: "policies", refundPercent: "policies",
-  vatRate: "payments", tithePercent: "payments",
+  vatRate: "payments", tithePercent: "payments", paymentMethods: "payments",
 };
 
 function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle, onLogout, session }) {

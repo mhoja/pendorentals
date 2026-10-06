@@ -1,11 +1,9 @@
 import { query, transaction } from '../config/db.js';
 import { HttpError, addDays, cleanText, formatDate, formatTSh, isIsoDate, isWhole, prettyPhone, todayIso } from '../utils/helpers.js';
 import { loadOrder, nextCode } from '../services/orders.service.js';
-import { fillTemplate, getSettings } from '../services/settings.service.js';
+import { enabledPaymentMethods, fillTemplate, getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
 import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
-
-const METHODS = ['M-Pesa', 'Tigo Pesa', 'Airtel Money', 'Cash', 'Bank transfer', 'Card'];
 
 async function refreshInvoiceStatus(db, invoiceId) {
     if (!invoiceId) return;
@@ -89,12 +87,10 @@ export async function sendInvoice(request, response) {
     if (invoice.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
     const settings = await getSettings();
     const { rows: [person] } = await query('select first_name, phone from customers where id = $1', [invoice.customerId]);
-    const howToPay = [
-        settings.payMpesa && settings.lipaNumber ? `M-Pesa Lipa ${settings.lipaNumber}` : '',
-        settings.payTigo && settings.tigoNumber ? `Tigo Pesa Lipa ${settings.tigoNumber}` : '',
-        settings.payAirtel && settings.airtelNumber ? `Airtel Money Lipa ${settings.airtelNumber}` : '',
-        settings.payBank && settings.bankAccountNumber ? `${settings.bankName} ${settings.bankAccountNumber}` : '',
-    ].filter(Boolean).join(', ');
+    const howToPay = enabledPaymentMethods(settings)
+        .filter((method) => method.number)
+        .map((method) => (method.type === 'mobile' ? `${method.name} Lipa ${method.number}` : `${method.provider || method.name} ${method.number}`))
+        .join(', ');
     const amountText = invoice.balance > 0
         ? `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${howToPay ? ` Pay via ${howToPay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`
         : 'Fully paid - asante!';
@@ -125,7 +121,7 @@ export async function updateInvoice(request, response) {
 // GET /api/payments
 export async function listPayments(_request, response) {
     const { rows } = await query(`${PAYMENT_SELECT} order by p.paid_on desc, p.id desc`);
-    response.json({ payments: rows.map(shapePayment), methods: METHODS });
+    response.json({ payments: rows.map(shapePayment), methods: enabledPaymentMethods(await getSettings()).map((method) => method.name) });
 }
 
 // POST /api/payments
@@ -133,7 +129,8 @@ export async function recordPayment(request, response) {
     const body = request.body || {};
     const amount = Number(body.amount);
     if (!isWhole(amount, 1, 1e10)) throw new HttpError(400, 'Enter the amount received.', { fields: { amount: 'Enter an amount.' } });
-    if (!METHODS.includes(body.method)) throw new HttpError(400, 'Choose the payment method.', { fields: { method: 'Choose a method.' } });
+    const methods = enabledPaymentMethods(await getSettings()).map((method) => method.name);
+    if (!methods.includes(body.method)) throw new HttpError(400, 'Choose the payment method.', { fields: { method: 'Choose a method.' } });
     const paidOn = isIsoDate(body.paidOn) ? body.paidOn : todayIso();
     if (paidOn > todayIso()) throw new HttpError(400, 'The payment date cannot be in the future.', { fields: { paidOn: 'Not in the future.' } });
 

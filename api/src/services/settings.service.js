@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { HttpError } from '../utils/helpers.js';
 
 export const DEFAULT_SETTINGS = {
     businessName: 'Pendo Rentals',
@@ -60,6 +61,15 @@ export const DEFAULT_SETTINGS = {
     receiptPrefix: 'RCT-',
     invoicePrefix: 'INV-',
     receiptFooter: 'Thank you for renting with Pendo. Please keep this receipt for your records.',
+    // Editable in Settings → Payments & receipts. Types: mobile (Lipa Namba), bank, cash, card, other.
+    paymentMethods: [
+        { id: 'mpesa', name: 'M-Pesa', type: 'mobile', provider: '', number: '', accountName: 'Pendo Rentals', enabled: true },
+        { id: 'tigo', name: 'Tigo Pesa', type: 'mobile', provider: '', number: '', accountName: 'Pendo Rentals', enabled: true },
+        { id: 'airtel', name: 'Airtel Money', type: 'mobile', provider: '', number: '', accountName: 'Pendo Rentals', enabled: true },
+        { id: 'bank', name: 'Bank transfer', type: 'bank', provider: 'CRDB Bank', number: '', accountName: 'Pendo Rentals', enabled: true },
+        { id: 'cash', name: 'Cash', type: 'cash', provider: '', number: '', accountName: '', enabled: true },
+        { id: 'card', name: 'Card', type: 'card', provider: '', number: '', accountName: '', enabled: false },
+    ],
     smsTemplates: {
         bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed. Total: {total}. Help: {phone}',
         outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}. Help: {phone}',
@@ -68,14 +78,54 @@ export const DEFAULT_SETTINGS = {
     },
 };
 
+export const PAYMENT_METHOD_TYPES = ['mobile', 'bank', 'cash', 'card', 'other'];
+
+// Settings saved before methods were editable kept on/off flags and numbers per method.
+function legacyPaymentMethods(stored) {
+    const flag = (key, fallback) => (stored[key] === undefined ? fallback : Boolean(stored[key]));
+    return [
+        { id: 'mpesa', name: 'M-Pesa', type: 'mobile', provider: '', number: stored.lipaNumber || '', accountName: stored.lipaName ?? 'Pendo Rentals', enabled: flag('payMpesa', true) },
+        { id: 'tigo', name: 'Tigo Pesa', type: 'mobile', provider: '', number: stored.tigoNumber || '', accountName: stored.tigoName ?? 'Pendo Rentals', enabled: flag('payTigo', true) },
+        { id: 'airtel', name: 'Airtel Money', type: 'mobile', provider: '', number: stored.airtelNumber || '', accountName: stored.airtelName ?? 'Pendo Rentals', enabled: flag('payAirtel', true) },
+        { id: 'bank', name: 'Bank transfer', type: 'bank', provider: stored.bankName || 'CRDB Bank', number: stored.bankAccountNumber || '', accountName: stored.bankAccountName ?? 'Pendo Rentals', enabled: flag('payBank', true) },
+        { id: 'cash', name: 'Cash', type: 'cash', provider: '', number: '', accountName: '', enabled: flag('payCash', true) },
+        { id: 'card', name: 'Card', type: 'card', provider: '', number: '', accountName: '', enabled: flag('payCard', false) },
+    ];
+}
+
 export async function getSettings(db = { query }) {
     const { rows } = await db.query("select value from settings where key = 'workspace'");
     const stored = rows[0]?.value || {};
     return {
         ...DEFAULT_SETTINGS,
         ...stored,
+        paymentMethods: Array.isArray(stored.paymentMethods) ? stored.paymentMethods : legacyPaymentMethods(stored),
         smsTemplates: { ...DEFAULT_SETTINGS.smsTemplates, ...(stored.smsTemplates || {}) },
     };
+}
+
+export const enabledPaymentMethods = (settings) => (settings.paymentMethods || []).filter((method) => method.enabled);
+
+// Validates the editable list of payment methods.
+function sanitizePaymentMethods(input) {
+    if (!Array.isArray(input) || input.length === 0) throw new HttpError(400, 'Add at least one payment method.');
+    if (input.length > 20) throw new HttpError(400, 'Up to 20 payment methods.');
+    const text = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const methods = input.map((raw, index) => ({
+        id: text(raw?.id, 40) || `method-${index + 1}`,
+        name: text(raw?.name, 30),
+        type: PAYMENT_METHOD_TYPES.includes(raw?.type) ? raw.type : 'other',
+        provider: text(raw?.provider, 40),
+        number: text(raw?.number, 40),
+        accountName: text(raw?.accountName, 60),
+        enabled: Boolean(raw?.enabled),
+    }));
+    methods.forEach((method, index) => {
+        if (method.name.length < 2) throw new HttpError(400, `Payment method ${index + 1} needs a name.`);
+        if (methods.findIndex((other) => other.name.toLowerCase() === method.name.toLowerCase()) !== index) throw new HttpError(400, `“${method.name}” is listed twice.`);
+    });
+    if (!methods.some((method) => method.enabled)) throw new HttpError(400, 'Keep at least one payment method switched on.');
+    return methods;
 }
 
 // Only keys that exist in the defaults, with the same type, are stored.
@@ -83,6 +133,10 @@ export function sanitizeSettings(input) {
     const clean = {};
     for (const [key, fallback] of Object.entries(DEFAULT_SETTINGS)) {
         if (input?.[key] === undefined) continue;
+        if (key === 'paymentMethods') {
+            clean.paymentMethods = sanitizePaymentMethods(input.paymentMethods);
+            continue;
+        }
         if (key === 'smsTemplates') {
             clean.smsTemplates = Object.fromEntries(
                 Object.keys(DEFAULT_SETTINGS.smsTemplates)
