@@ -3635,8 +3635,8 @@ const invoiceStyles = `
   .totals td:last-child { text-align: right; font-weight: 600; }
   .totals .grand td { padding-top: 10px; border-top: 2px solid #1c2a3f; font-size: 14px; font-weight: 800; }
   .totals .paid td { color: #1f9a6a; }
-  .due { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: #10305e; color: #fff; }
-  .due span { color: #c9d8f0; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+  .due { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: #2674ed; color: #fff; }
+  .due span { color: #dbe8fd; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
   .due strong { color: #fff; font: 800 18px "Manrope", Arial, sans-serif; }
   .due.settled { background: #e6f6ee; }
   .due.settled span, .due.settled strong { color: #1f8a5b; }
@@ -3780,9 +3780,9 @@ async function downloadInvoicePdf(detail, settings = {}) {
   text(`${invoice.paid ? "- " : ""}${money(invoice.paid)}`, right, y, { size: 9, color: [31, 154, 106], align: "right" });
   y += 4;
   const settled = invoice.balance <= 0 || invoice.status === "Cancelled";
-  pdf.setFillColor(...(settled ? [230, 246, 238] : [16, 48, 94]));
+  pdf.setFillColor(...(settled ? [230, 246, 238] : blue));
   pdf.roundedRect(totalsX - 3, y, right - totalsX + 3, 12, 2, 2, "F");
-  text(invoice.status === "Cancelled" ? "CANCELLED" : settled ? "PAID IN FULL" : "BALANCE DUE", totalsX, y + 7.6, { size: 8, bold: true, color: settled ? [31, 138, 91] : [201, 216, 240] });
+  text(invoice.status === "Cancelled" ? "CANCELLED" : settled ? "PAID IN FULL" : "BALANCE DUE", totalsX, y + 7.6, { size: 8, bold: true, color: settled ? [31, 138, 91] : [219, 232, 253] });
   text(money(invoice.status === "Cancelled" ? 0 : invoice.balance), right - 2, y + 8, { size: 12, bold: true, color: settled ? [31, 138, 91] : [255, 255, 255], align: "right" });
 
   let infoY = pdf.lastAutoTable.finalY + 8;
