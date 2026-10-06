@@ -1,5 +1,5 @@
 import { query, transaction } from '../config/db.js';
-import { HttpError, addDays, cleanText, formatTSh, isIsoDate, isWhole, todayIso } from '../utils/helpers.js';
+import { HttpError, addDays, cleanText, formatDate, formatTSh, isIsoDate, isWhole, prettyPhone, todayIso } from '../utils/helpers.js';
 import { loadOrder, nextCode } from '../services/orders.service.js';
 import { fillTemplate, getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
@@ -58,6 +58,47 @@ export async function createInvoice(request, response) {
     });
     const { rows: [row] } = await query(`${INVOICE_SELECT} where i.id = $1`, [id]);
     response.status(201).json({ invoice: shapeInvoice(row) });
+}
+
+async function loadInvoice(id) {
+    const { rows: [row] } = Number.isInteger(id) ? await query(`${INVOICE_SELECT} where i.id = $1`, [id]) : { rows: [] };
+    if (!row) throw new HttpError(404, 'Invoice not found.');
+    return row;
+}
+
+// GET /api/invoices/:id — everything needed to show, print or send the invoice.
+export async function getInvoice(request, response) {
+    const row = await loadInvoice(Number(request.params.id));
+    const [order, payments, customer] = await Promise.all([
+        row.order_code ? loadOrder(row.order_code) : null,
+        query(`${PAYMENT_SELECT} where p.invoice_id = $1 order by p.paid_on, p.id`, [row.id]),
+        query('select first_name, last_name, phone, email, area, place from customers where id = $1', [row.customer_id]),
+    ]);
+    const person = customer.rows[0] || {};
+    response.json({
+        invoice: shapeInvoice(row),
+        order,
+        payments: payments.rows.map(shapePayment),
+        customer: { name: `${person.first_name} ${person.last_name}`, phone: prettyPhone(person.phone), email: person.email || '', area: person.area || '', place: person.place || '' },
+    });
+}
+
+// POST /api/invoices/:id/send — SMS the invoice summary and how to pay.
+export async function sendInvoice(request, response) {
+    const invoice = shapeInvoice(await loadInvoice(Number(request.params.id)));
+    if (invoice.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
+    const settings = await getSettings();
+    const { rows: [person] } = await query('select first_name, phone from customers where id = $1', [invoice.customerId]);
+    const howToPay = [
+        settings.payMpesa && settings.lipaNumber ? `M-Pesa Lipa ${settings.lipaNumber} (${settings.lipaName})` : '',
+        settings.payBank && settings.bankAccountNumber ? `${settings.bankName} ${settings.bankAccountNumber}` : '',
+    ].filter(Boolean).join(' or ');
+    const amountText = invoice.balance > 0
+        ? `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${howToPay ? ` Pay via ${howToPay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`
+        : 'Fully paid - asante!';
+    const message = `Hi ${person.first_name}, ${settings.businessName} invoice ${invoice.code}${invoice.orderCode ? ` for ${invoice.orderCode}` : ''}: total ${formatTSh(invoice.amount)}, paid ${formatTSh(invoice.paid)}. ${amountText} Help: ${settings.phone}`;
+    const sms = await sendSms(person.phone, message, { kind: 'invoice', orderId: null });
+    response.json({ sms: { status: sms.status, error: sms.error }, message });
 }
 
 // PATCH /api/invoices/:id

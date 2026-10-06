@@ -650,22 +650,27 @@ function receiptMarkup(payment) {
     </section>`;
 }
 
-function printReceipts(payments) {
+// Prints a complete HTML document through a hidden iframe.
+function printHtml(html) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
   document.body.appendChild(frame);
   const frameDocument = frame.contentDocument;
   frameDocument.open();
-  frameDocument.write(`<!doctype html><html><head><meta charset="utf-8" /><title>Pendo receipts</title><style>${receiptPrintStyles}</style></head><body>${payments.map(receiptMarkup).join("")}</body></html>`);
+  frameDocument.write(html);
   frameDocument.close();
-  const cleanup = () => setTimeout(() => frame.remove(), 500);
-  frame.contentWindow.onafterprint = cleanup;
-  setTimeout(() => {
+  frame.contentWindow.onafterprint = () => setTimeout(() => frame.remove(), 500);
+  const fontsReady = frameDocument.fonts?.ready || Promise.resolve();
+  Promise.race([fontsReady, new Promise((resolve) => setTimeout(resolve, 1200))]).then(() => {
     frame.contentWindow.focus();
     frame.contentWindow.print();
     setTimeout(() => frame.isConnected && frame.remove(), 60000);
-  }, 150);
+  });
+}
+
+function printReceipts(payments) {
+  printHtml(`<!doctype html><html><head><meta charset="utf-8" /><title>Pendo receipts</title><style>${receiptPrintStyles}</style></head><body>${payments.map(receiptMarkup).join("")}</body></html>`);
 }
 
 async function downloadReceiptPdf(payment) {
@@ -1706,6 +1711,7 @@ function WorkspaceShell({ session, onLogout }) {
   const [inventoryStatus, setInventoryStatus] = useState("loading");
   const [inventoryAddOpen, setInventoryAddOpen] = useState(false);
   const [customerAddOpen, setCustomerAddOpen] = useState(false);
+  const [invoiceAddOpen, setInvoiceAddOpen] = useState(false);
 
   const loadInventory = useCallback(() => {
     setInventoryStatus("loading");
@@ -1783,7 +1789,7 @@ function WorkspaceShell({ session, onLogout }) {
     );
   } else if (activePage === "Orders") content = <OrdersPage query={query} settings={settings} startCreate={startCreate} onCreateHandled={() => setStartCreate(null)} />;
   else if (activePage === "Customers") content = <CustomersPage query={query} onNewOrder={(customer) => openNewOrder(customer)} addOpen={customerAddOpen} setAddOpen={setCustomerAddOpen} />;
-  else if (activePage === "Invoices") content = <InvoicesPage query={query} settings={settings} />;
+  else if (activePage === "Invoices") content = <InvoicesPage query={query} settings={settings} addOpen={invoiceAddOpen} setAddOpen={setInvoiceAddOpen} />;
   else if (activePage === "Finance") content = <FinancePage query={query} session={session} />;
   else if (activePage === "SMS & Notifications") content = <MessagingPage session={session} settingsResource={settingsRes} />;
   else if (activePage === "Reports") content = <ReportsPage />;
@@ -1858,6 +1864,9 @@ function WorkspaceShell({ session, onLogout }) {
             <div className="welcome-actions">
               {activePage === "Inventory" && canEditInventory && (
                 <button className="button button-primary" onClick={() => setInventoryAddOpen(true)}><Plus size={17} /> Add items</button>
+              )}
+              {activePage === "Invoices" && isManager(session) && (
+                <button className="button button-primary" onClick={() => setInvoiceAddOpen(true)}><Plus size={17} /> Create invoice</button>
               )}
               {activePage === "Customers" && isManager(session) && (
                 <button className="button button-primary" onClick={() => setCustomerAddOpen(true)}><Plus size={17} /> Add customer</button>
@@ -3260,6 +3269,7 @@ function CustomerProfile({ customerId, onClose, onEdit, onMessage, onNewOrder, o
   const profile = useResource(`/customers/${customerId}?v=${reloadKey}`);
   const [tab, setTab] = useState("Orders");
   const [receipt, setReceipt] = useState(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(null);
   const data = profile.data;
   const customer = data?.customer;
   const paid = customer?.spent || 0;
@@ -3341,7 +3351,7 @@ function CustomerProfile({ customerId, onClose, onEdit, onMessage, onNewOrder, o
                     <td>{formatShillings(invoice.amount)}</td>
                     <td>{invoice.balance ? <b className="cust-due">{formatShillings(invoice.balance)}</b> : "—"}</td>
                     <td><StatusPill tone={invoiceTone(invoice.status)}>{invoice.status}</StatusPill></td>
-                    <td><button type="button" className="report-icon-button" onClick={() => downloadInvoicePdf(invoice)} title="Download PDF" aria-label={`Download ${invoice.code}`}><Download size={13} /></button></td>
+                    <td><button type="button" className="report-icon-button" onClick={() => setInvoiceOpen(invoice.id)} title="View invoice" aria-label={`View ${invoice.code}`}><Eye size={13} /></button></td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -3374,6 +3384,7 @@ function CustomerProfile({ customerId, onClose, onEdit, onMessage, onNewOrder, o
         </div>
       )}
       {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+      {invoiceOpen && <InvoiceView invoiceId={invoiceOpen} onClose={() => setInvoiceOpen(null)} onChanged={profile.reload} />}
     </WsModal>
   );
 }
@@ -3550,58 +3561,368 @@ function CustomersPage({ query, onNewOrder, addOpen, setAddOpen }) {
 }
 
 // ===== Invoices =====
-async function downloadInvoicePdf(invoice) {
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ format: "a5" });
+// ===== Invoice document (screen, print and PDF share the same content) =====
+const INVOICE_STAMPS = { Paid: ["PAID", "#1f9a6a"], "Partially paid": ["PART PAID", "#c4851f"], Overdue: ["OVERDUE", "#d0443c"], Unpaid: ["UNPAID", "#2674ed"], Cancelled: ["CANCELLED", "#8592a6"] };
+
+// Lines, totals and payment details for an invoice, from GET /api/invoices/:id plus settings.
+function invoiceContent({ invoice, order, payments, customer }, settings = {}) {
+  const days = order?.days || 1;
+  const items = (order?.items || []).map((item, index) => ({
+    no: index + 1,
+    name: item.custom || itemLabel(item.name),
+    quantity: item.quantity,
+    rate: item.rate,
+    days,
+    amount: item.lineTotal,
+  }));
+  const subtotal = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const delivery = order?.deliveryFee || 0;
+  const discount = order?.discount || 0;
+  const computed = Math.max(0, subtotal + delivery - discount);
+  const adjustment = order && order.priced ? invoice.amount - computed : 0;
+  const totals = [
+    ["Items subtotal", subtotal],
+    ...(delivery ? [["Delivery", delivery]] : []),
+    ...(discount ? [["Discount", -discount]] : []),
+    ...(adjustment ? [["Adjustment", adjustment]] : []),
+  ];
+  const howToPay = [
+    ...(settings.payMpesa !== false && settings.lipaNumber ? [["M-Pesa · Lipa Namba", `${settings.lipaNumber}${settings.lipaName ? ` · ${settings.lipaName}` : ""}`]] : []),
+    ...(settings.payBank !== false && settings.bankAccountNumber ? [[settings.bankName || "Bank", `${settings.bankAccountNumber}${settings.bankAccountName ? ` · ${settings.bankAccountName}` : ""}`]] : []),
+  ];
+  const methods = PAYMENT_METHODS.filter(([key]) => settings[key] !== false).map(([, label]) => label);
+  const event = order ? `${orderDates(order)} · ${days} day${days === 1 ? "" : "s"}` : "—";
+  const venue = order ? [order.place, order.area].filter(Boolean).join(", ") : [customer?.place, customer?.area].filter(Boolean).join(", ");
+  const business = {
+    name: settings.businessName || BUSINESS_INFO.name,
+    tagline: settings.tagline || "",
+    address: [settings.address, settings.region, "Tanzania"].filter(Boolean).join(", ") || BUSINESS_INFO.address,
+    phone: settings.phone || BUSINESS_INFO.phone,
+    email: settings.email || BUSINESS_INFO.email,
+    tin: settings.tin || "",
+  };
+  return { invoice, order, payments: payments || [], customer: customer || {}, items, totals, howToPay, methods, event, venue, business, stamp: INVOICE_STAMPS[invoice.status] || INVOICE_STAMPS.Unpaid };
+}
+
+const invoiceStyles = `
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #1c2a3f; font: 400 12px/1.5 "DM Sans", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .screen { padding: 24px; background: #eef2f7; }
+  .screen .sheet { max-width: 794px; margin: 0 auto; padding: 40px 44px; background: #fff; border-radius: 6px; box-shadow: 0 6px 30px #0f23401f; }
+  .top { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 3px solid #2674ed; }
+  .brand strong { display: block; font: 800 26px "Manrope", Arial, sans-serif; letter-spacing: -.6px; }
+  .brand strong span { color: #2674ed; }
+  .brand small { display: block; color: #6b7a90; font-size: 11px; }
+  .title { text-align: right; }
+  .title b { display: block; color: #2674ed; font: 800 24px "Manrope", Arial, sans-serif; letter-spacing: 3px; }
+  .title em { display: block; margin-top: 2px; font-style: normal; font-size: 15px; font-weight: 700; }
+  .stamp { display: inline-block; margin-top: 8px; padding: 3px 10px; border: 2px solid currentColor; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; transform: rotate(-4deg); }
+  .parties { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin: 22px 0; }
+  .parties h4, .block h4 { margin: 0 0 6px; color: #8492a6; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .parties p { margin: 0; color: #4b5d77; font-size: 11.5px; }
+  .parties p strong { display: block; color: #1c2a3f; font-size: 13px; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 11.5px; }
+  .facts dt { color: #8492a6; }
+  .facts dd { margin: 0; color: #1c2a3f; font-weight: 600; text-align: right; }
+  table { width: 100%; border-collapse: collapse; }
+  .items th { padding: 9px 10px; background: #eef5ff; color: #2a4a78; font-size: 10px; font-weight: 700; letter-spacing: .6px; text-align: left; text-transform: uppercase; }
+  .items td { padding: 10px; border-bottom: 1px solid #edf1f6; font-size: 12px; vertical-align: top; }
+  .items .num { text-align: right; white-space: nowrap; }
+  .items .muted { color: #9aa6b6; }
+  .summary { display: grid; grid-template-columns: 1fr 300px; gap: 28px; margin-top: 18px; align-items: start; }
+  .totals td { padding: 5px 0; font-size: 12px; }
+  .totals td:last-child { text-align: right; font-weight: 600; }
+  .totals .grand td { padding-top: 10px; border-top: 2px solid #1c2a3f; font-size: 14px; font-weight: 800; }
+  .totals .paid td { color: #1f9a6a; }
+  .due { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: #10305e; color: #fff; }
+  .due span { color: #c9d8f0; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+  .due strong { color: #fff; font: 800 18px "Manrope", Arial, sans-serif; }
+  .due.settled { background: #e6f6ee; }
+  .due.settled span, .due.settled strong { color: #1f8a5b; }
+  .block { margin-top: 18px; padding: 12px 14px; border: 1px solid #e3eaf3; border-radius: 8px; }
+  .block p { margin: 3px 0; color: #4b5d77; font-size: 11.5px; }
+  .block p b { color: #1c2a3f; }
+  .payments td, .payments th { padding: 6px 8px; font-size: 11px; text-align: left; border-bottom: 1px solid #edf1f6; }
+  .payments th { color: #8492a6; font-weight: 700; }
+  .payments .num { text-align: right; }
+  .foot { margin-top: 26px; padding-top: 12px; border-top: 1px dashed #c9d3e0; color: #6b7a90; font-size: 10.5px; text-align: center; }
+  @media print { .screen { padding: 0; background: #fff; } .screen .sheet { max-width: none; padding: 0; box-shadow: none; } }
+`;
+
+function invoiceHtml(detail, settings, { screen = false } = {}) {
+  const c = invoiceContent(detail, settings);
+  const { invoice } = c;
+  const money = (value) => escapeHtml(value === null || value === undefined ? "—" : formatShillings(value));
+  const policy = [settings?.depositPercent ? `A ${settings.depositPercent}% deposit confirms the booking.` : "", settings?.damagePolicy || ""].filter(Boolean).join(" ");
+  const nameParts = c.business.name.split(" ");
+  return `<!doctype html><html><head><meta charset="utf-8" /><title>${escapeHtml(invoice.code)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Manrope:wght@700;800&display=swap" />
+<style>${invoiceStyles}</style></head><body class="${screen ? "screen" : ""}"><div class="sheet">
+  <header class="top">
+    <div class="brand">
+      <strong>${escapeHtml(nameParts[0])}<span>${escapeHtml(nameParts.slice(1).join(" ").toLowerCase() || "")}</span></strong>
+      ${c.business.tagline ? `<small>${escapeHtml(c.business.tagline)}</small>` : ""}
+    </div>
+    <div class="title">
+      <b>INVOICE</b>
+      <em>${escapeHtml(invoice.code)}</em>
+      <span class="stamp" style="color:${c.stamp[1]}">${c.stamp[0]}</span>
+    </div>
+  </header>
+  <section class="parties">
+    <div><h4>From</h4><p><strong>${escapeHtml(c.business.name)}</strong>${escapeHtml(c.business.address)}<br />${escapeHtml(c.business.phone)}<br />${escapeHtml(c.business.email)}${c.business.tin ? `<br />TIN ${escapeHtml(c.business.tin)}` : ""}</p></div>
+    <div><h4>Bill to</h4><p><strong>${escapeHtml(c.customer.name || invoice.customer)}</strong>${escapeHtml(c.customer.phone || invoice.phone)}${c.customer.email ? `<br />${escapeHtml(c.customer.email)}` : ""}${c.venue ? `<br />${escapeHtml(c.venue)}` : ""}</p></div>
+    <div><h4>Invoice details</h4><dl class="facts">
+      <dt>Issued</dt><dd>${escapeHtml(shortDate(invoice.issuedOn))}</dd>
+      <dt>Due</dt><dd>${escapeHtml(shortDate(invoice.dueOn))}</dd>
+      <dt>Order</dt><dd>${escapeHtml(invoice.orderCode || "—")}</dd>
+      <dt>Event</dt><dd>${escapeHtml(c.event)}</dd>
+    </dl></div>
+  </section>
+  <table class="items">
+    <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Rate / day</th><th class="num">Days</th><th class="num">Amount</th></tr></thead>
+    <tbody>${c.items.length ? c.items.map((item) => `<tr><td class="muted">${item.no}</td><td>${escapeHtml(item.name)}</td><td class="num">${item.quantity.toLocaleString("en-US")}</td><td class="num">${money(item.rate)}</td><td class="num">${item.days}</td><td class="num">${money(item.amount)}</td></tr>`).join("") : `<tr><td colspan="6" class="muted">Rental services for ${escapeHtml(invoice.orderCode || "this booking")}</td></tr>`}</tbody>
+  </table>
+  <section class="summary">
+    <div>
+      ${c.howToPay.length || c.methods.length ? `<div class="block"><h4>How to pay</h4>${c.howToPay.map(([label, value]) => `<p>${escapeHtml(label)}: <b>${escapeHtml(value)}</b></p>`).join("")}${c.methods.length ? `<p>We accept ${escapeHtml(c.methods.join(", "))}.</p>` : ""}<p>Please quote <b>${escapeHtml(invoice.code)}</b> as the payment reference.</p></div>` : ""}
+      ${invoice.notes ? `<div class="block"><h4>Notes</h4><p>${escapeHtml(invoice.notes)}</p></div>` : ""}
+      ${policy ? `<div class="block"><h4>Terms</h4><p>${escapeHtml(policy)}</p></div>` : ""}
+    </div>
+    <div>
+      <table class="totals"><tbody>
+        ${c.totals.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${value < 0 ? "− " : ""}${money(Math.abs(value))}</td></tr>`).join("")}
+        <tr class="grand"><td>Invoice total</td><td>${money(invoice.amount)}</td></tr>
+        <tr class="paid"><td>Paid</td><td>${invoice.paid ? "− " : ""}${money(invoice.paid)}</td></tr>
+      </tbody></table>
+      <div class="due ${invoice.balance > 0 ? "" : "settled"}"><span>${invoice.status === "Cancelled" ? "Cancelled" : invoice.balance > 0 ? "Balance due" : "Paid in full"}</span><strong>${money(invoice.status === "Cancelled" ? 0 : invoice.balance)}</strong></div>
+    </div>
+  </section>
+  ${c.payments.length ? `<div class="block"><h4>Payments received</h4><table class="payments"><thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th>Status</th><th class="num">Amount</th></tr></thead><tbody>${c.payments.map((payment) => `<tr><td>${escapeHtml(payment.receipt)}</td><td>${escapeHtml(shortDate(payment.date))}</td><td>${escapeHtml(payment.method)}</td><td>${escapeHtml(payment.status)}</td><td class="num">${money(payment.amount)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  <div class="foot">Thank you for renting with ${escapeHtml(c.business.name)}. Questions? Call ${escapeHtml(c.business.phone)}.</div>
+</div></body></html>`;
+}
+
+function printInvoice(detail, settings) {
+  printHtml(invoiceHtml(detail, settings));
+}
+
+async function downloadInvoicePdf(detail, settings = {}) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  const c = invoiceContent(detail, settings);
+  const { invoice } = c;
+  const pdf = new jsPDF({ format: "a4" });
   const width = pdf.internal.pageSize.getWidth();
-  pdf.setFillColor(38, 116, 237);
-  pdf.rect(0, 0, width, 4, "F");
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(18);
-  pdf.setTextColor(28, 42, 63);
-  pdf.text("Pendo", 12, 18);
-  pdf.setTextColor(38, 116, 237);
-  pdf.text("rentals", 12 + pdf.getTextWidth("Pendo"), 18);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(8);
-  pdf.setTextColor(107, 122, 144);
-  pdf.text(`${BUSINESS_INFO.address} · ${BUSINESS_INFO.phone} · ${BUSINESS_INFO.email}`, 12, 24);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(9);
-  pdf.setTextColor(38, 116, 237);
-  pdf.text("INVOICE", width - 12, 14, { align: "right" });
-  pdf.setFontSize(12);
-  pdf.setTextColor(28, 42, 63);
-  pdf.text(invoice.code, width - 12, 20, { align: "right" });
-  pdf.setDrawColor(38, 116, 237);
-  pdf.setLineWidth(0.6);
-  pdf.line(12, 30, width - 12, 30);
-  const rows = [["BILL TO", invoice.customer], ["PHONE", invoice.phone], ["ORDER", invoice.orderCode || "—"], ["ISSUED", shortDate(invoice.issuedOn)], ["DUE", shortDate(invoice.dueOn)], ["STATUS", invoice.status]];
-  rows.forEach(([label, value], index) => {
-    const x = index % 2 === 0 ? 12 : width / 2 + 2;
-    const y = 40 + Math.floor(index / 2) * 14;
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(7);
-    pdf.setTextColor(132, 146, 166);
-    pdf.text(label, x, y);
-    pdf.setFontSize(10);
-    pdf.setTextColor(28, 42, 63);
-    pdf.text(String(value), x, y + 5);
+  const left = 14;
+  const right = width - 14;
+  const ink = [28, 42, 63];
+  const muted = [107, 122, 144];
+  const blue = [38, 116, 237];
+  const text = (value, x, y, { size = 9, bold = false, color = ink, align = "left" } = {}) => {
+    pdf.setFont("helvetica", bold ? "bold" : "normal");
+    pdf.setFontSize(size);
+    pdf.setTextColor(...color);
+    pdf.text(String(value), x, y, { align });
+  };
+  const nameParts = c.business.name.split(" ");
+  text(nameParts[0], left, 20, { size: 20, bold: true });
+  text(nameParts.slice(1).join(" ").toLowerCase(), left + pdf.getTextWidth(nameParts[0]) + 0.5, 20, { size: 20, bold: true, color: blue });
+  if (c.business.tagline) text(c.business.tagline, left, 26, { size: 8, color: muted });
+  text("INVOICE", right, 18, { size: 18, bold: true, color: blue, align: "right" });
+  text(invoice.code, right, 25, { size: 11, bold: true, align: "right" });
+  const stampColor = c.stamp[1].match(/\w\w/g).map((hex) => parseInt(hex, 16));
+  text(c.stamp[0], right, 31, { size: 8, bold: true, color: stampColor, align: "right" });
+  pdf.setDrawColor(...blue);
+  pdf.setLineWidth(0.8);
+  pdf.line(left, 35, right, 35);
+
+  const column = (x, title, lines) => {
+    text(title.toUpperCase(), x, 44, { size: 7, bold: true, color: muted });
+    lines.forEach((line, index) => text(line, x, 50 + index * 5, { size: index === 0 ? 10 : 8.5, bold: index === 0, color: index === 0 ? ink : [75, 93, 119] }));
+  };
+  const third = (right - left) / 3;
+  column(left, "From", [c.business.name, c.business.address, c.business.phone, c.business.email, c.business.tin ? `TIN ${c.business.tin}` : ""].filter(Boolean));
+  column(left + third, "Bill to", [c.customer.name || invoice.customer, c.customer.phone || invoice.phone, c.customer.email, c.venue].filter(Boolean));
+  text("INVOICE DETAILS", left + third * 2, 44, { size: 7, bold: true, color: muted });
+  [["Issued", shortDate(invoice.issuedOn)], ["Due", shortDate(invoice.dueOn)], ["Order", invoice.orderCode || "—"], ["Event", c.event]].forEach(([label, value], index) => {
+    text(label, left + third * 2, 50 + index * 5, { size: 8.5, color: muted });
+    text(value, right, 50 + index * 5, { size: 8.5, bold: true, align: "right" });
   });
-  const lines = [["Invoice amount", invoice.amount], ["Paid", invoice.paid], ["Balance due", invoice.balance]];
-  lines.forEach(([label, value], index) => {
-    const y = 92 + index * 9;
-    pdf.setFont("helvetica", index === 2 ? "bold" : "normal");
-    pdf.setFontSize(index === 2 ? 12 : 10);
-    pdf.setTextColor(index === 2 ? 16 : 75, index === 2 ? 48 : 93, index === 2 ? 94 : 119);
-    pdf.text(label, 12, y);
-    pdf.text(formatShillings(value), width - 12, y, { align: "right" });
+
+  const money = (value) => (value === null || value === undefined ? "—" : formatShillings(value));
+  autoTable(pdf, {
+    startY: 78,
+    margin: { left, right: 14 },
+    head: [["#", "Item", "Qty", "Rate / day", "Days", "Amount"]],
+    body: c.items.length ? c.items.map((item) => [item.no, item.name, item.quantity.toLocaleString("en-US"), money(item.rate), item.days, money(item.amount)]) : [["", `Rental services for ${invoice.orderCode || "this booking"}`, "", "", "", ""]],
+    theme: "plain",
+    styles: { font: "helvetica", fontSize: 9, cellPadding: 2.6, textColor: ink, lineColor: [237, 241, 246], lineWidth: { bottom: 0.2 } },
+    headStyles: { fillColor: [238, 245, 255], textColor: [42, 74, 120], fontStyle: "bold", fontSize: 7.5 },
+    columnStyles: { 0: { cellWidth: 8, textColor: muted }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right", cellWidth: 14 }, 5: { halign: "right" } },
+    didParseCell: (cell) => { if (cell.section === "head" && cell.column.index >= 2) cell.cell.styles.halign = "right"; },
   });
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(8);
-  pdf.setTextColor(107, 122, 144);
-  pdf.text("Pay by M-Pesa, cash or bank transfer and quote the invoice number.", width / 2, 130, { align: "center" });
-  pdf.save(`pendo-invoice-${invoice.code.toLowerCase()}.pdf`);
+  let y = pdf.lastAutoTable.finalY + 8;
+  const totalsX = right - 72;
+  c.totals.forEach(([label, value]) => {
+    text(label, totalsX, y, { size: 9, color: [75, 93, 119] });
+    text(`${value < 0 ? "- " : ""}${money(Math.abs(value))}`, right, y, { size: 9, align: "right" });
+    y += 5.5;
+  });
+  pdf.setDrawColor(...ink);
+  pdf.setLineWidth(0.5);
+  pdf.line(totalsX, y - 2, right, y - 2);
+  y += 3;
+  text("Invoice total", totalsX, y, { size: 10.5, bold: true });
+  text(money(invoice.amount), right, y, { size: 10.5, bold: true, align: "right" });
+  y += 6;
+  text("Paid", totalsX, y, { size: 9, color: [31, 154, 106] });
+  text(`${invoice.paid ? "- " : ""}${money(invoice.paid)}`, right, y, { size: 9, color: [31, 154, 106], align: "right" });
+  y += 4;
+  const settled = invoice.balance <= 0 || invoice.status === "Cancelled";
+  pdf.setFillColor(...(settled ? [230, 246, 238] : [16, 48, 94]));
+  pdf.roundedRect(totalsX - 3, y, right - totalsX + 3, 12, 2, 2, "F");
+  text(invoice.status === "Cancelled" ? "CANCELLED" : settled ? "PAID IN FULL" : "BALANCE DUE", totalsX, y + 7.6, { size: 8, bold: true, color: settled ? [31, 138, 91] : [201, 216, 240] });
+  text(money(invoice.status === "Cancelled" ? 0 : invoice.balance), right - 2, y + 8, { size: 12, bold: true, color: settled ? [31, 138, 91] : [255, 255, 255], align: "right" });
+
+  let infoY = pdf.lastAutoTable.finalY + 8;
+  const infoWidth = totalsX - left - 12;
+  const infoBlock = (title, lines) => {
+    if (!lines.length) return;
+    text(title.toUpperCase(), left, infoY, { size: 7, bold: true, color: muted });
+    infoY += 5;
+    lines.forEach((line) => {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8.5);
+      const wrapped = pdf.splitTextToSize(line, infoWidth);
+      pdf.setTextColor(75, 93, 119);
+      pdf.text(wrapped, left, infoY);
+      infoY += wrapped.length * 4.2;
+    });
+    infoY += 4;
+  };
+  infoBlock("How to pay", [...c.howToPay.map(([label, value]) => `${label}: ${value}`), ...(c.methods.length ? [`We accept ${c.methods.join(", ")}.`] : []), `Please quote ${invoice.code} as the payment reference.`]);
+  if (invoice.notes) infoBlock("Notes", [invoice.notes]);
+
+  y = Math.max(y + 22, infoY + 4);
+  if (c.payments.length) {
+    text("PAYMENTS RECEIVED", left, y, { size: 7, bold: true, color: muted });
+    autoTable(pdf, {
+      startY: y + 2,
+      margin: { left, right: 14 },
+      head: [["Receipt", "Date", "Method", "Status", "Amount"]],
+      body: c.payments.map((payment) => [payment.receipt, shortDate(payment.date), payment.method, payment.status, money(payment.amount)]),
+      theme: "plain",
+      styles: { fontSize: 8, cellPadding: 1.8, textColor: ink, lineColor: [237, 241, 246], lineWidth: { bottom: 0.2 } },
+      headStyles: { textColor: muted, fontStyle: "bold" },
+      columnStyles: { 4: { halign: "right" } },
+      didParseCell: (cell) => { if (cell.section === "head" && cell.column.index === 4) cell.cell.styles.halign = "right"; },
+    });
+    y = pdf.lastAutoTable.finalY + 10;
+  }
+  pdf.setDrawColor(201, 211, 224);
+  pdf.setLineDashPattern([1, 1], 0);
+  pdf.line(left, y, right, y);
+  pdf.setLineDashPattern([], 0);
+  text(`Thank you for renting with ${c.business.name}. Questions? Call ${c.business.phone}.`, width / 2, y + 6, { size: 8, color: muted, align: "center" });
+  pdf.save(`${c.business.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-invoice-${invoice.code.toLowerCase()}.pdf`);
+}
+
+// Invoice viewer with print, PDF, SMS, payment, edit and cancel.
+function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
+  const { call } = useApi();
+  const [version, setVersion] = useState(0);
+  const detail = useResource(`/invoices/${invoiceId}?v=${version}`);
+  const settingsRes = useResource("/settings");
+  const settings = settingsRes.data?.settings || {};
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ dueOn: "", notes: "" });
+  const [busy, setBusy] = useState("");
+  const [toast, setToast] = useToast();
+  const [ask, confirmDialog] = useConfirm();
+  const frameRef = useRef(null);
+  const data = detail.data;
+  const invoice = data?.invoice;
+  const html = useMemo(() => (data ? invoiceHtml(data, settings, { screen: true }) : ""), [data, settings]);
+  const refresh = () => { setVersion((value) => value + 1); onChanged?.(); };
+
+  function fitFrame() {
+    const frame = frameRef.current;
+    if (frame?.contentDocument?.body) frame.style.height = `${frame.contentDocument.documentElement.scrollHeight}px`;
+  }
+
+  async function act(name, work) {
+    setBusy(name);
+    try {
+      await work();
+    } catch (error) {
+      setToast(error.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const sendSms = () => act("sms", async () => {
+    if (!(await ask({ title: `SMS ${invoice.code} to ${invoice.customer}?`, message: `${invoice.phone} gets the invoice total, amount paid${invoice.balance > 0 ? `, the balance of ${formatShillings(invoice.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }))) return;
+    const result = await call(`/invoices/${invoice.id}/send`, { method: "POST" });
+    setToast(result.sms.status === "sent" ? `Invoice sent to ${invoice.phone}` : `SMS not sent (${result.sms.status === "not_configured" ? "SMS not set up" : result.sms.error || "failed"})`);
+  });
+
+  const saveEdit = (event) => {
+    event.preventDefault();
+    act("edit", async () => {
+      if (!(await ask({ title: `Save changes to ${invoice.code}?`, message: `Due ${shortDate(form.dueOn)}${form.notes ? " · notes updated" : ""}.`, confirmLabel: "Yes, save" }))) return;
+      await call(`/invoices/${invoice.id}`, { method: "PATCH", body: { dueOn: form.dueOn, notes: form.notes } });
+      setEditing(false);
+      setToast(`${invoice.code} updated`);
+      refresh();
+    });
+  };
+
+  const cancelInvoice = () => act("cancel", async () => {
+    if (!(await ask({ title: `Cancel invoice ${invoice.code}?`, message: `${invoice.customer} will no longer owe ${formatShillings(invoice.amount)} on this invoice.`, confirmLabel: "Yes, cancel invoice", danger: true }))) return;
+    await call(`/invoices/${invoice.id}`, { method: "PATCH", body: { cancel: true } });
+    setToast(`${invoice.code} cancelled`);
+    refresh();
+  });
+
+  return (
+    <WsModal title={invoice ? `Invoice ${invoice.code}` : "Invoice"} kicker={invoice ? `${invoice.customer} · ${invoice.orderCode || "No order"}` : "INVOICES"} onClose={onClose} wide className="inv-view-modal">
+      {!data ? (
+        <div className="inv-view-body"><LoadState status={detail.status} error={detail.error} onRetry={detail.reload} /></div>
+      ) : (
+        <>
+          <div className="inv-view-bar">
+            <div className="inv-view-sum">
+              <StatusPill tone={invoiceTone(invoice.status)}>{invoice.status}</StatusPill>
+              <span>Total <b>{formatShillings(invoice.amount)}</b></span>
+              <span>Paid <b>{formatShillings(invoice.paid)}</b></span>
+              <span className={invoice.balance > 0 ? "due" : ""}>Balance <b>{formatShillings(invoice.balance)}</b></span>
+            </div>
+            <div className="inv-view-actions">
+              <button type="button" className="button button-secondary" onClick={() => printInvoice(data, settings)}><Printer size={14} /> Print</button>
+              <button type="button" className="button button-secondary" onClick={() => act("pdf", () => downloadInvoicePdf(data, settings))} disabled={busy === "pdf"}><Download size={14} /> PDF</button>
+              {invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
+              {invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={() => { setForm({ dueOn: String(invoice.dueOn).slice(0, 10), notes: invoice.notes }); setEditing((value) => !value); }}><PencilLine size={14} /> Edit</button>}
+              {onRecordPayment && invoice.balance > 0 && invoice.status !== "Cancelled" && <button type="button" className="button button-primary" onClick={() => onRecordPayment(invoice, refresh)}><Banknote size={14} /> Record payment</button>}
+              {invoice.status !== "Cancelled" && invoice.paid === 0 && <button type="button" className="button button-secondary cust-danger" onClick={cancelInvoice} disabled={busy === "cancel"}><X size={14} /> Cancel</button>}
+            </div>
+          </div>
+          {editing && (
+            <form className="inv-view-edit" onSubmit={saveEdit}>
+              <label className="set-field"><span>Due date</span><input type="date" value={form.dueOn} onChange={(event) => setForm({ ...form, dueOn: event.target.value })} /></label>
+              <label className="set-field"><span>Notes on the invoice <em>Optional</em></span><input value={form.notes} maxLength={300} placeholder="e.g. Deposit received at booking" onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+              <button type="submit" className="button button-primary" disabled={busy === "edit" || !form.dueOn}><Save size={14} /> Save</button>
+              <button type="button" className="button button-secondary" onClick={() => setEditing(false)}>Close</button>
+            </form>
+          )}
+          <iframe ref={frameRef} className="inv-view-frame" title={`Invoice ${invoice.code}`} srcDoc={html} onLoad={fitFrame} />
+        </>
+      )}
+      {confirmDialog}
+      {toast}
+    </WsModal>
+  );
 }
 
 function InvoiceCreateModal({ onClose, onSaved }) {
@@ -3610,6 +3931,7 @@ function InvoiceCreateModal({ onClose, onSaved }) {
   const [orderCode, setOrderCode] = useState("");
   const [amount, setAmount] = useState("");
   const [dueOn, setDueOn] = useState(shiftIsoDate(localTodayIso(), 7));
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const candidates = (orders.data?.orders || []).filter((order) => !order.invoice && order.status !== "Cancelled");
@@ -3625,7 +3947,7 @@ function InvoiceCreateModal({ onClose, onSaved }) {
     setBusy(true);
     setError("");
     try {
-      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn } });
+      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn, notes } });
       onSaved(data.invoice);
     } catch (saveError) {
       setError(saveError.message);
@@ -3633,7 +3955,7 @@ function InvoiceCreateModal({ onClose, onSaved }) {
     }
   }
   return (
-    <WsModal title="Create invoice" kicker="INVOICES" onClose={onClose} busy={busy}>
+    <WsModal title="Create invoice" kicker="INVOICES" onClose={onClose} busy={busy} className="inv-create-modal">
       <form className="team-form" onSubmit={save} noValidate>
         <label className="set-field">
           <span>Order</span>
@@ -3646,6 +3968,15 @@ function InvoiceCreateModal({ onClose, onSaved }) {
           <label className="set-field"><span>Amount (TSh)</span><input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={selected && selected.total === null ? "Enter amount" : ""} /></label>
           <label className="set-field"><span>Due date</span><input type="date" value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label>
         </div>
+        {selected && (
+          <div className="inv-create-summary">
+            <div><small>Customer</small><strong>{selected.customer.name}</strong><em>{selected.customer.phone}</em></div>
+            <div><small>Event</small><strong>{orderDates(selected)}</strong><em>{selected.place || selected.area || "—"}</em></div>
+            <div><small>Order total</small><strong>{selected.total === null ? "Not priced" : formatShillings(selected.total)}</strong><em>{selected.paid ? `${formatShillings(selected.paid)} already paid` : "Nothing paid yet"}</em></div>
+            <p title={orderItemsText(selected.items)}>{orderItemsText(selected.items)}</p>
+          </div>
+        )}
+        <label className="set-field"><span>Notes on the invoice <em>Optional</em></span><input value={notes} maxLength={300} onChange={(event) => setNotes(event.target.value)} placeholder="e.g. Deposit received at booking" /></label>
         {selected && selected.total === null && <p className="team-form-note"><Info size={13} /> This order has no prices yet — enter the invoice amount, or price the order first.</p>}
         {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
         <div className="modal-actions">
@@ -3658,7 +3989,7 @@ function InvoiceCreateModal({ onClose, onSaved }) {
   );
 }
 
-function InvoicesPage({ query, settings }) {
+function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
   const { call } = useApi();
   const invoices = useResource("/invoices");
   const [status, setStatus] = useState("All");
@@ -3667,8 +3998,33 @@ function InvoicesPage({ query, settings }) {
   const [creating, setCreating] = useState(false);
   const [paying, setPaying] = useState(null);
   const [receipt, setReceipt] = useState(null);
+  const [viewing, setViewing] = useState(null);
   const [toast, setToast] = useToast();
   const list = invoices.data?.invoices || [];
+  const today = localTodayIso();
+
+  useEffect(() => {
+    if (addOpen) {
+      setCreating(true);
+      setAddOpen(false);
+    }
+  }, [addOpen, setAddOpen]);
+  const daysBetween = (from, to) => Math.round((new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86400000);
+  const dueNote = (invoice) => {
+    if (invoice.status === "Paid") return "Paid";
+    if (invoice.status === "Cancelled") return "Cancelled";
+    const days = daysBetween(today, String(invoice.dueOn).slice(0, 10));
+    if (days < 0) return `${-days} day${days === -1 ? "" : "s"} overdue`;
+    return days === 0 ? "Due today" : `Due in ${days} day${days === 1 ? "" : "s"}`;
+  };
+  async function withDetail(invoice, use) {
+    try {
+      const data = await call(`/invoices/${invoice.id}`);
+      await use(data);
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
   // Search and date filters; the status tabs and cards count within this set.
   const scoped = list.filter((invoice) => issued.matches(invoice.issuedOn)
@@ -3705,7 +4061,6 @@ function InvoicesPage({ query, settings }) {
             <DateRangeFilter range={issued} label="Issued" />
             <ClearFiltersButton active={invoicesFiltered} onClear={clearInvoiceFilters} />
             <ExportMenu title="Invoices" columns={["Invoice", "Order", "Customer", "Issued", "Due", "Amount", "Paid", "Balance", "Status"]} rows={rows.map((invoice) => [invoice.code, invoice.orderCode || "", invoice.customer, invoice.issuedOn, invoice.dueOn, formatShillings(invoice.amount), formatShillings(invoice.paid), formatShillings(invoice.balance), invoice.status])} />
-            <button className="button button-primary inv-add-button" onClick={() => setCreating(true)}><Plus size={16} /> Create invoice</button>
           </div>
         </div>
         <LoadState status={invoices.status} error={invoices.error} onRetry={invoices.reload} empty={invoices.status === "ready" && list.length === 0 ? "No invoices yet" : ""} emptyIcon={Receipt} emptyText="Create an invoice from any priced order." />
@@ -3713,11 +4068,19 @@ function InvoicesPage({ query, settings }) {
           <>
             <DataTable
               columns={[
-                { key: "code", label: "INVOICE", render: (row) => <div className="ws-two-line"><strong className="report-id">{row.code}</strong><small>{row.orderCode || "No order"}</small></div> },
+                { key: "code", label: "INVOICE", render: (row) => <button type="button" className="inv-open" onClick={() => setViewing(row.id)} title="Open invoice"><span className="inv-open-icon"><FileText size={15} /></span><span className="ws-two-line"><strong className="report-id">{row.code}</strong><small>{row.orderCode || "No order"}</small></span></button> },
                 { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer}</strong><small>{row.phone}</small></div> },
                 { key: "issuedOn", label: "ISSUED", render: (row) => <span className="team-muted">{shortDate(row.issuedOn)}</span> },
-                { key: "dueOn", label: "DUE", render: (row) => <span className="team-muted">{shortDate(row.dueOn)}</span> },
-                { key: "amount", label: "AMOUNT", render: (row) => <div className="ws-two-line"><strong>{formatShillings(row.amount)}</strong><small>{row.balance ? `${formatShillings(row.balance)} due` : "Settled"}</small></div> },
+                { key: "dueOn", label: "DUE", render: (row) => <div className="ws-two-line"><span className="team-muted">{shortDate(row.dueOn)}</span><small className={`inv-due-note ${row.status === "Overdue" ? "late" : row.status === "Paid" ? "done" : ""}`}>{dueNote(row)}</small></div> },
+                { key: "amount", label: "AMOUNT", render: (row) => {
+                  const percent = row.amount ? Math.min(100, Math.round((row.paid / row.amount) * 100)) : 0;
+                  return (
+                    <div className="inv-pay-cell">
+                      <div className="inv-pay-line"><strong>{formatShillings(row.amount)}</strong><small>{row.status === "Cancelled" ? "Cancelled" : row.balance ? `${formatShillings(row.balance)} due` : "Settled"}</small></div>
+                      <span className="inv-pay-bar" title={`${percent}% paid`}><i style={{ width: `${percent}%` }} /></span>
+                    </div>
+                  );
+                } },
                 { key: "status", label: "STATUS", render: (row) => <StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill> },
               ]}
               rows={rows}
@@ -3725,8 +4088,16 @@ function InvoicesPage({ query, settings }) {
               totalCount={list.length}
               rowKey="id"
               renderActions={(row) => [
+                { label: "View invoice", onClick: () => setViewing(row.id) },
+                { label: "Print", onClick: () => withDetail(row, (data) => printInvoice(data, settings)) },
+                { label: "Download PDF", onClick: () => withDetail(row, (data) => downloadInvoicePdf(data, settings)) },
+                ...(row.status !== "Cancelled" ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
+                  try {
+                    const result = await call(`/invoices/${row.id}/send`, { method: "POST" });
+                    setToast(result.sms.status === "sent" ? `${row.code} sent to ${row.phone}` : `SMS not sent (${result.sms.status === "not_configured" ? "SMS not set up" : result.sms.error || "failed"})`);
+                  } catch (error) { setToast(error.message); }
+                } }] : []),
                 ...(row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
-                { label: "Download PDF", onClick: () => downloadInvoicePdf(row) },
                 ...(row.status !== "Cancelled" && row.paid === 0 ? [{ label: "Cancel invoice", danger: true, confirm: { title: `Cancel invoice ${row.code}?`, message: `${row.customer} will no longer owe ${formatShillings(row.amount)} on this invoice.`, confirmLabel: "Yes, cancel invoice" }, onClick: async () => {
                   try {
                     const data = await call(`/invoices/${row.id}`, { method: "PATCH", body: { cancel: true } });
@@ -3740,7 +4111,15 @@ function InvoicesPage({ query, settings }) {
         )}
       </section>
       {creating && <InvoiceCreateModal onClose={() => setCreating(false)} onSaved={(invoice) => { setCreating(false); invoices.setData((current) => ({ ...current, invoices: [invoice, ...current.invoices] })); setToast(`Invoice ${invoice.code} created`); }} />}
-      {paying && <PaymentModal invoice={paying} settings={settings} onClose={() => setPaying(null)} onSaved={(data) => { setPaying(null); invoices.reload(); setReceipt(data.payment); setToast(`Payment ${data.payment.receipt} recorded`); }} />}
+      {viewing && (
+        <InvoiceView
+          invoiceId={viewing}
+          onClose={() => setViewing(null)}
+          onChanged={invoices.reload}
+          onRecordPayment={(invoice, refreshView) => setPaying({ ...invoice, refreshView })}
+        />
+      )}
+      {paying && <PaymentModal invoice={paying} settings={settings} onClose={() => setPaying(null)} onSaved={(data) => { paying.refreshView?.(); setPaying(null); invoices.reload(); setReceipt(data.payment); setToast(`Payment ${data.payment.receipt} recorded`); }} />}
       {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
       {toast}
     </>

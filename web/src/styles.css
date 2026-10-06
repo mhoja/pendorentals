@@ -9737,3 +9737,232 @@ input.caps-input::placeholder {
     outline: 0;
     letter-spacing: .3px;
 }
+
+/* ===== Invoices ===== */
+button.inv-open {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+.inv-open-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    border-radius: 9px;
+    background: #eef5ff;
+    color: #1764dd;
+}
+
+.inv-open-icon svg {
+    color: inherit;
+}
+
+button.inv-open:hover .report-id {
+    text-decoration: underline;
+}
+
+.inv-due-note {
+    color: #8592a6 !important;
+    font-weight: 600;
+}
+
+.inv-due-note.late {
+    color: #c8423a !important;
+}
+
+.inv-due-note.done {
+    color: #1f8a5b !important;
+}
+
+.inv-pay-cell {
+    display: grid;
+    gap: 6px;
+    min-width: 150px;
+}
+
+.inv-pay-line {
+    display: grid;
+    gap: 1px;
+}
+
+.inv-pay-line strong {
+    color: #172a45;
+    font-size: 12.5px;
+}
+
+.inv-pay-line small {
+    color: #8592a6;
+    font-size: 11px;
+}
+
+.inv-pay-bar {
+    position: relative;
+    display: block;
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e6edf6;
+}
+
+.inv-pay-bar i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #2674ed, #1f9a6a);
+}
+
+/* Invoice viewer */
+.inv-view-modal.ws-modal-wide {
+    width: min(980px, 100%) !important;
+}
+
+.inv-view-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 22px;
+    border-bottom: 1px solid #e9eef5;
+    background: #fff;
+}
+
+.inv-view-sum {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    color: #66748a;
+    font-size: 12.5px;
+}
+
+.inv-view-sum b {
+    color: #172a45;
+}
+
+.inv-view-sum .due b {
+    color: #c8423a;
+}
+
+.inv-view-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.inv-view-actions .button {
+    height: 34px;
+    gap: 6px;
+    padding: 0 12px;
+    font: 700 12px 'DM Sans', sans-serif;
+}
+
+.inv-view-actions .button svg {
+    color: inherit;
+}
+
+.inv-view-actions .button.cust-danger {
+    border-color: #f3c9c5;
+    background: #fff;
+    color: #c8423a !important;
+}
+
+.inv-view-edit {
+    display: grid;
+    grid-template-columns: 170px minmax(0, 1fr) auto auto;
+    align-items: end;
+    gap: 10px;
+    padding: 12px 22px;
+    border-bottom: 1px solid #e9eef5;
+    background: #f8fafd;
+}
+
+.inv-view-edit .button {
+    height: 36px;
+    gap: 6px;
+    font: 700 12px 'DM Sans', sans-serif;
+}
+
+.inv-view-frame {
+    display: block;
+    width: 100%;
+    min-height: 600px;
+    border: 0;
+    background: #eef2f7;
+}
+
+.inv-view-body {
+    padding: 24px;
+}
+
+/* Create invoice: order summary */
+.inv-create-modal {
+    width: min(560px, 100%) !important;
+}
+
+.inv-create-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #e3eaf3;
+    border-radius: 10px;
+    background: #f8fafd;
+}
+
+.inv-create-summary div {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.inv-create-summary small {
+    color: #8592a6;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.inv-create-summary strong {
+    color: #172a45;
+    font-size: 12.5px;
+}
+
+.inv-create-summary em {
+    color: #66748a;
+    font-size: 11px;
+    font-style: normal;
+}
+
+.inv-create-summary p {
+    grid-column: 1 / -1;
+    margin: 0;
+    overflow: hidden;
+    color: #4b5d77;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+    .inv-view-edit {
+        grid-template-columns: 1fr;
+    }
+    .inv-create-summary {
+        grid-template-columns: 1fr;
+    }
+    .inv-view-bar {
+        padding: 12px 14px;
+    }
+}
