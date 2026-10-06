@@ -2515,7 +2515,14 @@ const enabledMethods = (settings) => (settings?.paymentMethods || []).filter((me
 // How a customer pays with this method, e.g. "Lipa Namba 5566778 · Pendo Rentals".
 function paymentMethodDetail(method) {
   const owner = method.accountName ? ` · ${method.accountName}` : "";
-  if (method.type === "mobile") return method.number ? `Lipa Namba ${method.number}${owner}` : "Ask us for the number";
+  if (method.type === "mobile") {
+    const payTo = method.payTo || "lipa";
+    const parts = [
+      payTo !== "phone" && method.number ? `Lipa Namba ${method.number}` : "",
+      payTo !== "lipa" && method.phone ? `Send to ${method.phone}` : "",
+    ].filter(Boolean);
+    return parts.length ? `${parts.join(" or ")}${owner}` : "Ask us for the number";
+  }
   if (method.type === "bank") return `${method.provider ? `${method.provider} · ` : ""}${method.number ? `Acc ${method.number}` : "ask us for the account"}${owner}`;
   if (method.number) return `${method.number}${owner}`;
   return method.type === "other" ? "Ask us for details" : "At our office";
@@ -6155,7 +6162,7 @@ function PaymentMethodsEditor({ methods, onChange, error }) {
     [next[index], next[index + step]] = [next[index + step], next[index]];
     onChange(next);
   };
-  const add = () => onChange([...methods, { id: `m${Date.now()}`, name: "", type: "mobile", provider: "", number: "", accountName: BUSINESS_INFO.name, enabled: true }]);
+  const add = () => onChange([...methods, { id: `m${Date.now()}`, name: "", type: "mobile", provider: "", number: "", phone: "", payTo: "lipa", accountName: BUSINESS_INFO.name, enabled: true }]);
   async function remove(method) {
     if (!(await ask({ title: `Remove ${method.name || "this payment method"}?`, message: "It disappears from invoices and the payment form once you save. Past payments keep their method name.", confirmLabel: "Yes, remove", danger: true }))) return;
     onChange(methods.filter((entry) => entry.id !== method.id));
@@ -6187,13 +6194,32 @@ function PaymentMethodsEditor({ methods, onChange, error }) {
                   <SettingSwitch checked={method.enabled} onChange={(value) => update(method.id, { enabled: value })} label={`${method.name || "Method"} on or off`} />
                 </span>
               </div>
-              {["mobile", "bank", "other"].includes(method.type) && (
+              {method.type === "mobile" && (
+                <div className="pm-payto" role="radiogroup" aria-label={`How customers pay with ${method.name || "this method"}`}>
+                  <span>Customers pay by</span>
+                  {[["lipa", "Lipa Namba"], ["phone", "Phone number"], ["both", "Both"]].map(([value, label]) => (
+                    <button key={value} type="button" role="radio" aria-checked={(method.payTo || "lipa") === value} className={(method.payTo || "lipa") === value ? "active" : ""} onClick={() => update(method.id, { payTo: value })}>{label}</button>
+                  ))}
+                </div>
+              )}
+              {method.type === "mobile" && (
+                <div className={`pm-fields ${(method.payTo || "lipa") === "both" ? "bank" : ""}`}>
+                  {(method.payTo || "lipa") !== "phone" && (
+                    <label className="set-field"><span>Lipa Namba</span><input value={method.number} maxLength={40} inputMode="numeric" placeholder="e.g. 5123456" onChange={(event) => update(method.id, { number: event.target.value })} /></label>
+                  )}
+                  {(method.payTo || "lipa") !== "lipa" && (
+                    <label className="set-field"><span>Phone number</span><input value={method.phone || ""} maxLength={20} inputMode="tel" placeholder="e.g. 0622 882 278" onChange={(event) => update(method.id, { phone: event.target.value })} /></label>
+                  )}
+                  <label className="set-field"><span>Registered name</span><input value={method.accountName} maxLength={60} onChange={(event) => update(method.id, { accountName: event.target.value })} /></label>
+                </div>
+              )}
+              {["bank", "other"].includes(method.type) && (
                 <div className={`pm-fields ${method.type === "bank" ? "bank" : ""}`}>
                   {method.type === "bank" && (
                     <label className="set-field"><span>Bank</span><input value={method.provider} maxLength={40} list="pm-banks" placeholder="e.g. CRDB Bank" onChange={(event) => update(method.id, { provider: event.target.value })} /></label>
                   )}
                   <label className="set-field"><span>{numberLabel(method.type)}</span><input value={method.number} maxLength={40} inputMode={method.type === "other" ? "text" : "numeric"} placeholder={method.type === "mobile" ? "e.g. 5123456" : method.type === "bank" ? "e.g. 0150 1234 5678 00" : ""} onChange={(event) => update(method.id, { number: event.target.value })} /></label>
-                  <label className="set-field"><span>{method.type === "bank" ? "Account name" : "Registered name"}</span><input value={method.accountName} maxLength={60} onChange={(event) => update(method.id, { accountName: event.target.value })} /></label>
+                  <label className="set-field"><span>{method.type === "bank" ? "Account name" : "Name"}</span><input value={method.accountName} maxLength={60} onChange={(event) => update(method.id, { accountName: event.target.value })} /></label>
                 </div>
               )}
               <p className="pm-preview"><Eye size={12} /> On invoices: <b>{method.name || "—"}</b> · {paymentMethodDetail(method)}{method.enabled ? "" : " (hidden while off)"}</p>

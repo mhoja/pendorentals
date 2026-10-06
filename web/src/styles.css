@@ -10112,3 +10112,41 @@ button.inv-open:hover .report-id {
         padding-left: 0;
     }
 }
+
+.pm-payto {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding-left: 44px;
+}
+
+.pm-payto span {
+    margin-right: 4px;
+    color: #66748a;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.set-layout .pm-payto button {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid #dbe4f0;
+    border-radius: 999px;
+    background: #fff;
+    color: #4b5d77 !important;
+    font: 700 12px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.set-layout .pm-payto button.active {
+    border-color: #1764dd;
+    background: #eaf2ff;
+    color: #1764dd !important;
+}
+
+@media (max-width: 760px) {
+    .pm-payto {
+        padding-left: 0;
+    }
+}

@@ -87,9 +87,17 @@ export async function sendInvoice(request, response) {
     if (invoice.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
     const settings = await getSettings();
     const { rows: [person] } = await query('select first_name, phone from customers where id = $1', [invoice.customerId]);
+    const mobileText = (method) => {
+        const lipa = method.payTo !== 'phone' && method.number ? `Lipa ${method.number}` : '';
+        const phone = method.payTo !== 'lipa' && method.phone ? `to ${method.phone}` : '';
+        return [lipa, phone].filter(Boolean).join(' or ');
+    };
     const howToPay = enabledPaymentMethods(settings)
-        .filter((method) => method.number)
-        .map((method) => (method.type === 'mobile' ? `${method.name} Lipa ${method.number}` : `${method.provider || method.name} ${method.number}`))
+        .map((method) => {
+            if (method.type === 'mobile') return mobileText(method) ? `${method.name} ${mobileText(method)}` : '';
+            return method.number ? `${method.provider || method.name} ${method.number}` : '';
+        })
+        .filter(Boolean)
         .join(', ');
     const amountText = invoice.balance > 0
         ? `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${howToPay ? ` Pay via ${howToPay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`

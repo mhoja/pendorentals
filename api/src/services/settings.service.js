@@ -118,6 +118,9 @@ function sanitizePaymentMethods(input) {
         provider: text(raw?.provider, 40),
         number: text(raw?.number, 40),
         accountName: text(raw?.accountName, 60),
+        // Mobile money: pay by Lipa Namba, by sending to a phone number, or either.
+        payTo: ['lipa', 'phone', 'both'].includes(raw?.payTo) ? raw.payTo : 'lipa',
+        phone: text(raw?.phone, 20),
         enabled: Boolean(raw?.enabled),
     }));
     methods.forEach((method, index) => {
