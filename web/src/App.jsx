@@ -60,6 +60,7 @@ import {
   CircleCheck,
   CalendarCheck,
   Building2,
+  PencilLine,
   UserPlus,
   Banknote,
   ScrollText,
@@ -1619,14 +1620,16 @@ function WorkspaceShell({ session, onLogout }) {
   const pulse = useResource("/dashboard");
 
   const [inventoryItems, setInventoryItems] = useState([]);
+  const [inventoryCategories, setInventoryCategories] = useState([]);
   const [inventoryStatus, setInventoryStatus] = useState("loading");
   const [inventoryAddOpen, setInventoryAddOpen] = useState(false);
 
   const loadInventory = useCallback(() => {
     setInventoryStatus("loading");
     call("/inventory")
-      .then(({ items }) => {
+      .then(({ items, categories }) => {
         setInventoryItems(items);
+        setInventoryCategories(categories || []);
         setInventoryStatus("ready");
       })
       .catch(() => setInventoryStatus("error"));
@@ -1654,6 +1657,7 @@ function WorkspaceShell({ session, onLogout }) {
     setMobileNav(false);
     setQuery("");
     if (label === "Overview") pulse.reload();
+    if (label === "Inventory") loadInventory();
   }
 
   function openNewOrder(customer) {
@@ -1685,6 +1689,7 @@ function WorkspaceShell({ session, onLogout }) {
         query={query}
         items={inventoryItems}
         setItems={setInventoryItems}
+        categories={inventoryCategories}
         status={inventoryStatus}
         reload={loadInventory}
         addOpen={inventoryAddOpen}
@@ -1789,10 +1794,47 @@ function WorkspaceShell({ session, onLogout }) {
   );
 }
 
-const INVENTORY_CATEGORIES = [
-  "Tents", "Chairs", "Tables", "Seat covers", "Lighting", "Carpets", "Sound (PA & mics)",
-  "Screens & cameras", "Light boxes", "Utensils", "Décor", "Other",
-];
+// Categories (and their optional dimension fields) come from the API; see Settings → Inventory categories.
+const findCategory = (categories, name) => categories.find((category) => category.name === name);
+
+function dimensionText(item, categories) {
+  const fields = findCategory(categories, item.category)?.dimensions || [];
+  return fields
+    .filter((field) => item.dimensions?.[field.key] !== undefined)
+    .map((field) => `${field.label} ${Number(item.dimensions[field.key]).toLocaleString("en-US")}${field.unit ? ` ${field.unit}` : ""}`)
+    .join(" · ");
+}
+
+function cleanDimensions(values, fields) {
+  return Object.fromEntries(fields.filter((field) => values?.[field.key] !== undefined && values[field.key] !== "").map((field) => [field.key, Number(values[field.key])]));
+}
+
+function DimensionInputs({ fields, values, onChange, idPrefix }) {
+  if (!fields?.length) return null;
+  return (
+    <div className="inv-dims">
+      <span className="inv-dims-label">Dimensions <em>optional</em></span>
+      {fields.map((field) => (
+        <label key={field.key} className="inv-dim">
+          <span>{field.label}</span>
+          <span className="inv-dim-input">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={values?.[field.key] ?? ""}
+              onChange={(event) => onChange({ ...values, [field.key]: event.target.value })}
+              aria-label={`${idPrefix} ${field.label}${field.unit ? ` in ${field.unit}` : ""}`}
+            />
+            {field.unit && <i>{field.unit}</i>}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 
 const categoryIcons = {
   Tents: Tent,
@@ -1811,7 +1853,7 @@ const categoryIcons = {
 
 const formatShillings = (value) => `TSh ${Number(value || 0).toLocaleString("en-US")}`;
 
-const blankInventoryRow = () => ({ key: `${Date.now()}-${Math.random()}`, name: "", category: "", rate: "", quantity: "", sku: "" });
+const blankInventoryRow = () => ({ key: `${Date.now()}-${Math.random()}`, name: "", category: "", rate: "", quantity: "", sku: "", dimensions: {} });
 
 function validateInventoryRow(row) {
   const errors = {};
@@ -1820,10 +1862,11 @@ function validateInventoryRow(row) {
   if (row.rate === "" || !Number.isInteger(Number(row.rate)) || Number(row.rate) < 0) errors.rate = "Whole TSh";
   if (row.quantity === "" || !Number.isInteger(Number(row.quantity)) || Number(row.quantity) < 0) errors.quantity = "Whole number";
   if (row.sku && !/^[A-Za-z0-9-]{2,20}$/.test(row.sku.trim())) errors.sku = "Letters, numbers, -";
+  if (Object.values(row.dimensions || {}).some((value) => value !== "" && !(Number(value) >= 0))) errors.dimensions = "Dimensions must be positive numbers";
   return errors;
 }
 
-function InventoryAddModal({ onClose, onSave }) {
+function InventoryAddModal({ onClose, onSave, categories }) {
   const [rows, setRows] = useState([blankInventoryRow()]);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1868,6 +1911,7 @@ function InventoryAddModal({ onClose, onSave }) {
         rate: Number(row.rate),
         quantity: Number(row.quantity),
         ...(row.sku.trim() ? { sku: row.sku.trim() } : {}),
+        dimensions: cleanDimensions(row.dimensions, findCategory(categories, row.category)?.dimensions || []),
       })));
     } catch (saveError) {
       setRows(toSave);
@@ -1913,12 +1957,12 @@ function InventoryAddModal({ onClose, onSave }) {
                   <select
                     className="inv-cell"
                     value={row.category}
-                    onChange={(event) => updateRow(row.key, "category", event.target.value)}
+                    onChange={(event) => setRows((current) => current.map((entry) => (entry.key === row.key ? { ...entry, category: event.target.value, dimensions: {} } : entry)))}
                     aria-label={`Item ${index + 1} category`}
                     aria-invalid={Boolean(errors.category)}
                   >
                     <option value="" disabled>Category</option>
-                    {INVENTORY_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
+                    {categories.map((category) => <option key={category.id}>{category.name}</option>)}
                   </select>
                   <input
                     className="inv-cell"
@@ -1967,6 +2011,12 @@ function InventoryAddModal({ onClose, onSave }) {
                   >
                     <X size={14} />
                   </button>
+                  <DimensionInputs
+                    fields={findCategory(categories, row.category)?.dimensions}
+                    values={row.dimensions}
+                    onChange={(dimensions) => updateRow(row.key, "dimensions", dimensions)}
+                    idPrefix={`Item ${index + 1}`}
+                  />
                   {submitted && Object.keys(errors).length > 0 && (
                     <small className="inv-row-error"><CircleAlert size={11} /> {Object.values(errors).join(" · ")}</small>
                   )}
@@ -1992,8 +2042,12 @@ function InventoryAddModal({ onClose, onSave }) {
   );
 }
 
-function InventoryEditModal({ item, onClose, onSave }) {
-  const [form, setForm] = useState({ name: item.name, category: item.category, rate: String(item.rate), quantity: String(item.quantity), sku: item.sku, status: item.status });
+function InventoryEditModal({ item, onClose, onSave, categories }) {
+  const [form, setForm] = useState({
+    name: item.name, category: item.category, rate: String(item.rate), quantity: String(item.quantity), sku: item.sku, status: item.status,
+    dimensions: Object.fromEntries(Object.entries(item.dimensions || {}).map(([key, value]) => [key, String(value)])),
+  });
+  const dimensionFields = findCategory(categories, form.category)?.dimensions || [];
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -2011,7 +2065,7 @@ function InventoryEditModal({ item, onClose, onSave }) {
     setSaving(true);
     setError("");
     try {
-      await onSave({ name: form.name.trim(), category: form.category, rate: Number(form.rate), quantity: Number(form.quantity), sku: form.sku.trim(), status: form.status });
+      await onSave({ name: form.name.trim(), category: form.category, rate: Number(form.rate), quantity: Number(form.quantity), sku: form.sku.trim(), status: form.status, dimensions: cleanDimensions(form.dimensions, dimensionFields) });
     } catch (saveError) {
       setError(saveError.message);
       setSaving(false);
@@ -2033,7 +2087,7 @@ function InventoryEditModal({ item, onClose, onSave }) {
             <label className="set-field set-span-2"><span>Item name</span><input {...bind("name")} maxLength={60} /></label>
             <label className="set-field">
               <span>Category</span>
-              <select {...bind("category")}>{INVENTORY_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select>
+              <select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value, dimensions: {} }))}>{categories.map((category) => <option key={category.id}>{category.name}</option>)}</select>
             </label>
             <label className="set-field"><span>SKU</span><input {...bind("sku")} maxLength={20} /></label>
             <label className="set-field"><span>Daily rate (TSh)</span><input type="number" min="0" {...bind("rate")} /></label>
@@ -2043,6 +2097,7 @@ function InventoryEditModal({ item, onClose, onSave }) {
               <select {...bind("status")}><option>Available</option><option>Maintenance</option></select>
             </label>
           </div>
+          <DimensionInputs fields={dimensionFields} values={form.dimensions} onChange={(dimensions) => setForm((current) => ({ ...current, dimensions }))} idPrefix="Item" />
           {submitted && Object.keys(errors).length > 0 && <p className="inv-form-error"><CircleAlert size={14} /> {Object.values(errors).join(" · ")}</p>}
           {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
           <div className="modal-actions">
@@ -2095,7 +2150,7 @@ function InventoryConfirmDelete({ item, onClose, onConfirm }) {
   );
 }
 
-function InventoryManager({ session, query, items, setItems, status, reload, addOpen, setAddOpen, onUnauthorized, canEdit = true }) {
+function InventoryManager({ session, query, items, setItems, categories = [], status, reload, addOpen, setAddOpen, onUnauthorized, canEdit = true }) {
   const [statusFilter, setStatusFilter] = useState("All items");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [search, setSearch] = useState("");
@@ -2128,7 +2183,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
   const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
   const dailyValue = items.filter((item) => item.status === "Available").reduce((sum, item) => sum + item.rate * item.quantity, 0);
   const maintenance = items.filter((item) => item.status === "Maintenance").length;
-  const usedCategories = INVENTORY_CATEGORIES.filter((category) => items.some((item) => item.category === category));
+  const usedCategories = categories.filter((category) => items.some((item) => item.category === category.name));
   const filtersActive = search || statusFilter !== "All items" || categoryFilter !== "All categories";
 
   return (
@@ -2169,7 +2224,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
               <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or SKU" aria-label="Search inventory" />
             </label>
             <select className="inv-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
-              {["All categories", ...INVENTORY_CATEGORIES].map((option) => <option key={option}>{option}</option>)}
+              {["All categories", ...categories.map((category) => category.name)].map((option) => <option key={option}>{option}</option>)}
             </select>
             {canEdit && (
               <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}>
@@ -2202,7 +2257,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
                     return (
                       <div className="inv-item-cell">
                         <span className="inv-item-icon"><Icon size={18} /></span>
-                        <span><strong>{row.name}</strong><small>{row.sku}</small></span>
+                        <span><strong>{row.name}</strong><small>{row.sku}</small>{dimensionText(row, categories) && <em className="inv-dims-text">{dimensionText(row, categories)}</em>}</span>
                       </div>
                     );
                   },
@@ -2247,6 +2302,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
 
       {addOpen && (
         <InventoryAddModal
+          categories={categories}
           onClose={() => setAddOpen(false)}
           onSave={async (newItems) => {
             const { items: created } = await call("/inventory", { method: "POST", body: { items: newItems } });
@@ -2259,6 +2315,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
       {editing && (
         <InventoryEditModal
           item={editing}
+          categories={categories}
           onClose={() => setEditing(null)}
           onSave={async (changes) => {
             const { item } = await call(`/inventory/${editing.id}`, { method: "PATCH", body: changes });
@@ -4879,6 +4936,7 @@ const settingsSections = [
   { id: "profile", icon: Building2, title: "Business profile", desc: "Name, contacts and opening hours" },
   { id: "account", icon: UserCog, title: "Account & security", desc: "Your profile and password" },
   { id: "notifications", icon: Bell, title: "Notifications", desc: "Team alerts and customer SMS" },
+  { id: "categories", icon: Layers, title: "Inventory categories", desc: "Categories and their dimensions" },
   { id: "policies", icon: ScrollText, title: "Rental policies", desc: "Deposits, fees and returns" },
   { id: "payments", icon: CreditCard, title: "Payments & receipts", desc: "Methods, tax and receipt format" },
   { id: "integrations", icon: Plug, title: "Integrations", desc: "SMS, M-Pesa and backups" },
@@ -4928,6 +4986,137 @@ function SettingsCard({ title, desc, children, aside }) {
       </header>
       <div className="set-card-body">{children}</div>
     </section>
+  );
+}
+
+function CategoryModal({ category, units, onClose, onSaved }) {
+  const { call } = useApi();
+  const [name, setName] = useState(category?.name || "");
+  const [fields, setFields] = useState(() => (category?.dimensions || []).map((field, index) => ({ ...field, rowKey: `f${index}` })));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const updateField = (rowKey, changes) => setFields((current) => current.map((field) => (field.rowKey === rowKey ? { ...field, ...changes } : field)));
+
+  async function save(event) {
+    event.preventDefault();
+    if (name.trim().length < 2) return setError("Enter a category name.");
+    if (fields.some((field) => !field.label.trim())) return setError("Give every dimension a name, or remove it.");
+    setBusy(true);
+    setError("");
+    try {
+      const body = { name: name.trim(), dimensions: fields.map(({ key, label, unit }) => ({ ...(key ? { key } : {}), label: label.trim(), unit })) };
+      const data = category
+        ? await call(`/inventory-categories/${category.id}`, { method: "PATCH", body })
+        : await call("/inventory-categories", { method: "POST", body });
+      onSaved(data.category, !category);
+    } catch (saveError) {
+      setError(saveError.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <WsModal title={category ? `Edit ${category.name}` : "New category"} kicker="INVENTORY CATEGORIES" onClose={onClose} busy={busy}>
+      <form className="team-form" onSubmit={save} noValidate>
+        <label className="set-field"><span>Category name</span><input value={name} maxLength={40} onChange={(event) => setName(event.target.value)} placeholder="e.g. Stages" autoFocus /></label>
+        {category?.itemCount > 0 && name.trim() !== category.name && <p className="team-form-note"><Info size={13} /> {category.itemCount} item{category.itemCount === 1 ? "" : "s"} will move to the new name.</p>}
+        <div className="set-field">
+          <span>Dimension fields <em>Optional — shown when adding items in this category</em></span>
+          <div className="cat-fields">
+            {fields.length === 0 && <p className="team-muted">No dimensions. Items in this category will only have name, rate and quantity.</p>}
+            {fields.map((field, index) => (
+              <div className="cat-field-row" key={field.rowKey}>
+                <input value={field.label} maxLength={30} placeholder="e.g. Length" onChange={(event) => updateField(field.rowKey, { label: event.target.value })} aria-label={`Dimension ${index + 1} name`} />
+                <select value={field.unit} onChange={(event) => updateField(field.rowKey, { unit: event.target.value })} aria-label={`Dimension ${index + 1} unit`}>
+                  <option value="">No unit</option>
+                  {units.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                </select>
+                <button type="button" className="inv-row-remove" onClick={() => setFields((current) => current.filter((entry) => entry.rowKey !== field.rowKey))} aria-label={`Remove dimension ${index + 1}`}><X size={14} /></button>
+              </div>
+            ))}
+          </div>
+          {fields.length < 8 && (
+            <button type="button" className="inv-add-another" onClick={() => setFields((current) => [...current, { rowKey: `n${Date.now()}`, label: "", unit: "m" }])}><Plus size={14} /> Add dimension</button>
+          )}
+        </div>
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {category ? "Save category" : "Add category"}</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+function CategoryManager({ session }) {
+  const { call } = useApi();
+  const resource = useResource("/inventory-categories");
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [toast, setToast] = useToast();
+  const canManage = isManager(session);
+  const categories = resource.data?.categories || [];
+
+  return (
+    <SettingsCard
+      title="Inventory categories"
+      desc="Used when adding items. Each category can have its own optional dimension fields."
+      aside={canManage && <button type="button" className="button button-primary" onClick={() => setEditing("new")}><Plus size={14} /> New category</button>}
+    >
+      <LoadState status={resource.status} error={resource.error} onRetry={resource.reload} empty={resource.status === "ready" && categories.length === 0 ? "No categories yet" : ""} emptyIcon={Layers} />
+      <div className="cat-list">
+        {categories.map((category) => {
+          const Icon = categoryIcons[category.name] || Package;
+          return (
+            <div className="cat-row" key={category.id}>
+              <span className="set-row-icon"><Icon size={15} /></span>
+              <span className="set-row-copy">
+                <strong>{category.name}</strong>
+                <small>{category.itemCount} item{category.itemCount === 1 ? "" : "s"}</small>
+              </span>
+              <span className="cat-chips">
+                {category.dimensions.length === 0
+                  ? <span className="cat-chip empty">No dimensions</span>
+                  : category.dimensions.map((field) => <span className="cat-chip" key={field.key}>{field.label}{field.unit ? ` (${field.unit})` : ""}</span>)}
+              </span>
+              {canManage && (
+                <span className="cat-actions">
+                  <button type="button" className="report-icon-button" onClick={() => setEditing(category)} aria-label={`Edit ${category.name}`} title="Edit"><PencilLine size={13} /></button>
+                  <button type="button" className="report-icon-button cat-delete" onClick={() => setDeleting(category)} aria-label={`Delete ${category.name}`} title={category.itemCount ? "In use — move its items first" : "Delete"} disabled={category.itemCount > 0}><X size={13} /></button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!canManage && <p className="team-muted">Only an Admin or Store manager can change categories.</p>}
+      {editing && (
+        <CategoryModal
+          category={editing === "new" ? null : editing}
+          units={resource.data?.units || []}
+          onClose={() => setEditing(null)}
+          onSaved={(category, created) => {
+            setEditing(null);
+            resource.reload();
+            setToast(`${category.name} ${created ? "added" : "saved"}`);
+          }}
+        />
+      )}
+      {deleting && (
+        <InventoryConfirmDelete
+          item={{ name: `the “${deleting.name}” category`, quantity: 0, sku: `${deleting.dimensions.length} dimension field${deleting.dimensions.length === 1 ? "" : "s"}` }}
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await call(`/inventory-categories/${deleting.id}`, { method: "DELETE" });
+            setDeleting(null);
+            resource.reload();
+            setToast(`${deleting.name} deleted`);
+          }}
+        />
+      )}
+      {toast}
+    </SettingsCard>
   );
 }
 
@@ -5288,6 +5477,8 @@ function SettingsPage({ onLogout, session, settingsResource }) {
             </SettingsCard>
           </>
         )}
+
+        {active === "categories" && <CategoryManager session={session} />}
 
         {active === "policies" && (
           <>

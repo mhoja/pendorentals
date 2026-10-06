@@ -1,10 +1,6 @@
 import { query, transaction } from '../config/db.js';
 import { HttpError, cleanText } from '../utils/helpers.js';
-
-export const INVENTORY_CATEGORIES = [
-    'Tents', 'Chairs', 'Tables', 'Seat covers', 'Lighting', 'Carpets', 'Sound (PA & mics)',
-    'Screens & cameras', 'Light boxes', 'Utensils', 'Décor', 'Other',
-];
+import { listCategories, validateDimensionValues } from '../services/categories.service.js';
 
 const shape = (row) => ({
     id: row.id,
@@ -14,11 +10,13 @@ const shape = (row) => ({
     rate: row.rate,
     quantity: row.quantity,
     status: row.status,
+    dimensions: row.dimensions || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
 });
 
-function validate(raw, { partial = false } = {}) {
+// `categories` is the list from the database; `currentCategory` is the item's category when editing.
+function validate(raw, categories, { partial = false, currentCategory = null } = {}) {
     const errors = {};
     const value = {};
     const has = (key) => !partial || raw[key] !== undefined;
@@ -27,8 +25,16 @@ function validate(raw, { partial = false } = {}) {
         if (value.name.length < 2) errors.name = 'Enter the item name.';
     }
     if (has('category')) {
-        value.category = INVENTORY_CATEGORIES.includes(raw.category) ? raw.category : '';
+        value.category = categories.some((category) => category.name === raw.category) ? raw.category : '';
         if (!value.category) errors.category = 'Choose a category.';
+    }
+    if (raw.dimensions !== undefined) {
+        const category = categories.find((entry) => entry.name === (value.category || currentCategory));
+        try {
+            value.dimensions = validateDimensionValues(raw.dimensions, category);
+        } catch (error) {
+            errors.dimensions = error.message;
+        }
     }
     if (has('rate')) {
         value.rate = Number(raw.rate);
@@ -56,15 +62,16 @@ async function nextSku(db, category) {
 
 // GET /api/inventory
 export async function listInventory(_request, response) {
-    const { rows } = await query('select * from inventory_items order by name');
-    response.json({ items: rows.map(shape), categories: INVENTORY_CATEGORIES });
+    const [{ rows }, categories] = await Promise.all([query('select * from inventory_items order by name'), listCategories()]);
+    response.json({ items: rows.map(shape), categories });
 }
 
 // POST /api/inventory
 export async function createInventoryItems(request, response) {
     const rows = Array.isArray(request.body?.items) ? request.body.items : [];
     if (rows.length === 0 || rows.length > 50) throw new HttpError(400, 'Add between 1 and 50 items at a time.');
-    const checked = rows.map((row) => validate(row || {}));
+    const categories = await listCategories();
+    const checked = rows.map((row) => validate(row || {}, categories));
     const rowErrors = checked.map((row) => row.errors);
     if (rowErrors.some((errors) => Object.keys(errors).length)) {
         throw new HttpError(400, 'Please fix the highlighted rows.', { rows: rowErrors });
@@ -76,9 +83,9 @@ export async function createInventoryItems(request, response) {
             const { rows: existing } = await db.query('select 1 from inventory_items where sku = $1', [sku]);
             if (existing.length) throw new HttpError(409, `SKU ${sku} is already used.`);
             const { rows: [item] } = await db.query(
-                `insert into inventory_items (sku, name, category, rate, quantity, status)
-                 values ($1, $2, $3, $4, $5, $6) returning *`,
-                [sku, value.name, value.category, value.rate, value.quantity, value.status || 'Available'],
+                `insert into inventory_items (sku, name, category, rate, quantity, status, dimensions)
+                 values ($1, $2, $3, $4, $5, $6, $7) returning *`,
+                [sku, value.name, value.category, value.rate, value.quantity, value.status || 'Available', value.dimensions || {}],
             );
             items.push(shape(item));
         }
@@ -89,9 +96,14 @@ export async function createInventoryItems(request, response) {
 
 // PATCH /api/inventory/:id
 export async function updateInventoryItem(request, response) {
-    const { errors, value } = validate(request.body || {}, { partial: true });
-    if (Object.keys(errors).length) throw new HttpError(400, 'Please check the highlighted fields.', { fields: errors });
     if (!/^[0-9a-f-]{36}$/i.test(request.params.id)) throw new HttpError(404, 'This item no longer exists.');
+    const { rows: [existing] } = await query('select category from inventory_items where id = $1', [request.params.id]);
+    if (!existing) throw new HttpError(404, 'This item no longer exists.');
+    const body = request.body || {};
+    // Changing category without new dimensions clears values that belonged to the old category.
+    if (body.category && body.category !== existing.category && body.dimensions === undefined) body.dimensions = {};
+    const { errors, value } = validate(body, await listCategories(), { partial: true, currentCategory: existing.category });
+    if (Object.keys(errors).length) throw new HttpError(400, 'Please check the highlighted fields.', { fields: errors });
     if (value.sku) {
         const { rows } = await query('select 1 from inventory_items where sku = $1 and id <> $2', [value.sku, request.params.id]);
         if (rows.length) throw new HttpError(409, `SKU ${value.sku} is already used.`);

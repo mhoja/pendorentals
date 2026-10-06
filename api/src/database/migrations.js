@@ -158,6 +158,41 @@ const migrations = [
             create index sms_log_created_idx on sms_log (created_at desc);
         `,
     },
+    {
+        id: 2,
+        name: 'inventory categories and dimensions',
+        sql: `
+            create table inventory_categories (
+                id serial primary key,
+                name text not null unique,
+                dimensions jsonb not null default '[]'::jsonb,
+                position integer not null default 0,
+                created_at timestamptz not null default now()
+            );
+
+            insert into inventory_categories (name, position, dimensions) values
+                ('Tents', 1, '[{"key":"length","label":"Length","unit":"m"},{"key":"width","label":"Width","unit":"m"},{"key":"height","label":"Height","unit":"m"},{"key":"capacity","label":"Capacity","unit":"guests"}]'),
+                ('Chairs', 2, '[{"key":"seat_height","label":"Seat height","unit":"cm"}]'),
+                ('Tables', 3, '[{"key":"length","label":"Length","unit":"cm"},{"key":"width","label":"Width","unit":"cm"},{"key":"seats","label":"Seats","unit":"people"}]'),
+                ('Seat covers', 4, '[]'),
+                ('Lighting', 5, '[{"key":"power","label":"Power","unit":"W"}]'),
+                ('Carpets', 6, '[{"key":"length","label":"Length","unit":"m"},{"key":"width","label":"Width","unit":"m"}]'),
+                ('Sound (PA & mics)', 7, '[{"key":"power","label":"Power","unit":"W"}]'),
+                ('Screens & cameras', 8, '[{"key":"size","label":"Screen size","unit":"in"}]'),
+                ('Light boxes', 9, '[{"key":"length","label":"Length","unit":"cm"},{"key":"height","label":"Height","unit":"cm"}]'),
+                ('Utensils', 10, '[{"key":"capacity","label":"Capacity","unit":"L"}]'),
+                ('Décor', 11, '[]'),
+                ('Other', 12, '[]')
+            on conflict (name) do nothing;
+
+            -- Categories already used by items but missing from the list are added too.
+            insert into inventory_categories (name, position)
+            select distinct category, 100 from inventory_items
+            where category not in (select name from inventory_categories);
+
+            alter table inventory_items add column dimensions jsonb not null default '{}'::jsonb;
+        `,
+    },
 ];
 
 export async function migrate() {
