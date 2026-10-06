@@ -3586,11 +3586,16 @@ function invoiceContent({ invoice, order, payments, customer }, settings = {}) {
     ...(discount ? [["Discount", -discount]] : []),
     ...(adjustment ? [["Adjustment", adjustment]] : []),
   ];
+  // Every payment method switched on in Settings → Payments & receipts, with its number.
+  const lipa = (number, name) => (number ? `Lipa Namba ${number}${name ? ` · ${name}` : ""}` : "Ask us for the number");
   const howToPay = [
-    ...(settings.payMpesa !== false && settings.lipaNumber ? [["M-Pesa · Lipa Namba", `${settings.lipaNumber}${settings.lipaName ? ` · ${settings.lipaName}` : ""}`]] : []),
-    ...(settings.payBank !== false && settings.bankAccountNumber ? [[settings.bankName || "Bank", `${settings.bankAccountNumber}${settings.bankAccountName ? ` · ${settings.bankAccountName}` : ""}`]] : []),
-  ];
-  const methods = PAYMENT_METHODS.filter(([key]) => settings[key] !== false).map(([, label]) => label);
+    ["payMpesa", "M-Pesa", lipa(settings.lipaNumber, settings.lipaName)],
+    ["payTigo", "Tigo Pesa", lipa(settings.tigoNumber, settings.tigoName)],
+    ["payAirtel", "Airtel Money", lipa(settings.airtelNumber, settings.airtelName)],
+    ["payBank", "Bank transfer", settings.bankAccountNumber ? `${settings.bankName || "Bank"} · Acc ${settings.bankAccountNumber}${settings.bankAccountName ? ` · ${settings.bankAccountName}` : ""}` : `${settings.bankName || "Bank"} · ask us for the account`],
+    ["payCash", "Cash", "At our office"],
+    ["payCard", "Card", "At our office"],
+  ].filter(([key]) => settings[key] !== false && settings[key] !== undefined).map(([, label, detail]) => [label, detail]);
   const event = order ? `${orderDates(order)} · ${days} day${days === 1 ? "" : "s"}` : "—";
   const venue = order ? [order.place, order.area].filter(Boolean).join(", ") : [customer?.place, customer?.area].filter(Boolean).join(", ");
   const business = {
@@ -3601,7 +3606,7 @@ function invoiceContent({ invoice, order, payments, customer }, settings = {}) {
     email: settings.email || BUSINESS_INFO.email,
     tin: settings.tin || "",
   };
-  return { invoice, order, payments: payments || [], customer: customer || {}, items, totals, howToPay, methods, event, venue, business, stamp: INVOICE_STAMPS[invoice.status] || INVOICE_STAMPS.Unpaid };
+  return { invoice, order, payments: payments || [], customer: customer || {}, items, totals, howToPay, event, venue, business, stamp: INVOICE_STAMPS[invoice.status] || INVOICE_STAMPS.Unpaid };
 }
 
 const invoiceStyles = `
@@ -3635,14 +3640,18 @@ const invoiceStyles = `
   .totals td:last-child { text-align: right; font-weight: 600; }
   .totals .grand td { padding-top: 10px; border-top: 2px solid #1c2a3f; font-size: 14px; font-weight: 800; }
   .totals .paid td { color: #1f9a6a; }
-  .due { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: #2674ed; color: #fff; }
-  .due span { color: #dbe8fd; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
-  .due strong { color: #fff; font: 800 18px "Manrope", Arial, sans-serif; }
+  .due { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 12px 14px; border: 1px solid #d6e6ff; border-radius: 8px; background: #eef5ff; color: #2a4a78; }
+  .due span { color: #2a4a78; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+  .due strong { color: #2674ed; font: 800 18px "Manrope", Arial, sans-serif; }
   .due.settled { background: #e6f6ee; }
   .due.settled span, .due.settled strong { color: #1f8a5b; }
   .block { margin-top: 18px; padding: 12px 14px; border: 1px solid #e3eaf3; border-radius: 8px; }
   .block p { margin: 3px 0; color: #4b5d77; font-size: 11.5px; }
   .block p b { color: #1c2a3f; }
+  .pay { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 2px 0 0; font-size: 11.5px; }
+  .pay dt { color: #1c2a3f; font-weight: 700; }
+  .pay dd { margin: 0; color: #4b5d77; }
+  .block p.ref { margin-top: 8px; padding-top: 7px; border-top: 1px dashed #e3eaf3; }
   .payments td, .payments th { padding: 6px 8px; font-size: 11px; text-align: left; border-bottom: 1px solid #edf1f6; }
   .payments th { color: #8492a6; font-weight: 700; }
   .payments .num { text-align: right; }
@@ -3686,7 +3695,7 @@ function invoiceHtml(detail, settings, { screen = false } = {}) {
   </table>
   <section class="summary">
     <div>
-      ${c.howToPay.length || c.methods.length ? `<div class="block"><h4>How to pay</h4>${c.howToPay.map(([label, value]) => `<p>${escapeHtml(label)}: <b>${escapeHtml(value)}</b></p>`).join("")}${c.methods.length ? `<p>We accept ${escapeHtml(c.methods.join(", "))}.</p>` : ""}<p>Please quote <b>${escapeHtml(invoice.code)}</b> as the payment reference.</p></div>` : ""}
+      ${c.howToPay.length ? `<div class="block"><h4>How to pay</h4><dl class="pay">${c.howToPay.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("")}</dl><p class="ref">Please quote <b>${escapeHtml(invoice.code)}</b> as the payment reference.</p></div>` : ""}
       ${invoice.notes ? `<div class="block"><h4>Notes</h4><p>${escapeHtml(invoice.notes)}</p></div>` : ""}
       ${policy ? `<div class="block"><h4>Terms</h4><p>${escapeHtml(policy)}</p></div>` : ""}
     </div>
@@ -3780,10 +3789,10 @@ async function downloadInvoicePdf(detail, settings = {}) {
   text(`${invoice.paid ? "- " : ""}${money(invoice.paid)}`, right, y, { size: 9, color: [31, 154, 106], align: "right" });
   y += 4;
   const settled = invoice.balance <= 0 || invoice.status === "Cancelled";
-  pdf.setFillColor(...(settled ? [230, 246, 238] : blue));
+  pdf.setFillColor(...(settled ? [230, 246, 238] : [238, 245, 255]));
   pdf.roundedRect(totalsX - 3, y, right - totalsX + 3, 12, 2, 2, "F");
-  text(invoice.status === "Cancelled" ? "CANCELLED" : settled ? "PAID IN FULL" : "BALANCE DUE", totalsX, y + 7.6, { size: 8, bold: true, color: settled ? [31, 138, 91] : [219, 232, 253] });
-  text(money(invoice.status === "Cancelled" ? 0 : invoice.balance), right - 2, y + 8, { size: 12, bold: true, color: settled ? [31, 138, 91] : [255, 255, 255], align: "right" });
+  text(invoice.status === "Cancelled" ? "CANCELLED" : settled ? "PAID IN FULL" : "BALANCE DUE", totalsX, y + 7.6, { size: 8, bold: true, color: settled ? [31, 138, 91] : [42, 74, 120] });
+  text(money(invoice.status === "Cancelled" ? 0 : invoice.balance), right - 2, y + 8, { size: 12, bold: true, color: settled ? [31, 138, 91] : blue, align: "right" });
 
   let infoY = pdf.lastAutoTable.finalY + 8;
   const infoWidth = totalsX - left - 12;
@@ -3801,7 +3810,20 @@ async function downloadInvoicePdf(detail, settings = {}) {
     });
     infoY += 4;
   };
-  infoBlock("How to pay", [...c.howToPay.map(([label, value]) => `${label}: ${value}`), ...(c.methods.length ? [`We accept ${c.methods.join(", ")}.`] : []), `Please quote ${invoice.code} as the payment reference.`]);
+  if (c.howToPay.length) {
+    text("HOW TO PAY", left, infoY, { size: 7, bold: true, color: muted });
+    infoY += 5;
+    c.howToPay.forEach(([label, value]) => {
+      text(label, left, infoY, { size: 8.5, bold: true });
+      pdf.setFont("helvetica", "normal");
+      const wrapped = pdf.splitTextToSize(value, infoWidth - 28);
+      pdf.setTextColor(75, 93, 119);
+      pdf.text(wrapped, left + 28, infoY);
+      infoY += wrapped.length * 4.2 + 0.8;
+    });
+    text(`Please quote ${invoice.code} as the payment reference.`, left, infoY + 1.5, { size: 8.5, color: [75, 93, 119] });
+    infoY += 9;
+  }
   if (invoice.notes) infoBlock("Notes", [invoice.notes]);
 
   y = Math.max(y + 22, infoY + 4);
@@ -6567,26 +6589,26 @@ function SettingsPage({ onLogout, session, settingsResource }) {
               </div>
             </SettingsCard>
 
-            <SettingsCard title="Mobile money & bank details">
-              <div className="set-grid">
-                <label className="set-field">
-                  <span>M-Pesa Lipa Namba</span>
-                  <input {...bind("lipaNumber")} placeholder="e.g. 5123456" inputMode="numeric" disabled={!draft.payMpesa} />
-                </label>
-                <label className="set-field">
-                  <span>Registered name</span>
-                  <input {...bind("lipaName")} disabled={!draft.payMpesa} />
-                </label>
-                <label className="set-field">
-                  <span>Bank</span>
-                  <select {...bind("bankName")} disabled={!draft.payBank}>
-                    {["CRDB Bank", "NMB Bank", "NBC Bank", "Equity Bank", "Stanbic Bank", "Exim Bank"].map((option) => <option key={option}>{option}</option>)}
-                  </select>
-                </label>
-                <label className="set-field">
-                  <span>Account number</span>
-                  <input {...bind("bankAccountNumber")} placeholder="e.g. 0150 1234 5678 00" inputMode="numeric" disabled={!draft.payBank} />
-                </label>
+            <SettingsCard title="Mobile money & bank details" desc="Printed on invoices under “How to pay” and sent in invoice SMS. Turned-off methods are hidden.">
+              <div className="set-pay-numbers">
+                {[["payMpesa", "M-Pesa", "lipaNumber", "lipaName", "e.g. 5123456"], ["payTigo", "Tigo Pesa", "tigoNumber", "tigoName", "e.g. 6123456"], ["payAirtel", "Airtel Money", "airtelNumber", "airtelName", "e.g. 7123456"]].map(([flag, label, numberKey, nameKey, example]) => (
+                  <div key={flag} className={`set-pay-row ${draft[flag] ? "" : "off"}`}>
+                    <span className="set-pay-label"><Smartphone size={14} /> {label}{!draft[flag] && <em>Off</em>}</span>
+                    <label className="set-field"><span>Lipa Namba</span><input {...bind(numberKey)} placeholder={example} inputMode="numeric" disabled={!draft[flag]} /></label>
+                    <label className="set-field"><span>Registered name</span><input {...bind(nameKey)} disabled={!draft[flag]} /></label>
+                  </div>
+                ))}
+                <div className={`set-pay-row bank ${draft.payBank ? "" : "off"}`}>
+                  <span className="set-pay-label"><Landmark size={14} /> Bank transfer{!draft.payBank && <em>Off</em>}</span>
+                  <label className="set-field">
+                    <span>Bank</span>
+                    <select {...bind("bankName")} disabled={!draft.payBank}>
+                      {["CRDB Bank", "NMB Bank", "NBC Bank", "Equity Bank", "Stanbic Bank", "Exim Bank"].map((option) => <option key={option}>{option}</option>)}
+                    </select>
+                  </label>
+                  <label className="set-field"><span>Account number</span><input {...bind("bankAccountNumber")} placeholder="e.g. 0150 1234 5678 00" inputMode="numeric" disabled={!draft.payBank} /></label>
+                  <label className="set-field"><span>Account name</span><input {...bind("bankAccountName")} disabled={!draft.payBank} /></label>
+                </div>
               </div>
             </SettingsCard>
 

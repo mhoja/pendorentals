@@ -90,9 +90,11 @@ export async function sendInvoice(request, response) {
     const settings = await getSettings();
     const { rows: [person] } = await query('select first_name, phone from customers where id = $1', [invoice.customerId]);
     const howToPay = [
-        settings.payMpesa && settings.lipaNumber ? `M-Pesa Lipa ${settings.lipaNumber} (${settings.lipaName})` : '',
+        settings.payMpesa && settings.lipaNumber ? `M-Pesa Lipa ${settings.lipaNumber}` : '',
+        settings.payTigo && settings.tigoNumber ? `Tigo Pesa Lipa ${settings.tigoNumber}` : '',
+        settings.payAirtel && settings.airtelNumber ? `Airtel Money Lipa ${settings.airtelNumber}` : '',
         settings.payBank && settings.bankAccountNumber ? `${settings.bankName} ${settings.bankAccountNumber}` : '',
-    ].filter(Boolean).join(' or ');
+    ].filter(Boolean).join(', ');
     const amountText = invoice.balance > 0
         ? `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${howToPay ? ` Pay via ${howToPay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`
         : 'Fully paid - asante!';
