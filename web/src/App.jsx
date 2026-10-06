@@ -2226,11 +2226,6 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
             <select className="inv-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
               {["All categories", ...categories.map((category) => category.name)].map((option) => <option key={option}>{option}</option>)}
             </select>
-            {canEdit && (
-              <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}>
-                <Plus size={16} /> Add items
-              </button>
-            )}
           </div>
         </div>
 
