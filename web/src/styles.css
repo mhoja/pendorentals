@@ -8813,3 +8813,37 @@ button:not(.nav-link):not(.button-primary):not(.danger) {
     color: #8592a6;
     font-style: normal;
 }
+
+.ws-period-bar {
+    flex-wrap: wrap;
+}
+
+button.inv-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid #f3c9c5;
+    border-radius: 9px;
+    background: #fff;
+    color: #c8423a !important;
+    font: 700 12.5px 'DM Sans', sans-serif;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+button.inv-clear svg,
+button.inv-clear svg * {
+    color: inherit;
+}
+
+button.inv-clear:hover:not(:disabled) {
+    background: #fdecec;
+}
+
+button.inv-clear:disabled {
+    border-color: #e5ebf3;
+    color: #a9b4c4 !important;
+    cursor: default;
+}

@@ -538,6 +538,57 @@ function getPeriodRange(period, from, to) {
   return ["", ""];
 }
 
+// Local calendar day (YYYY-MM-DD) of a timestamp or date string.
+function localDay(value) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function useDateRange(initial = "All time") {
+  const [period, setPeriod] = useState(initial);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [from, to] = getPeriodRange(period, customFrom, customTo);
+  return {
+    period, setPeriod, customFrom, setCustomFrom, customTo, setCustomTo, from, to,
+    active: period !== initial,
+    matches: (value) => {
+      const day = localDay(value);
+      if (!from && !to) return true;
+      return Boolean(day) && (!from || day >= from) && (!to || day <= to);
+    },
+    reset: () => { setPeriod(initial); setCustomFrom(""); setCustomTo(""); },
+  };
+}
+
+function DateRangeFilter({ range, label }) {
+  return (
+    <>
+      <select className="inv-select" value={range.period} onChange={(event) => range.setPeriod(event.target.value)} aria-label={`Filter by ${label.toLowerCase()} date`}>
+        {reportPeriods.map((option) => <option key={option} value={option}>{option === "All time" ? `${label}: any time` : `${label}: ${option.toLowerCase()}`}</option>)}
+      </select>
+      {range.period === "Custom range" && (
+        <span className="inv-date-range">
+          <input type="date" value={range.customFrom} max={range.customTo || undefined} onChange={(event) => range.setCustomFrom(event.target.value)} aria-label={`${label} from`} />
+          <i>–</i>
+          <input type="date" value={range.customTo} min={range.customFrom || undefined} onChange={(event) => range.setCustomTo(event.target.value)} aria-label={`${label} to`} />
+        </span>
+      )}
+    </>
+  );
+}
+
+function ClearFiltersButton({ active, onClear }) {
+  return (
+    <button type="button" className="inv-clear" onClick={onClear} disabled={!active} title="Clear all filters">
+      <RotateCcw size={13} /> Clear filters
+    </button>
+  );
+}
+
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -2154,9 +2205,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
   const [statusFilter, setStatusFilter] = useState("All items");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [search, setSearch] = useState("");
-  const [period, setPeriod] = useState("All time");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const added = useDateRange();
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [toast, setToast] = useState("");
@@ -2177,19 +2226,12 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
   }
 
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const [from, to] = getPeriodRange(period, customFrom, customTo);
-  const addedOn = (item) => {
-    const date = new Date(item.createdAt);
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  };
   // Every filter except status; the status tabs count within this set.
   const scoped = items.filter((item) => {
     const text = `${item.name} ${item.sku} ${item.category}`.toLowerCase();
-    const day = addedOn(item);
     return words.every((word) => text.includes(word))
       && (categoryFilter === "All categories" || item.category === categoryFilter)
-      && (!from || day >= from)
-      && (!to || day <= to);
+      && added.matches(item.createdAt);
   });
   const visible = scoped
     .filter((item) => statusFilter === "All items" || item.status === statusFilter)
@@ -2198,7 +2240,8 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
   const dailyValue = visible.filter((item) => item.status === "Available").reduce((sum, item) => sum + item.rate * item.quantity, 0);
   const maintenance = visible.filter((item) => item.status === "Maintenance").length;
   const usedCategories = categories.filter((category) => visible.some((item) => item.category === category.name));
-  const filtersActive = search || statusFilter !== "All items" || categoryFilter !== "All categories" || period !== "All time";
+  const filtersActive = search || statusFilter !== "All items" || categoryFilter !== "All categories" || added.active;
+  const clearFilters = () => { setSearch(""); setStatusFilter("All items"); setCategoryFilter("All categories"); added.reset(); };
   const filteredNote = filtersActive ? "matching filters" : null;
 
   return (
@@ -2241,16 +2284,8 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
             <select className="inv-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
               {["All categories", ...categories.map((category) => category.name)].map((option) => <option key={option}>{option}</option>)}
             </select>
-            <select className="inv-select" value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Filter by date added">
-              {reportPeriods.map((option) => <option key={option} value={option}>{option === "All time" ? "Added: any time" : `Added: ${option.toLowerCase()}`}</option>)}
-            </select>
-            {period === "Custom range" && (
-              <span className="inv-date-range">
-                <input type="date" value={customFrom} max={customTo || undefined} onChange={(event) => setCustomFrom(event.target.value)} aria-label="Added from" />
-                <i>–</i>
-                <input type="date" value={customTo} min={customFrom || undefined} onChange={(event) => setCustomTo(event.target.value)} aria-label="Added to" />
-              </span>
-            )}
+            <DateRangeFilter range={added} label="Added" />
+            <ClearFiltersButton active={Boolean(filtersActive)} onClear={clearFilters} />
           </div>
         </div>
 
@@ -2311,7 +2346,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
             <div className="table-bottom inv-bottom">
               <span>Showing <strong>{visible.length}</strong> of {items.length} items</span>
               {filtersActive && (
-                <button className="report-clear" onClick={() => { setSearch(""); setStatusFilter("All items"); setCategoryFilter("All categories"); setPeriod("All time"); setCustomFrom(""); setCustomTo(""); }}>
+                <button className="report-clear" onClick={clearFilters}>
                   <RotateCcw size={12} /> Clear filters
                 </button>
               )}
@@ -2795,6 +2830,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
   const inventory = useResource("/inventory");
   const [status, setStatus] = useState("All");
   const [search, setSearch] = useState("");
+  const eventRange = useDateRange();
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
   const [receipt, setReceipt] = useState(null);
@@ -2811,12 +2847,16 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
 
   const list = orders.data?.orders || [];
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = list.filter((order) => (status === "All" || order.status === status)
+  // Search and date filters; the status tabs and cards count within this set.
+  const scoped = list.filter((order) => eventRange.matches(order.eventDate)
     && words.every((word) => `${order.id} ${order.customer.name} ${order.customer.phone} ${orderItemsText(order.items)} ${order.area || ""}`.toLowerCase().includes(word)));
-  const count = (value) => list.filter((order) => order.status === value).length;
-  const active = list.filter((order) => ["Confirmed", "Ready for pickup", "Out for delivery"].includes(order.status));
-  const outstanding = list.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + (order.balance || 0), 0);
-  const unpriced = list.filter((order) => !order.priced && order.status !== "Cancelled").length;
+  const rows = scoped.filter((order) => status === "All" || order.status === status);
+  const count = (value) => scoped.filter((order) => order.status === value).length;
+  const active = scoped.filter((order) => ["Confirmed", "Ready for pickup", "Out for delivery"].includes(order.status));
+  const outstanding = scoped.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + (order.balance || 0), 0);
+  const unpriced = scoped.filter((order) => !order.priced && order.status !== "Cancelled").length;
+  const ordersFiltered = Boolean(search) || status !== "All" || eventRange.active;
+  const clearOrderFilters = () => { setSearch(""); setStatus("All"); eventRange.reset(); };
 
   function replaceOrder(updated) {
     orders.setData((current) => ({ ...current, orders: current.orders.some((entry) => entry.id === updated.id) ? current.orders.map((entry) => (entry.id === updated.id ? updated : entry)) : [updated, ...current.orders] }));
@@ -2852,7 +2892,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
           [Sparkles, "New requests", count("New request"), unpriced ? `${unpriced} need pricing` : "all priced", "blue"],
           [CalendarDays, "Active rentals", active.length, "confirmed to out for delivery", "mint"],
           [Banknote, "Outstanding", formatShillings(outstanding), "balance still to collect", "orange"],
-          [PackageCheck, "Completed", count("Completed"), `${list.length} orders in total`, "purple"],
+          [PackageCheck, "Completed", count("Completed"), `${scoped.length} order${scoped.length === 1 ? "" : "s"}${ordersFiltered ? " matching filters" : " in total"}`, "purple"],
         ].map(([Icon, label, value, hint, tone]) => (
           <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
         ))}
@@ -2862,12 +2902,14 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
           <div className="inv-tabs ws-scroll-tabs" role="tablist" aria-label="Filter by status">
             {["All", ...ORDER_STATUSES].map((option) => (
               <button key={option} role="tab" aria-selected={status === option} className={status === option ? "active" : ""} onClick={() => setStatus(option)}>
-                {option}<span>{option === "All" ? list.length : count(option)}</span>
+                {option}<span>{option === "All" ? scoped.length : count(option)}</span>
               </button>
             ))}
           </div>
           <div className="inv-toolbar-actions">
             <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order, customer, item" aria-label="Search orders" /></label>
+            <DateRangeFilter range={eventRange} label="Event" />
+            <ClearFiltersButton active={ordersFiltered} onClear={clearOrderFilters} />
             <ExportMenu title="Orders" columns={exportColumns} rows={exportRows} />
             {managerView && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> New order</button>}
           </div>
@@ -3032,6 +3074,7 @@ function CustomersPage({ query, onNewOrder }) {
   const customers = useResource("/customers");
   const [search, setSearch] = useState("");
   const [areaFilter, setAreaFilter] = useState("All areas");
+  const joined = useDateRange();
   const [editing, setEditing] = useState(null);
   const [messaging, setMessaging] = useState(null);
   const [deleting, setDeleting] = useState(null);
@@ -3040,19 +3083,22 @@ function CustomersPage({ query, onNewOrder }) {
   const list = customers.data?.customers || [];
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const rows = list.filter((customer) => (areaFilter === "All areas" || customer.area === areaFilter)
+    && joined.matches(customer.createdAt)
     && words.every((word) => `${customer.name} ${customer.phone} ${customer.email} ${customer.area} ${customer.place}`.toLowerCase().includes(word)));
   const monthStart = `${localTodayIso().slice(0, 7)}-01`;
-  const totalSpent = list.reduce((sum, customer) => sum + customer.spent, 0);
+  const totalSpent = rows.reduce((sum, customer) => sum + customer.spent, 0);
+  const customersFiltered = Boolean(search) || areaFilter !== "All areas" || joined.active;
+  const clearCustomerFilters = () => { setSearch(""); setAreaFilter("All areas"); joined.reset(); };
   const exportRows = rows.map((customer) => [customer.name, customer.phone, customer.email, customer.area, customer.place, customer.orders, customer.lastOrder || "", formatShillings(customer.spent)]);
 
   return (
     <>
       <section className="inv-stats">
         {[
-          [Users, "Customers", list.length, "registered", "blue"],
-          [CalendarCheck, "With orders", list.filter((customer) => customer.orders > 0).length, "have booked at least once", "mint"],
-          [UserPlus, "New this month", list.filter((customer) => String(customer.createdAt).slice(0, 10) >= monthStart).length, "joined since the 1st", "purple"],
-          [Banknote, "Lifetime revenue", formatShillings(totalSpent), "paid by all customers", "orange"],
+          [Users, "Customers", rows.length, customersFiltered ? "matching filters" : "registered", "blue"],
+          [CalendarCheck, "With orders", rows.filter((customer) => customer.orders > 0).length, "have booked at least once", "mint"],
+          [UserPlus, "New this month", rows.filter((customer) => localDay(customer.createdAt) >= monthStart).length, "joined since the 1st", "purple"],
+          [Banknote, "Lifetime revenue", formatShillings(totalSpent), customersFiltered ? "paid by these customers" : "paid by all customers", "orange"],
         ].map(([Icon, label, value, hint, tone]) => (
           <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
         ))}
@@ -3063,6 +3109,8 @@ function CustomersPage({ query, onNewOrder }) {
           <div className="inv-toolbar-actions">
             <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, email" aria-label="Search customers" /></label>
             <select className="inv-select" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by area">{["All areas", ...CUSTOMER_AREAS].map((area) => <option key={area}>{area}</option>)}</select>
+            <DateRangeFilter range={joined} label="Joined" />
+            <ClearFiltersButton active={customersFiltered} onClear={clearCustomerFilters} />
             <ExportMenu title="Customers" columns={["Name", "Phone", "Email", "Area", "Venue", "Orders", "Last order", "Spent"]} rows={exportRows} />
             <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add customer</button>
           </div>
@@ -3234,15 +3282,20 @@ function InvoicesPage({ query, settings }) {
   const invoices = useResource("/invoices");
   const [status, setStatus] = useState("All");
   const [search, setSearch] = useState("");
+  const issued = useDateRange();
   const [creating, setCreating] = useState(false);
   const [paying, setPaying] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [toast, setToast] = useToast();
   const list = invoices.data?.invoices || [];
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = list.filter((invoice) => (status === "All" || invoice.status === status)
+  // Search and date filters; the status tabs and cards count within this set.
+  const scoped = list.filter((invoice) => issued.matches(invoice.issuedOn)
     && words.every((word) => `${invoice.code} ${invoice.orderCode} ${invoice.customer} ${invoice.phone}`.toLowerCase().includes(word)));
-  const open = list.filter((invoice) => !["Paid", "Cancelled"].includes(invoice.status));
+  const rows = scoped.filter((invoice) => status === "All" || invoice.status === status);
+  const open = scoped.filter((invoice) => !["Paid", "Cancelled"].includes(invoice.status));
+  const invoicesFiltered = Boolean(search) || status !== "All" || issued.active;
+  const clearInvoiceFilters = () => { setSearch(""); setStatus("All"); issued.reset(); };
   const monthStart = `${localTodayIso().slice(0, 7)}-01`;
 
   return (
@@ -3250,9 +3303,11 @@ function InvoicesPage({ query, settings }) {
       <section className="inv-stats">
         {[
           [Receipt, "Outstanding", formatShillings(open.reduce((sum, invoice) => sum + invoice.balance, 0)), `${open.length} open invoice${open.length === 1 ? "" : "s"}`, "blue"],
-          [CircleAlert, "Overdue", list.filter((invoice) => invoice.status === "Overdue").length, formatShillings(list.filter((invoice) => invoice.status === "Overdue").reduce((sum, invoice) => sum + invoice.balance, 0)), "orange"],
-          [CircleCheck, "Paid in full", list.filter((invoice) => invoice.status === "Paid").length, "invoices", "mint"],
-          [CalendarDays, "Issued this month", list.filter((invoice) => invoice.issuedOn >= monthStart).length, formatShillings(list.filter((invoice) => invoice.issuedOn >= monthStart).reduce((sum, invoice) => sum + invoice.amount, 0)), "purple"],
+          [CircleAlert, "Overdue", scoped.filter((invoice) => invoice.status === "Overdue").length, formatShillings(scoped.filter((invoice) => invoice.status === "Overdue").reduce((sum, invoice) => sum + invoice.balance, 0)), "orange"],
+          [CircleCheck, "Paid in full", scoped.filter((invoice) => invoice.status === "Paid").length, invoicesFiltered ? "invoices matching filters" : "invoices", "mint"],
+          ...(issued.active
+            ? [[CalendarDays, "Issued in range", scoped.length, formatShillings(scoped.reduce((sum, invoice) => sum + invoice.amount, 0)), "purple"]]
+            : [[CalendarDays, "Issued this month", scoped.filter((invoice) => invoice.issuedOn >= monthStart).length, formatShillings(scoped.filter((invoice) => invoice.issuedOn >= monthStart).reduce((sum, invoice) => sum + invoice.amount, 0)), "purple"]]),
         ].map(([Icon, label, value, hint, tone]) => (
           <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
         ))}
@@ -3261,11 +3316,13 @@ function InvoicesPage({ query, settings }) {
         <div className="inv-toolbar">
           <div className="inv-tabs ws-scroll-tabs" role="tablist">
             {["All", "Unpaid", "Partially paid", "Overdue", "Paid", "Cancelled"].map((option) => (
-              <button key={option} role="tab" aria-selected={status === option} className={status === option ? "active" : ""} onClick={() => setStatus(option)}>{option}<span>{option === "All" ? list.length : list.filter((invoice) => invoice.status === option).length}</span></button>
+              <button key={option} role="tab" aria-selected={status === option} className={status === option ? "active" : ""} onClick={() => setStatus(option)}>{option}<span>{option === "All" ? scoped.length : scoped.filter((invoice) => invoice.status === option).length}</span></button>
             ))}
           </div>
           <div className="inv-toolbar-actions">
             <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoice, order, customer" aria-label="Search invoices" /></label>
+            <DateRangeFilter range={issued} label="Issued" />
+            <ClearFiltersButton active={invoicesFiltered} onClear={clearInvoiceFilters} />
             <ExportMenu title="Invoices" columns={["Invoice", "Order", "Customer", "Issued", "Due", "Amount", "Paid", "Balance", "Status"]} rows={rows.map((invoice) => [invoice.code, invoice.orderCode || "", invoice.customer, invoice.issuedOn, invoice.dueOn, formatShillings(invoice.amount), formatShillings(invoice.paid), formatShillings(invoice.balance), invoice.status])} />
             <button className="button button-primary inv-add-button" onClick={() => setCreating(true)}><Plus size={16} /> Create invoice</button>
           </div>
@@ -3355,24 +3412,12 @@ function ExpenseModal({ expense, meta, onClose, onSaved }) {
   );
 }
 
-const FINANCE_PERIODS = ["This month", "Last month", "Last 30 days", "This year", "All time"];
-function financeRange(period) {
-  const today = localTodayIso();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  if (period === "Last month") {
-    const end = shiftIsoDate(monthStart, -1);
-    return [`${end.slice(0, 7)}-01`, end];
-  }
-  if (period === "Last 30 days") return [shiftIsoDate(today, -29), today];
-  if (period === "This year") return [`${today.slice(0, 4)}-01-01`, today];
-  if (period === "All time") return ["2000-01-01", today];
-  return [monthStart, today];
-}
-
 function FinancePage({ query, session }) {
   const { call } = useApi();
-  const [period, setPeriod] = useState("This month");
-  const [from, to] = financeRange(period);
+  const range = useDateRange("This month");
+  const today = localTodayIso();
+  const from = range.from || "2000-01-01";
+  const to = range.to || today;
   const summary = useResource(`/finance/summary?from=${from}&to=${to}`);
   const expenses = useResource("/expenses");
   const payments = useResource("/payments");
@@ -3385,6 +3430,8 @@ function FinancePage({ query, session }) {
   const s = summary.data;
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const inRange = (date) => date >= from && date <= to;
+  const financeFiltered = Boolean(search) || range.active;
+  const clearFinanceFilters = () => { setSearch(""); range.reset(); };
   const expenseRows = (expenses.data?.expenses || []).filter((expense) => inRange(expense.date) && words.every((word) => `${expense.category} ${expense.description} ${expense.vendor} ${expense.method}`.toLowerCase().includes(word)));
   const paymentRows = (payments.data?.payments || []).filter((payment) => inRange(payment.date) && words.every((word) => `${payment.receipt} ${payment.customer} ${payment.reference} ${payment.method} ${payment.transactionRef}`.toLowerCase().includes(word)));
   const maxMethod = Math.max(1, ...(s?.byMethod || []).map((row) => row.total));
@@ -3394,8 +3441,16 @@ function FinancePage({ query, session }) {
     <>
       <div className="ws-period-bar">
         <span>Showing</span>
-        <select className="inv-select" value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Finance period">{FINANCE_PERIODS.map((option) => <option key={option}>{option}</option>)}</select>
-        <small>{period === "All time" ? "All records" : `${shortDate(from)} – ${shortDate(to)}`}</small>
+        <select className="inv-select" value={range.period} onChange={(event) => range.setPeriod(event.target.value)} aria-label="Finance period">{reportPeriods.map((option) => <option key={option}>{option}</option>)}</select>
+        {range.period === "Custom range" && (
+          <span className="inv-date-range">
+            <input type="date" value={range.customFrom} max={range.customTo || undefined} onChange={(event) => range.setCustomFrom(event.target.value)} aria-label="Finance from" />
+            <i>–</i>
+            <input type="date" value={range.customTo} min={range.customFrom || undefined} onChange={(event) => range.setCustomTo(event.target.value)} aria-label="Finance to" />
+          </span>
+        )}
+        <small>{range.period === "All time" ? "All records" : `${shortDate(from)} – ${shortDate(to)}`}</small>
+        <ClearFiltersButton active={financeFiltered} onClear={clearFinanceFilters} />
       </div>
       <section className="inv-stats">
         {[
