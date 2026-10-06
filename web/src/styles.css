@@ -7909,7 +7909,7 @@ button:not(.nav-link):not(.button-primary):not(.danger) {
 .inv-add-head,
 .inv-add-row {
     display: grid;
-    grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .8fr) minmax(0, .9fr) 30px;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, .8fr) minmax(0, .9fr) 30px;
     gap: 8px;
     align-items: center;
 }
@@ -8114,7 +8114,7 @@ button:not(.nav-link):not(.button-primary):not(.danger) {
         border-radius: 10px;
     }
     .inv-name {
-        grid-column: 1 / -1;
+        grid-column: 2;
     }
     .inv-modal .inv-row-remove {
         grid-column: 2;

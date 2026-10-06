@@ -1934,7 +1934,7 @@ function InventoryAddModal({ onClose, onSave, categories }) {
         <form className="inv-add-form" onSubmit={save} noValidate>
           <p className="inv-add-intro">Add one or many items at once. Leave SKU empty to create one automatically.</p>
           <div className="inv-add-head" aria-hidden="true">
-            <span>Item name</span><span>Category</span><span>Daily rate (TSh)</span><span>Quantity</span><span>SKU</span><span />
+            <span>Category</span><span>Item name</span><span>Daily rate (TSh)</span><span>Quantity</span><span>SKU</span><span />
           </div>
           <div className="inv-add-rows">
             {rows.map((row, index) => {
@@ -1942,6 +1942,17 @@ function InventoryAddModal({ onClose, onSave, categories }) {
               const Icon = categoryIcons[row.category] || Package;
               return (
                 <div className="inv-add-row" key={row.key}>
+                  <select
+                    className="inv-cell"
+                    value={row.category}
+                    onChange={(event) => setRows((current) => current.map((entry) => (entry.key === row.key ? { ...entry, category: event.target.value, dimensions: {} } : entry)))}
+                    aria-label={`Item ${index + 1} category`}
+                    autoFocus={index === rows.length - 1}
+                    aria-invalid={Boolean(errors.category)}
+                  >
+                    <option value="" disabled>Category</option>
+                    {categories.map((category) => <option key={category.id}>{category.name}</option>)}
+                  </select>
                   <label className="inv-cell inv-name">
                     <span className="inv-row-icon"><Icon size={15} /></span>
                     <input
@@ -1950,20 +1961,9 @@ function InventoryAddModal({ onClose, onSave, categories }) {
                       onChange={(event) => updateRow(row.key, "name", event.target.value)}
                       aria-label={`Item ${index + 1} name`}
                       aria-invalid={Boolean(errors.name)}
-                      autoFocus={index === rows.length - 1}
                       maxLength={60}
                     />
                   </label>
-                  <select
-                    className="inv-cell"
-                    value={row.category}
-                    onChange={(event) => setRows((current) => current.map((entry) => (entry.key === row.key ? { ...entry, category: event.target.value, dimensions: {} } : entry)))}
-                    aria-label={`Item ${index + 1} category`}
-                    aria-invalid={Boolean(errors.category)}
-                  >
-                    <option value="" disabled>Category</option>
-                    {categories.map((category) => <option key={category.id}>{category.name}</option>)}
-                  </select>
                   <input
                     className="inv-cell"
                     type="number"
