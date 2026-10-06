@@ -289,14 +289,37 @@ const reportDefinitions = [
       { key: "status", label: "By payment status" },
       { key: "customer", label: "Top paying customers" },
     ],
-    metrics: (rows) => {
-      const kept = rows.filter((row) => row.status !== "Refunded");
-      const collected = sumBy(kept, "amount");
+    // Cards show this month vs last month until a filter is applied (see ReportDetail).
+    monthlyCards: true,
+    metrics: (rows, previous) => {
+      const totals = (list) => {
+        const kept = list.filter((row) => row.status !== "Refunded");
+        const refunds = list.filter((row) => row.status === "Refunded");
+        const collected = sumBy(kept, "amount");
+        const tithe = sumBy(kept, "tithe");
+        const giving = sumBy(kept, "giving");
+        const byMethod = kept.reduce((map, row) => map.set(row.method, (map.get(row.method) || 0) + (Number(row.amount) || 0)), new Map());
+        const [topLabel, topValue] = [...byMethod.entries()].sort((left, right) => right[1] - left[1])[0] || [];
+        return {
+          collected, tithe, giving, net: collected - tithe - giving,
+          payments: kept.length, receipts: list.length,
+          average: kept.length ? collected / kept.length : 0,
+          refunded: sumBy(refunds, "amount"), refunds: refunds.length,
+          topMethod: topLabel ? { label: topLabel, value: topValue } : null,
+        };
+      };
+      const now = totals(rows);
+      const before = previous ? totals(previous) : null;
+      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], ...extra });
       return [
-        { label: "Total collected", value: formatTSh(collected), hint: `${kept.length} payments` },
-        { label: "Receipts issued", value: rows.length, hint: "in selection" },
-        { label: "Average receipt", value: formatTSh(kept.length ? collected / kept.length : 0), hint: "excluding refunds" },
-        { label: "Refunded", value: formatTSh(sumBy(rows.filter((row) => row.status === "Refunded"), "amount")), hint: `${rows.filter((row) => row.status === "Refunded").length} refund${rows.filter((row) => row.status === "Refunded").length === 1 ? "" : "s"}`, tone: "negative" },
+        card("Total collected", "collected", formatTSh(now.collected), `${now.payments} payment${now.payments === 1 ? "" : "s"}`),
+        card("Tithe", "tithe", formatTSh(now.tithe), "set aside from payments"),
+        card("Giving", "giving", formatTSh(now.giving), "set aside from payments"),
+        card("Net", "net", formatTSh(now.net), "collected − tithe − giving", { tone: now.net < 0 ? "negative" : "" }),
+        card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), "including refunds"),
+        card("Average receipt", "average", formatTSh(now.average), "excluding refunds"),
+        card("Refunded", "refunded", formatTSh(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
+        { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? `${formatTSh(now.topMethod.value)} collected` : "no payments" },
       ];
     },
   },
@@ -5082,6 +5105,31 @@ function ReportDetail({ report, onBack, onSwitch }) {
     setSort((current) => ({ key, dir: current.key === key && current.dir === "desc" ? "asc" : "desc" }));
   }
 
+  // With no filters, monthly reports show this month vs last month on the cards.
+  const monthlyView = report.monthlyCards && report.dateKey && activeFilters.length === 0;
+  const today = localTodayIso();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const lastMonthEnd = shiftIsoDate(monthStart, -1);
+  const lastMonthStart = `${lastMonthEnd.slice(0, 7)}-01`;
+  const inRange = (row, start, end) => String(row[report.dateKey]).slice(0, 10) >= start && String(row[report.dateKey]).slice(0, 10) <= end;
+  const monthName = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { month: "long" });
+  const cardMetrics = monthlyView
+    ? report.metrics(report.rows.filter((row) => inRange(row, monthStart, today)), report.rows.filter((row) => inRange(row, lastMonthStart, lastMonthEnd)))
+    : report.metrics(sortedRows);
+  const cardScope = monthlyView
+    ? { title: `This month · ${monthName(monthStart)}`, detail: `1–${Number(today.slice(8, 10))} ${monthName(monthStart)}, compared with ${monthName(lastMonthStart)}. Apply a filter to see other records.` }
+    : { title: "Filtered records", detail: `${sortedRows.length} record${sortedRows.length === 1 ? "" : "s"} matching your filters` };
+  function compareMonths(metric) {
+    if (!monthlyView || metric.current === undefined || metric.previous === undefined) return null;
+    const { current, previous } = metric;
+    if (previous === 0 && current === 0) return { text: `Same as ${monthName(lastMonthStart)}`, tone: "flat" };
+    if (previous === 0) return { text: `New vs ${monthName(lastMonthStart)} (0)`, tone: metric.lowerIsBetter ? "down" : "up" };
+    const percent = Math.round(((current - previous) / Math.abs(previous)) * 100);
+    if (percent === 0) return { text: `Same as ${monthName(lastMonthStart)}`, tone: "flat" };
+    const better = metric.lowerIsBetter ? percent < 0 : percent > 0;
+    return { text: `${percent > 0 ? "▲" : "▼"} ${Math.abs(percent)}% vs ${monthName(lastMonthStart)}`, tone: better ? "up" : "down" };
+  }
+
   const totalsRow = columns.map((column, index) => {
     if (column.total) return formatReportValue(sumBy(sortedRows, column.key), column.type);
     return index === 0 ? `Total (${sortedRows.length})` : "";
@@ -5269,14 +5317,24 @@ function ReportDetail({ report, onBack, onSwitch }) {
         </div>
       </section>
 
-      <section className="report-kpis">
-        {report.metrics(sortedRows).map((metric) => (
-          <article key={metric.label}>
-            <span>{metric.label}</span>
-            <strong>{metric.value}</strong>
-            <small className={metric.tone === "negative" ? "negative-text" : ""}>{metric.hint}</small>
-          </article>
-        ))}
+      <section className={`report-kpis ${cardMetrics.length > 4 ? "report-kpis-wide" : ""}`} aria-label={cardScope.title}>
+        {report.monthlyCards && (
+          <header className="report-kpis-scope">
+            <strong>{cardScope.title}</strong>
+            <small>{cardScope.detail}</small>
+          </header>
+        )}
+        {cardMetrics.map((metric) => {
+          const change = compareMonths(metric);
+          return (
+            <article key={metric.label}>
+              <span>{metric.label}</span>
+              <strong className={metric.tone === "negative" && metric.label === "Net" ? "negative-text" : ""}>{metric.value}</strong>
+              <small className={metric.tone === "negative" && metric.label !== "Net" ? "negative-text" : ""}>{metric.hint}</small>
+              {change && <em className={`report-kpi-change ${change.tone}`}>{change.text}</em>}
+            </article>
+          );
+        })}
       </section>
 
       {view === "table" ? (
