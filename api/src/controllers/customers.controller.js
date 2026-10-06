@@ -1,6 +1,6 @@
 import { query, transaction } from '../config/db.js';
 import { hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, isEmail, isPhone, normalizePhone, prettyPhone } from '../utils/helpers.js';
+import { HttpError, cleanText, isEmail, isPhone, normalizePhone, personName, prettyPhone } from '../utils/helpers.js';
 import { getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
 import { loadOrders } from '../services/orders.service.js';
@@ -56,8 +56,8 @@ function validate(body, { partial }) {
     const value = {};
     const fields = {};
     const has = (key) => !partial || body[key] !== undefined;
-    if (has('firstName')) { value.first_name = cleanText(body.firstName, 40); if (!value.first_name) fields.firstName = 'Enter a first name.'; }
-    if (has('lastName')) { value.last_name = cleanText(body.lastName, 40); if (!value.last_name) fields.lastName = 'Enter a last name.'; }
+    if (has('firstName')) { value.first_name = personName(body.firstName); if (!value.first_name) fields.firstName = 'Enter a first name.'; }
+    if (has('lastName')) { value.last_name = personName(body.lastName); if (!value.last_name) fields.lastName = 'Enter a last name.'; }
     if (has('phone')) { value.phone = normalizePhone(body.phone); if (!isPhone(value.phone)) fields.phone = 'Enter a valid phone number.'; }
     if (body.email !== undefined) { value.email = cleanText(body.email, 120) || null; if (value.email && !isEmail(value.email)) fields.email = 'Enter a valid email.'; }
     for (const [key, max] of [['area', 40], ['place', 80], ['notes', 500]]) {

@@ -9685,3 +9685,12 @@ button.cust-open small {
     color: #8592a6 !important;
     font-size: 11px !important;
 }
+
+/* Customer names are saved in capitals; show them that way while typing. */
+input.caps-input {
+    text-transform: uppercase;
+}
+
+input.caps-input::placeholder {
+    text-transform: none;
+}

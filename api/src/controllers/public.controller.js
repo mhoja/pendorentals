@@ -1,6 +1,6 @@
 import { query, transaction } from '../config/db.js';
 import { createSession, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, formatDate, isIsoDate, isPhone, normalizePhone, prettyPhone, todayIso } from '../utils/helpers.js';
+import { HttpError, cleanText, formatDate, isIsoDate, isPhone, normalizePhone, personName, prettyPhone, todayIso } from '../utils/helpers.js';
 import { loadOrder, nextCode } from '../services/orders.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { OTHER_AREA, isKnownArea } from '../services/areas.service.js';
@@ -21,8 +21,8 @@ function itemsSummary(items) {
 function validateRequest(body) {
     const errors = {};
     const value = {
-        firstName: cleanText(body.firstName, 40),
-        lastName: cleanText(body.lastName, 40),
+        firstName: personName(body.firstName),
+        lastName: personName(body.lastName),
         phone: normalizePhone(body.phone),
         area: cleanText(body.area, 40),
         place: cleanText(body.place, 80),

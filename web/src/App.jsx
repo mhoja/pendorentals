@@ -1234,7 +1234,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
                   <label className={`auth-input ${invalid("firstName") ? "has-error" : ""}`}>
                     <UserRound size={17} />
                     <span className="sr-only">First name</span>
-                    <input autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => update("firstName", event.target.value)} aria-invalid={invalid("firstName")} />
+                    <input className="caps-input" autoComplete="given-name" placeholder="First name" value={form.firstName} onChange={(event) => update("firstName", event.target.value)} aria-invalid={invalid("firstName")} />
                   </label>
                   {show("firstName")}
                 </div>
@@ -1242,7 +1242,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
                   <label className={`auth-input ${invalid("lastName") ? "has-error" : ""}`}>
                     <UserRound size={17} />
                     <span className="sr-only">Last name</span>
-                    <input autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => update("lastName", event.target.value)} aria-invalid={invalid("lastName")} />
+                    <input className="caps-input" autoComplete="family-name" placeholder="Last name" value={form.lastName} onChange={(event) => update("lastName", event.target.value)} aria-invalid={invalid("lastName")} />
                   </label>
                   {show("lastName")}
                 </div>
@@ -2852,8 +2852,8 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
                 </label>
               ) : (
                 <div className="ws-order-row ws-cols-4">
-                  <label className="set-field"><span>First name</span><input value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
-                  <label className="set-field"><span>Last name</span><input value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
+                  <label className="set-field"><span>First name</span><input className="caps-input" value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
+                  <label className="set-field"><span>Last name</span><input className="caps-input" value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
                   <label className="set-field"><span>Phone</span><input inputMode="tel" placeholder="0712 345 678" value={form.newCustomer.phone} onChange={(event) => set("newCustomer", { ...form.newCustomer, phone: event.target.value })} /></label>
                   <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option><AreaOptions current={form.newCustomer.area} /></select></label>
                 </div>
@@ -3163,8 +3163,8 @@ function CustomerModal({ customer, onClose, onSaved }) {
     <WsModal title={customer ? `Edit ${customer.name}` : "Add customer"} kicker="CUSTOMERS" onClose={onClose} busy={busy}>
       <form className="team-form" onSubmit={save} noValidate>
         <div className="set-grid">
-          <label className="set-field"><span>First name</span><input {...bind("firstName")} autoFocus /><FieldError message={errors.firstName} /></label>
-          <label className="set-field"><span>Last name</span><input {...bind("lastName")} /><FieldError message={errors.lastName} /></label>
+          <label className="set-field"><span>First name</span><input {...bind("firstName")} className="caps-input" autoFocus /><FieldError message={errors.firstName} /></label>
+          <label className="set-field"><span>Last name</span><input {...bind("lastName")} className="caps-input" /><FieldError message={errors.lastName} /></label>
           <label className="set-field"><span>Phone</span><input {...bind("phone")} inputMode="tel" placeholder="0712 345 678" /><FieldError message={errors.phone} /></label>
           <label className="set-field"><span>Email <em>Optional</em></span><input {...bind("email")} type="email" /><FieldError message={errors.email} /></label>
           <label className="set-field"><span>Area</span><select {...bind("area")}><option value="">Choose</option><AreaOptions current={form.area} /></select></label>

@@ -20,6 +20,9 @@ export const isPhone = (phone) => /^0[67]\d{8}$/.test(phone);
 export const prettyPhone = (phone) => String(phone || '').replace(/^(\d{4})(\d{3})(\d{3})$/, '$1 $2 $3');
 export const cleanText = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 export const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+// Customer names are stored in capitals however they are typed, e.g. "neema joseph" -> "NEEMA JOSEPH".
+export const personName = (value) => cleanText(value, 40).toUpperCase();
 export const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && !Number.isNaN(Date.parse(value));
 export const isWhole = (value, min = 0, max = 1e12) => Number.isInteger(value) && value >= min && value <= max;
 

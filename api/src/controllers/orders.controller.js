@@ -1,6 +1,6 @@
 import { query, transaction } from '../config/db.js';
 import { MANAGERS, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, formatDate, formatTSh, isPhone, isWhole, normalizePhone } from '../utils/helpers.js';
+import { HttpError, cleanText, formatDate, formatTSh, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
 import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
 import { fillTemplate, getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
@@ -53,8 +53,8 @@ async function resolveCustomer(db, body) {
     }
     const raw = body.customer || {};
     const phone = normalizePhone(raw.phone);
-    const firstName = cleanText(raw.firstName, 40);
-    const lastName = cleanText(raw.lastName, 40);
+    const firstName = personName(raw.firstName);
+    const lastName = personName(raw.lastName);
     const fields = {};
     if (!firstName) fields.firstName = 'Enter a first name.';
     if (!lastName) fields.lastName = 'Enter a last name.';
