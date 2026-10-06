@@ -5329,10 +5329,11 @@ function ReportDetail({ report, onBack, onSwitch }) {
         {cardMetrics.map((metric) => {
           const change = compareMonths(metric);
           return (
-            <article key={metric.label}>
+            <article key={metric.label} title={[`${metric.label}: ${metric.value}`, metric.hint, change && `${change.badge} · ${change.last}`].filter(Boolean).join(" · ")}>
               <span>{metric.label}</span>
               <strong className={metric.tone === "negative" && metric.label === "Net" ? "negative-text" : ""}>{metric.value}</strong>
-              <small className={metric.tone === "negative" && metric.label !== "Net" ? "negative-text" : ""}>{metric.hint}</small>
+              {/* With a month comparison the hint moves to the tooltip to keep cards small. */}
+              {!change && <small className={metric.tone === "negative" && metric.label !== "Net" ? "negative-text" : ""}>{metric.hint}</small>}
               {change && <span className="report-kpi-compare"><em className={`report-kpi-change ${change.tone}`}>{change.badge}</em><i>{change.last}</i></span>}
             </article>
           );
