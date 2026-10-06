@@ -113,16 +113,29 @@ jobs:
           BEEM_SECRET_KEY: ${{ secrets.BEEM_SECRET_KEY }}
           BEEM_SENDER_ID: ${{ secrets.BEEM_SENDER_ID }}
           STAFF_PASSWORD: ${{ secrets.STAFF_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_SSL: ${{ secrets.DB_SSL }}
         run: |
           set -eu
           umask 077
           env_file="$RUNNER_TEMP/api.env"
           echo "PUBLIC_URL=http://$DEPLOY_HOST:$WEB_NGINX_PORT" > "$env_file"
           echo "DATA_DIR=/app/data" >> "$env_file"
-          for name in BEEM_API_KEY BEEM_SECRET_KEY BEEM_SENDER_ID STAFF_PASSWORD; do
+          for name in BEEM_API_KEY BEEM_SECRET_KEY BEEM_SENDER_ID STAFF_PASSWORD DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD DB_SSL; do
             eval "value=\${$name:-}"
             if [ -n "$value" ]; then
               printf '%s=%s\n' "$name" "$value" >> "$env_file"
+            fi
+          done
+          for name in DB_HOST DB_NAME DB_USER DB_PASSWORD; do
+            eval "value=\${$name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::The $name secret is missing; the API needs it to reach PostgreSQL."
+              exit 1
             fi
           done
           if [ -z "${BEEM_API_KEY:-}" ]; then

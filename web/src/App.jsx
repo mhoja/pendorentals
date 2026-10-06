@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import tentScene from "./assets/tent-scene.jpeg";
 import {
@@ -10,7 +10,6 @@ import {
   ChartNoAxesCombined,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Clock3,
   CircleHelp,
@@ -24,7 +23,6 @@ import {
   Search,
   Settings2,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Truck,
   Users,
@@ -33,9 +31,7 @@ import {
   Wallet,
   UserCog,
   Wrench,
-  ClipboardList,
   Send,
-  CalendarClock,
   CircleDollarSign,
   Printer,
   Table2,
@@ -62,9 +58,9 @@ import {
   MapPin,
   UserRound,
   CircleCheck,
-  PartyPopper,
   CalendarCheck,
   Building2,
+  UserPlus,
   Banknote,
   ScrollText,
   CreditCard,
@@ -81,7 +77,6 @@ import {
   HardDriveDownload,
   CircleDot,
   Info,
-  MessageSquare,
   Armchair,
   PanelTop,
   Shirt,
@@ -119,240 +114,6 @@ const managementNavigation = [
   { label: "Settings", icon: Settings2 },
 ];
 
-const inventory = [
-  {
-    name: "Canvas Bell Tent",
-    category: "Shelter",
-    sku: "SHE-1042",
-    image: "photo-1478131143081-80f7f84ca84d",
-    rate: 85,
-    quantity: 12,
-    status: "Available",
-    tone: "green",
-  },
-  {
-    name: "Oak Folding Table",
-    category: "Furniture",
-    sku: "FUR-2081",
-    image: "photo-1499933374294-4584851497cc",
-    rate: 24,
-    quantity: 18,
-    status: "Available",
-    tone: "green",
-  },
-  {
-    name: "Alpine Camp Chair",
-    category: "Furniture",
-    sku: "FUR-1064",
-    image: "photo-1504851149312-7a075b496cc7",
-    rate: 12,
-    quantity: 6,
-    status: "Rented",
-    tone: "blue",
-  },
-  {
-    name: "Warm Glow Lantern",
-    category: "Lighting",
-    sku: "LGT-3016",
-    image: "photo-1500530855697-b586d89ba3ee",
-    rate: 16,
-    quantity: 9,
-    status: "Available",
-    tone: "green",
-  },
-];
-
-const bookings = [
-  {
-    initials: "JM",
-    name: "Jordan Mitchell",
-    detail: "Weekend camping · 4 items",
-    item: "Bell tent, chairs + 2",
-    date: "Today, 10:30 am",
-    amount: "TSh 248",
-    status: "Ready for pickup",
-    tone: "amber",
-    color: "peach",
-  },
-  {
-    initials: "AS",
-    name: "Avery Sinclair",
-    detail: "Backyard gathering · 8 items",
-    item: "Tables, linens + more",
-    date: "Today, 1:00 pm",
-    amount: "TSh 412",
-    status: "Out for delivery",
-    tone: "blue",
-    color: "lilac",
-  },
-  {
-    initials: "RL",
-    name: "Riley Lawson",
-    detail: "Coastal weekend · 3 items",
-    item: "Paddleboards + gear",
-    date: "Tomorrow, 9:00 am",
-    amount: "TSh 186",
-    status: "Confirmed",
-    tone: "green",
-    color: "mint",
-  },
-  {
-    initials: "SK",
-    name: "Sam Kim",
-    detail: "Garden dinner · 12 items",
-    item: "Tables, chairs + lights",
-    date: "Oct 04, 2:00 pm",
-    amount: "TSh 568",
-    status: "Confirmed",
-    tone: "green",
-    color: "blue",
-  },
-];
-
-const chartData = [
-  { day: "Mon", value: 40 },
-  { day: "Tue", value: 66 },
-  { day: "Wed", value: 50 },
-  { day: "Thu", value: 77 },
-  { day: "Fri", value: 58 },
-  { day: "Sat", value: 91 },
-  { day: "Sun", value: 72 },
-];
-
-const ordersData = [
-  {
-    id: "ORD-1048",
-    customer: "Jordan Mitchell",
-    items: "Canvas bell tent, 2 chairs",
-    date: "Oct 01 – Oct 03",
-    total: "TSh 248.00",
-    status: "Ready for pickup",
-    tone: "amber",
-  },
-  {
-    id: "ORD-1047",
-    customer: "Avery Sinclair",
-    items: "Oak tables, linens, lights",
-    date: "Oct 01 – Oct 02",
-    total: "TSh 412.00",
-    status: "Out for delivery",
-    tone: "blue",
-  },
-  {
-    id: "ORD-1046",
-    customer: "Riley Lawson",
-    items: "Paddleboards, safety kit",
-    date: "Oct 02 – Oct 05",
-    total: "TSh 186.00",
-    status: "Confirmed",
-    tone: "green",
-  },
-  {
-    id: "ORD-1045",
-    customer: "Sam Kim",
-    items: "Tables, chairs, festoon lights",
-    date: "Oct 04 – Oct 05",
-    total: "TSh 568.00",
-    status: "Confirmed",
-    tone: "green",
-  },
-  {
-    id: "ORD-1044",
-    customer: "Morgan Lee",
-    items: "Camp kitchen, cooler",
-    date: "Oct 05 – Oct 07",
-    total: "TSh 132.00",
-    status: "Awaiting payment",
-    tone: "amber",
-  },
-];
-
-const customersData = [
-  {
-    name: "Jordan Mitchell",
-    email: "jordan.m@email.com",
-    phone: "+1 (415) 555-0124",
-    address: "1842 Pine Street, San Francisco, CA 94109",
-    lastOrder: "2026-10-01",
-    orders: 12,
-    spent: "TSh 2,480",
-    initials: "JM",
-    color: "peach",
-  },
-  {
-    name: "Avery Sinclair",
-    email: "avery.s@email.com",
-    phone: "+1 (415) 555-0182",
-    address: "725 Valencia Street, San Francisco, CA 94110",
-    lastOrder: "2026-09-29",
-    orders: 8,
-    spent: "TSh 1,920",
-    initials: "AS",
-    color: "lilac",
-  },
-  {
-    name: "Riley Lawson",
-    email: "riley.l@email.com",
-    phone: "+1 (415) 555-0156",
-    address: "310 Ocean Avenue, San Francisco, CA 94112",
-    lastOrder: "2026-09-26",
-    orders: 6,
-    spent: "TSh 1,145",
-    initials: "RL",
-    color: "mint",
-  },
-  {
-    name: "Sam Kim",
-    email: "sam.k@email.com",
-    phone: "+1 (415) 555-0109",
-    address: "91 Clement Street, San Francisco, CA 94118",
-    lastOrder: "2026-09-20",
-    orders: 5,
-    spent: "TSh 980",
-    initials: "SK",
-    color: "blue",
-  },
-];
-
-const invoicesData = [
-  {
-    id: "INV-000125",
-    customer: "Jordan Mitchell",
-    issued: "Oct 01, 2026",
-    due: "Oct 08, 2026",
-    amount: "TSh 248.00",
-    status: "Paid",
-    tone: "green",
-  },
-  {
-    id: "INV-000124",
-    customer: "Avery Sinclair",
-    issued: "Oct 01, 2026",
-    due: "Oct 08, 2026",
-    amount: "TSh 412.00",
-    status: "Due soon",
-    tone: "amber",
-  },
-  {
-    id: "INV-000123",
-    customer: "Riley Lawson",
-    issued: "Sep 29, 2026",
-    due: "Oct 06, 2026",
-    amount: "TSh 186.00",
-    status: "Paid",
-    tone: "green",
-  },
-  {
-    id: "INV-000122",
-    customer: "Morgan Lee",
-    issued: "Sep 28, 2026",
-    due: "Oct 05, 2026",
-    amount: "TSh 132.00",
-    status: "Overdue",
-    tone: "red",
-  },
-];
-
 function BrandMark() {
   return (
     <div className="brand-mark">
@@ -383,43 +144,6 @@ function Metric({ icon: Icon, label, value, change, kind, color, caption }) {
       </div>
     </article>
   );
-}
-
-function getReportData(page, orders, inventoryItems = inventory) {
-  if (page === "Customers") {
-    return {
-      title: "Customers",
-      columns: ["Name", "Email", "Phone", "Address", "Orders", "Last order", "Lifetime spend"],
-      rows: customersData.map((customer) => [
-        customer.name,
-        customer.email,
-        customer.phone,
-        customer.address,
-        customer.orders,
-        customer.lastOrder,
-        customer.spent,
-      ]),
-    };
-  }
-  if (page === "Inventory") {
-    return {
-      title: "Inventory",
-      columns: ["Item", "Category", "SKU", "Rate (TSh/day)", "Quantity", "Status"],
-      rows: inventoryItems.map((item) => [item.name, item.category, item.sku, `TSh ${Number(item.rate).toLocaleString("en-US")}`, item.quantity, item.status]),
-    };
-  }
-  if (page === "Invoices") {
-    return {
-      title: "Invoices",
-      columns: ["Invoice", "Customer", "Issued", "Due", "Amount", "Status"],
-      rows: invoicesData.map((invoice) => [invoice.id, invoice.customer, invoice.issued, invoice.due, invoice.amount, invoice.status]),
-    };
-  }
-  return {
-    title: "Orders",
-    columns: ["Order", "Customer", "Rental items", "Rental dates", "Total", "Status"],
-    rows: orders.map(({ id, customer, items, date, total, status }) => [id, customer, items, date, total, status]),
-  };
 }
 
 async function downloadTableReport(title, columns, rows, format, options = {}) {
@@ -502,78 +226,6 @@ const BUSINESS_INFO = {
   address: "Kayenze, Geita, Tanzania",
 };
 
-const paymentsData = [
-  { receipt: "RCT-0158", date: "2026-10-01", customer: "Jordan Mitchell", phone: "+255 754 120 124", reference: "ORD-1048", invoice: "INV-000125", method: "M-Pesa", amount: 248, status: "Paid", cashier: "Pendo Mbolela" },
-  { receipt: "RCT-0157", date: "2026-10-01", customer: "Avery Sinclair", phone: "+255 713 555 182", reference: "ORD-1047", invoice: "INV-000124", method: "Card", amount: 200, status: "Partially paid", cashier: "Grace Chen" },
-  { receipt: "RCT-0156", date: "2026-09-30", customer: "Riley Lawson", phone: "+255 684 555 156", reference: "ORD-1046", invoice: "INV-000123", method: "Cash", amount: 186, status: "Paid", cashier: "Pendo Mbolela" },
-  { receipt: "RCT-0155", date: "2026-09-29", customer: "Sam Kim", phone: "+255 765 555 109", reference: "ORD-1045", invoice: "INV-000121", method: "Bank transfer", amount: 568, status: "Paid", cashier: "Grace Chen" },
-  { receipt: "RCT-0154", date: "2026-09-27", customer: "Morgan Lee", phone: "+255 715 555 141", reference: "ORD-1044", invoice: "INV-000122", method: "M-Pesa", amount: 66, status: "Partially paid", cashier: "Daniel Kim" },
-  { receipt: "RCT-0153", date: "2026-09-24", customer: "Taylor Brooks", phone: "+255 744 555 177", reference: "ORD-1041", invoice: "INV-000119", method: "Cash", amount: 320, status: "Paid", cashier: "Pendo Mbolela" },
-  { receipt: "RCT-0152", date: "2026-09-20", customer: "Jordan Mitchell", phone: "+255 754 120 124", reference: "ORD-1038", invoice: "INV-000116", method: "M-Pesa", amount: 154, status: "Refunded", cashier: "Grace Chen" },
-  { receipt: "RCT-0151", date: "2026-09-15", customer: "Casey Nguyen", phone: "+255 787 555 163", reference: "ORD-1035", invoice: "INV-000113", method: "Card", amount: 412, status: "Paid", cashier: "Daniel Kim" },
-  { receipt: "RCT-0150", date: "2026-09-08", customer: "Avery Sinclair", phone: "+255 713 555 182", reference: "ORD-1031", invoice: "INV-000109", method: "Bank transfer", amount: 275, status: "Paid", cashier: "Pendo Mbolela" },
-  { receipt: "RCT-0149", date: "2026-08-29", customer: "Riley Lawson", phone: "+255 684 555 156", reference: "ORD-1027", invoice: "INV-000104", method: "M-Pesa", amount: 198, status: "Paid", cashier: "Grace Chen" },
-];
-
-const salesReportData = [
-  { order: "ORD-1048", date: "2026-10-01", customer: "Jordan Mitchell", items: "Canvas bell tent, 2 chairs", category: "Shelter", channel: "Walk-in", days: 3, total: 248, status: "Active" },
-  { order: "ORD-1047", date: "2026-10-01", customer: "Avery Sinclair", items: "Oak tables, linens, lights", category: "Furniture", channel: "Online", days: 2, total: 412, status: "Active" },
-  { order: "ORD-1046", date: "2026-09-30", customer: "Riley Lawson", items: "Paddleboards, safety kit", category: "Outdoor gear", channel: "Phone", days: 4, total: 186, status: "Active" },
-  { order: "ORD-1045", date: "2026-09-29", customer: "Sam Kim", items: "Tables, chairs, festoon lights", category: "Furniture", channel: "Online", days: 2, total: 568, status: "Completed" },
-  { order: "ORD-1044", date: "2026-09-27", customer: "Morgan Lee", items: "Camp kitchen, cooler", category: "Outdoor gear", channel: "Walk-in", days: 3, total: 132, status: "Completed" },
-  { order: "ORD-1041", date: "2026-09-24", customer: "Taylor Brooks", items: "Bell tent, lanterns", category: "Shelter", channel: "Online", days: 2, total: 320, status: "Completed" },
-  { order: "ORD-1038", date: "2026-09-20", customer: "Jordan Mitchell", items: "Folding chairs x10", category: "Furniture", channel: "Phone", days: 1, total: 154, status: "Cancelled" },
-  { order: "ORD-1035", date: "2026-09-15", customer: "Casey Nguyen", items: "Lanterns, string lights", category: "Lighting", channel: "Online", days: 2, total: 412, status: "Completed" },
-  { order: "ORD-1031", date: "2026-09-08", customer: "Avery Sinclair", items: "Bell tent, rugs", category: "Shelter", channel: "Walk-in", days: 3, total: 275, status: "Completed" },
-  { order: "ORD-1027", date: "2026-08-29", customer: "Riley Lawson", items: "Kayak, dry bags", category: "Outdoor gear", channel: "Phone", days: 2, total: 198, status: "Completed" },
-];
-
-const expenseReportData = [
-  { date: "2026-10-01", category: "Equipment maintenance", description: "Tent repairs & cleaning", vendor: "CleanCanvas Ltd", method: "Business card", amount: 420, status: "Approved" },
-  { date: "2026-09-30", category: "Delivery & transport", description: "Fuel and vehicle costs", vendor: "Puma Energy", method: "Business card", amount: 285.5, status: "Approved" },
-  { date: "2026-09-28", category: "Supplies", description: "Replacement tent pegs", vendor: "Geita Hardware", method: "Bank transfer", amount: 128, status: "Approved" },
-  { date: "2026-09-25", category: "Marketing", description: "Instagram promotion", vendor: "Meta", method: "Business card", amount: 150, status: "Approved" },
-  { date: "2026-09-22", category: "Delivery & transport", description: "Driver allowance", vendor: "Staff", method: "M-Pesa", amount: 90, status: "Pending" },
-  { date: "2026-09-18", category: "Equipment maintenance", description: "Lantern battery packs", vendor: "Geita Hardware", method: "Cash", amount: 64, status: "Approved" },
-  { date: "2026-09-12", category: "Rent & utilities", description: "Warehouse electricity", vendor: "TANESCO", method: "Bank transfer", amount: 210, status: "Approved" },
-  { date: "2026-09-05", category: "Supplies", description: "Cleaning detergents", vendor: "Geita Supermarket", method: "Cash", amount: 46, status: "Approved" },
-  { date: "2026-08-30", category: "Rent & utilities", description: "Warehouse rent", vendor: "Kayenze Properties", method: "Bank transfer", amount: 900, status: "Pending" },
-];
-
-const inventoryReportData = [
-  { name: "Canvas Bell Tent", category: "Shelter", sku: "SHE-1042", quantity: 12, rented: 9, utilization: 75, revenue: 1843, status: "Available" },
-  { name: "Oak Folding Table", category: "Furniture", sku: "FUR-2081", quantity: 18, rented: 11, utilization: 61, revenue: 980, status: "Available" },
-  { name: "Alpine Camp Chair", category: "Furniture", sku: "FUR-1064", quantity: 6, rented: 6, utilization: 100, revenue: 642, status: "Rented" },
-  { name: "Warm Glow Lantern", category: "Lighting", sku: "LGT-3016", quantity: 9, rented: 4, utilization: 44, revenue: 388, status: "Available" },
-  { name: "Festoon String Lights", category: "Lighting", sku: "LGT-3022", quantity: 14, rented: 10, utilization: 71, revenue: 712, status: "Available" },
-  { name: "Inflatable Paddleboard", category: "Outdoor gear", sku: "OUT-4410", quantity: 5, rented: 3, utilization: 60, revenue: 534, status: "Available" },
-  { name: "Two-Person Kayak", category: "Outdoor gear", sku: "OUT-4415", quantity: 3, rented: 0, utilization: 0, revenue: 198, status: "Maintenance" },
-  { name: "Camp Kitchen Set", category: "Outdoor gear", sku: "OUT-4302", quantity: 4, rented: 2, utilization: 50, revenue: 264, status: "Available" },
-];
-
-const customerReportData = [
-  { name: "Jordan Mitchell", phone: "+255 754 120 124", segment: "VIP", lastOrder: "2026-10-01", orders: 12, spent: 2480, status: "Active" },
-  { name: "Avery Sinclair", phone: "+255 713 555 182", segment: "VIP", lastOrder: "2026-10-01", orders: 8, spent: 1920, status: "Active" },
-  { name: "Riley Lawson", phone: "+255 684 555 156", segment: "Regular", lastOrder: "2026-09-30", orders: 6, spent: 1145, status: "Active" },
-  { name: "Sam Kim", phone: "+255 765 555 109", segment: "Regular", lastOrder: "2026-09-29", orders: 5, spent: 980, status: "Active" },
-  { name: "Casey Nguyen", phone: "+255 787 555 163", segment: "Regular", lastOrder: "2026-09-15", orders: 3, spent: 640, status: "Active" },
-  { name: "Taylor Brooks", phone: "+255 744 555 177", segment: "New", lastOrder: "2026-09-24", orders: 1, spent: 320, status: "Active" },
-  { name: "Morgan Lee", phone: "+255 715 555 141", segment: "New", lastOrder: "2026-09-27", orders: 1, spent: 132, status: "Active" },
-  { name: "Jamie Ortiz", phone: "+255 719 555 120", segment: "Regular", lastOrder: "2026-06-14", orders: 4, spent: 710, status: "Inactive" },
-];
-
-const deliveryReportData = [
-  { id: "DLV-0312", date: "2026-10-01", customer: "Avery Sinclair", area: "Kayenze", driver: "Ava Patel", distance: 3.2, fee: 25, status: "In transit" },
-  { id: "DLV-0311", date: "2026-10-01", customer: "Jordan Mitchell", area: "Geita Town", driver: "Daniel Kim", distance: 14.6, fee: 20, status: "Scheduled" },
-  { id: "DLV-0310", date: "2026-09-30", customer: "Riley Lawson", area: "Katoro", driver: "Ava Patel", distance: 38.5, fee: 45, status: "Delivered" },
-  { id: "DLV-0309", date: "2026-09-29", customer: "Sam Kim", area: "Kalangalala", driver: "Daniel Kim", distance: 12.8, fee: 25, status: "Delivered" },
-  { id: "DLV-0308", date: "2026-09-27", customer: "Morgan Lee", area: "Nyankumbu", driver: "Ava Patel", distance: 16.4, fee: 30, status: "Delivered" },
-  { id: "DLV-0307", date: "2026-09-24", customer: "Taylor Brooks", area: "Nyarugusu", driver: "Daniel Kim", distance: 27.3, fee: 40, status: "Failed" },
-  { id: "DLV-0306", date: "2026-09-15", customer: "Casey Nguyen", area: "Kayenze", driver: "Ava Patel", distance: 3.5, fee: 25, status: "Delivered" },
-  { id: "DLV-0305", date: "2026-09-08", customer: "Avery Sinclair", area: "Geita Town", driver: "Daniel Kim", distance: 14.6, fee: 25, status: "Delivered" },
-  { id: "DLV-0304", date: "2026-08-29", customer: "Riley Lawson", area: "Katoro", driver: "Ava Patel", distance: 38.5, fee: 45, status: "Delivered" },
-];
-
 const sumBy = (rows, key) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
 const formatTSh = (value) =>
   `TSh ${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -603,7 +255,7 @@ const reportDefinitions = [
     title: "Finance & receipts",
     desc: "Payments received, receipts issued and collections by method.",
     tag: "FINANCE",
-    rows: paymentsData,
+    rows: [],
     rowKey: "receipt",
     dateKey: "date",
     amountKey: "amount",
@@ -624,6 +276,7 @@ const reportDefinitions = [
       { key: "method", label: "METHOD" },
       { key: "cashier", label: "RECEIVED BY" },
       { key: "status", label: "STATUS", type: "status" },
+      { key: "tithe", label: "TITHE", type: "money", total: true },
       { key: "amount", label: "AMOUNT", type: "money", total: true },
     ],
     groupBy: [
@@ -648,7 +301,7 @@ const reportDefinitions = [
     title: "Sales report",
     desc: "Revenue, order volume, channels and top-performing categories.",
     tag: "FINANCE",
-    rows: salesReportData,
+    rows: [],
     rowKey: "order",
     dateKey: "date",
     amountKey: "total",
@@ -692,8 +345,8 @@ const reportDefinitions = [
     title: "Expense report",
     desc: "Operating costs by category, vendor and payment method.",
     tag: "FINANCE",
-    rows: expenseReportData,
-    rowKey: "description",
+    rows: [],
+    rowKey: "id",
     dateKey: "date",
     amountKey: "amount",
     amountLabel: "Spent",
@@ -734,7 +387,7 @@ const reportDefinitions = [
     title: "Items & availability",
     desc: "Rental utilization, availability and revenue per item.",
     tag: "INVENTORY",
-    rows: inventoryReportData,
+    rows: [],
     rowKey: "sku",
     labelKey: "name",
     amountKey: "revenue",
@@ -775,7 +428,7 @@ const reportDefinitions = [
     title: "Customer report",
     desc: "Customer activity, segments, retention and lifetime value.",
     tag: "CUSTOMERS",
-    rows: customerReportData,
+    rows: [],
     rowKey: "name",
     dateKey: "lastOrder",
     dateLabel: "Last order",
@@ -813,9 +466,9 @@ const reportDefinitions = [
     id: "deliveries",
     icon: Truck,
     title: "Delivery report",
-    desc: "Delivery schedules, completion rate, drivers and distance.",
+    desc: "Delivery schedules, completion rate, drivers and fees.",
     tag: "OPERATIONS",
-    rows: deliveryReportData,
+    rows: [],
     rowKey: "id",
     dateKey: "date",
     amountKey: "fee",
@@ -832,7 +485,6 @@ const reportDefinitions = [
       { key: "customer", label: "CUSTOMER" },
       { key: "area", label: "AREA" },
       { key: "driver", label: "DRIVER" },
-      { key: "distance", label: "DISTANCE", type: "km", total: true },
       { key: "status", label: "STATUS", type: "status" },
       { key: "fee", label: "FEE", type: "money", total: true },
     ],
@@ -846,7 +498,7 @@ const reportDefinitions = [
       return [
         { label: "Deliveries", value: rows.length, hint: `${delivered} delivered` },
         { label: "Completion rate", value: `${rows.length ? Math.round((delivered / rows.length) * 100) : 0}%`, hint: "delivered / total" },
-        { label: "Distance covered", value: `${sumBy(rows, "distance").toFixed(1)} km`, hint: "all trips" },
+        { label: "Drivers", value: new Set(rows.map((row) => row.driver)).size, hint: "assigned" },
         { label: "Delivery fees", value: formatTSh(sumBy(rows, "fee")), hint: `${rows.filter((row) => row.status === "Failed").length} failed`, tone: rows.some((row) => row.status === "Failed") ? "negative" : undefined },
       ];
     },
@@ -1630,6 +1282,13 @@ function CustomerHome({ session, onLogout, onRentMore }) {
                       <div><dt><MapPin size={13} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
                       {order.notes && <div><dt><StickyNote size={13} /> Notes</dt><dd>{order.notes}</dd></div>}
                     </dl>
+                    {order.total !== null && order.total !== undefined && (
+                      <div className="cust-order-money">
+                        <span>Total <b>{formatShillings(order.total)}</b></span>
+                        <span>Paid <b>{formatShillings(order.paid)}</b></span>
+                        <span className={order.balance ? "due" : "settled"}>{order.balance ? <>Balance <b>{formatShillings(order.balance)}</b></> : <b>Paid in full</b>}</span>
+                      </div>
+                    )}
                     {info.text && <p className="cust-order-note"><Info size={13} /> {info.text}</p>}
                   </article>
                 );
@@ -1836,12 +1495,26 @@ function App() {
 
   useEffect(() => {
     if (!session) return;
-    api("/me", { token: session.token }).catch((error) => {
-      if (error.status === 401) {
-        clearSession();
-        setSession(null);
-      }
-    });
+    api("/me", { token: session.token })
+      .then((me) => {
+        if (me.staffRole !== session.staffRole || me.name !== session.name || me.id !== session.id) {
+          const next = { ...session, staffRole: me.staffRole, name: me.name, id: me.id };
+          let remembered = false;
+          try {
+            remembered = Boolean(localStorage.getItem(SESSION_KEY));
+          } catch {
+            remembered = false;
+          }
+          writeSession(next, remembered);
+          setSession(next);
+        }
+      })
+      .catch((error) => {
+        if (error.status === 401) {
+          clearSession();
+          setSession(null);
+        }
+      });
   }, [session?.token]);
 
   function logout() {
@@ -1888,91 +1561,155 @@ function App() {
   return <Workspace session={session} onLogout={logout} />;
 }
 
-function toStaffOrder(order) {
-  const end = new Date(`${order.eventDate}T00:00:00`);
-  end.setDate(end.getDate() + order.days - 1);
-  const short = (date) => date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
-  const start = new Date(`${order.eventDate}T00:00:00`);
-  return {
-    id: order.id,
-    customer: order.customerName,
-    items: order.items.map((item) => `${itemDisplay(item)} ×${item.quantity}`).join(", "),
-    date: order.days > 1 ? `${short(start)} – ${short(end)}` : short(start),
-    total: "Quote pending",
-    status: order.status,
-    tone: orderStatusInfo[order.status]?.tone || "blue",
-    phone: order.customerPhone,
-    location: order.place ? `${order.place}, ${order.area}` : order.area,
-  };
+function applyBusinessInfo(settings) {
+  if (!settings) return;
+  Object.assign(BUSINESS_INFO, {
+    name: settings.businessName || BUSINESS_INFO.name,
+    phone: settings.phone || BUSINESS_INFO.phone,
+    email: settings.email || BUSINESS_INFO.email,
+    address: [settings.address, settings.region, "Tanzania"].filter(Boolean).join(", "),
+  });
 }
 
-function Workspace({ session, onLogout }) {
-  const [activePage, setActivePage] = useState("Overview");
-  const [viewedOrder, setViewedOrder] = useState(null);
-  const [orders, setOrders] = useState(ordersData);
+const PAGE_ACCESS = {
+  Admin: null,
+  "Store manager": null,
+  "Inventory staff": ["Overview", "Inventory", "Orders", "Settings"],
+  "Delivery staff": ["Overview", "Orders", "Settings"],
+};
 
-  useEffect(() => {
-    api("/orders", { token: session.token })
-      .then(({ orders: requests }) => {
-        const incoming = requests.map(toStaffOrder);
-        setOrders((current) => [...incoming, ...current.filter((order) => !incoming.some((item) => item.id === order.id))]);
-      })
-      .catch((error) => {
-        if (error.status === 401) onLogout();
-      });
-  }, [session.token]);
+const PAGE_COPY = {
+  Inventory: "Keep your tents, chairs and equipment ready for the next event.",
+  Orders: "Price requests, confirm bookings and track every rental.",
+  Customers: "Everyone who rents from Pendo, with their history and spend.",
+  Invoices: "Bill customers and track what has been paid.",
+  Finance: "Revenue, tithe, expenses and profit from real payments.",
+  "SMS & Notifications": "Every SMS sent to customers and staff, and the automatic templates.",
+  Reports: "Detailed reports built from your live data.",
+  "Users & Roles": "Who can sign in and what each role can do.",
+  Settings: "Business details, policies, payments and your account.",
+};
+
+function Workspace({ session, onLogout }) {
+  const logoutRef = useRef(onLogout);
+  logoutRef.current = onLogout;
+  const call = useCallback(
+    (path, options = {}) => api(path, { ...options, token: session.token }).catch((error) => {
+      if (error.status === 401) logoutRef.current();
+      throw error;
+    }),
+    [session.token],
+  );
+  const value = useMemo(() => ({ session, call }), [session, call]);
+  return (
+    <ApiContext.Provider value={value}>
+      <WorkspaceShell session={session} onLogout={onLogout} />
+    </ApiContext.Provider>
+  );
+}
+
+function WorkspaceShell({ session, onLogout }) {
+  const { call } = useApi();
+  const [activePage, setActivePage] = useState("Overview");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
-  const [period, setPeriod] = useState("This week");
-  const [saved, setSaved] = useState(false);
-  const [exportError, setExportError] = useState("");
+  const [startCreate, setStartCreate] = useState(null);
+  const settingsRes = useResource("/settings");
+  const pulse = useResource("/dashboard");
 
   const [inventoryItems, setInventoryItems] = useState([]);
   const [inventoryStatus, setInventoryStatus] = useState("loading");
   const [inventoryAddOpen, setInventoryAddOpen] = useState(false);
-  const isInventory = activePage === "Inventory";
 
-  function loadInventory() {
+  const loadInventory = useCallback(() => {
     setInventoryStatus("loading");
-    api("/inventory", { token: session.token })
+    call("/inventory")
       .then(({ items }) => {
         setInventoryItems(items);
         setInventoryStatus("ready");
       })
-      .catch((error) => {
-        if (error.status === 401) onLogout();
-        setInventoryStatus("error");
-      });
-  }
+      .catch(() => setInventoryStatus("error"));
+  }, [call]);
 
   useEffect(() => {
     loadInventory();
-  }, [session.token]);
+  }, [loadInventory]);
+
+  useEffect(() => {
+    applyBusinessInfo(settingsRes.data?.settings);
+  }, [settingsRes.data]);
+
+  const allowedPages = PAGE_ACCESS[session.staffRole];
+  const canSee = (label) => !allowedPages || allowedPages.includes(label);
+  const canEditInventory = ["Admin", "Store manager", "Inventory staff"].includes(session.staffRole);
+  const initials = session.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const firstName = session.name.split(" ")[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const newRequests = pulse.data?.orders?.new_requests;
 
   function changePage(label) {
     setActivePage(label);
-    setViewedOrder(null);
     setMobileNav(false);
     setQuery("");
+    if (label === "Overview") pulse.reload();
   }
 
-  function handleExport() {
-    if (activePage === "Orders") {
-      setModal("orders-export");
-      return;
-    }
-    setModal("report");
+  function openNewOrder(customer) {
+    setStartCreate(customer ? { customer } : { customer: null });
+    changePage("Orders");
+  }
+
+  const navCount = (label) => {
+    if (label === "Inventory") return inventoryStatus === "ready" ? String(inventoryItems.length) : null;
+    if (label === "Orders") return newRequests ? String(newRequests) : null;
+    return null;
+  };
+
+  const navButton = ({ label, icon: Icon }) => (
+    <button key={label} className={`nav-link ${activePage === label ? "active" : ""}`} onClick={() => changePage(label)}>
+      <Icon size={17} strokeWidth={1.8} />
+      <span>{label}</span>
+      {navCount(label) && <span className={`nav-count ${label === "Orders" ? "count-highlight" : ""}`}>{navCount(label)}</span>}
+    </button>
+  );
+
+  const settings = settingsRes.data?.settings;
+  let content;
+  if (activePage === "Overview") content = <OverviewPage onNavigate={changePage} onNewOrder={() => openNewOrder(null)} />;
+  else if (activePage === "Inventory") {
+    content = (
+      <InventoryManager
+        session={session}
+        query={query}
+        items={inventoryItems}
+        setItems={setInventoryItems}
+        status={inventoryStatus}
+        reload={loadInventory}
+        addOpen={inventoryAddOpen}
+        setAddOpen={setInventoryAddOpen}
+        onUnauthorized={onLogout}
+        canEdit={canEditInventory}
+      />
+    );
+  } else if (activePage === "Orders") content = <OrdersPage query={query} settings={settings} startCreate={startCreate} onCreateHandled={() => setStartCreate(null)} />;
+  else if (activePage === "Customers") content = <CustomersPage query={query} onNewOrder={(customer) => openNewOrder(customer)} />;
+  else if (activePage === "Invoices") content = <InvoicesPage query={query} settings={settings} />;
+  else if (activePage === "Finance") content = <FinancePage query={query} session={session} />;
+  else if (activePage === "SMS & Notifications") content = <MessagingPage session={session} settingsResource={settingsRes} />;
+  else if (activePage === "Reports") content = <ReportsPage />;
+  else if (activePage === "Users & Roles") content = <UsersPage query={query} session={session} />;
+  else if (activePage === "Settings") {
+    content = settingsRes.data
+      ? <SettingsPage session={session} onLogout={onLogout} settingsResource={settingsRes} />
+      : <section className="panel inv-panel"><LoadState status={settingsRes.status} error={settingsRes.error} onRetry={settingsRes.reload} /></section>;
   }
 
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
-        <a
-          className="brand"
-          href="#overview"
-          onClick={() => changePage("Overview")}
-        >
+        <a className="brand" href="#overview" onClick={() => changePage("Overview")}>
           <BrandMark />
           <span className="brand-lockup">
             <span className="brand-name">Pendo<span>rentals</span></span>
@@ -1980,494 +1717,74 @@ function Workspace({ session, onLogout }) {
           </span>
         </a>
         <div className="nav-caption">WORKSPACE</div>
-        <nav className="main-nav" aria-label="Main navigation">
-          {navigation.map(({ label, icon: Icon, count: sampleCount }) => {
-            const count = label === "Inventory" ? (inventoryStatus === "ready" ? String(inventoryItems.length) : null) : sampleCount;
-            return (
-            <button
-              key={label}
-              className={`nav-link ${activePage === label ? "active" : ""}`}
-              onClick={() => changePage(label)}
-            >
-              <Icon size={17} strokeWidth={1.8} />
-              <span>{label}</span>
-              {count && (
-                <span
-                  className={`nav-count ${label === "SMS & Notifications" ? "count-highlight" : ""}`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-          })}
-        </nav>
-        <div className="nav-caption manage-caption">MANAGE</div>
-        <nav className="main-nav" aria-label="Management navigation">
-          {managementNavigation.map(({ label, icon: Icon }) => (
-            <button
-              key={label}
-              className={`nav-link ${activePage === label ? "active" : ""}`}
-              onClick={() => changePage(label)}
-            >
-              <Icon size={17} strokeWidth={1.8} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
+        <nav className="main-nav" aria-label="Main navigation">{navigation.filter(({ label }) => canSee(label)).map(navButton)}</nav>
+        {managementNavigation.some(({ label }) => canSee(label)) && <div className="nav-caption manage-caption">MANAGE</div>}
+        <nav className="main-nav" aria-label="Management navigation">{managementNavigation.filter(({ label }) => canSee(label)).map(navButton)}</nav>
         <div className="sidebar-bottom">
           <div className="help-panel">
-            <div className="help-icon">
-              <CircleHelp size={17} />
-            </div>
+            <div className="help-icon"><CircleHelp size={17} /></div>
             <strong>Need a hand?</strong>
-            <span>We’re here to help you grow.</span>
-            <button onClick={() => setModal("help")}>
-              Visit help center <ArrowRight size={13} />
-            </button>
+            <span>Call {BUSINESS_INFO.phone}</span>
+            <button onClick={() => setModal("help")}>Help &amp; support <ArrowRight size={13} /></button>
           </div>
-          <button
-            className="profile-button"
-            onClick={() => setModal("profile")}
-          >
-            <div className="profile-avatar">PM</div>
-            <span>
-              <strong>Pendo Mbolela</strong>
-              <small>Admin</small>
-            </span>
+          <button className="profile-button" onClick={() => setModal("profile")}>
+            <div className="profile-avatar">{initials}</div>
+            <span><strong>{session.name}</strong><small>{session.staffRole}</small></span>
             <Ellipsis size={19} />
           </button>
         </div>
       </aside>
-      {mobileNav && (
-        <button
-          className="mobile-scrim"
-          aria-label="Close navigation"
-          onClick={() => setMobileNav(false)}
-        />
-      )}
+      {mobileNav && <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
 
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-left">
-            <button
-              className="icon-button mobile-menu"
-              aria-label="Open navigation"
-              onClick={() => setMobileNav(true)}
-            >
-              <Menu size={19} />
-            </button>
-            <div className="breadcrumbs">
-              <span>Workspace</span>
-              <ChevronRight size={14} />
-              <strong>{viewedOrder?.id || activePage}</strong>
-            </div>
+            <button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={19} /></button>
+            <div className="breadcrumbs"><span>Workspace</span><ChevronRight size={14} /><strong>{activePage}</strong></div>
           </div>
           <div className="topbar-actions">
             <label className="global-search">
               <Search size={16} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search anything..."
-              />
-              <kbd>⌘ K</kbd>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={activePage === "Overview" ? "Search on any list page…" : `Search ${activePage.toLowerCase()}…`} />
             </label>
-            <button
-              className="icon-button notification-button"
-              aria-label="Notifications"
-              onClick={() => setModal("notifications")}
-            >
+            <button className="icon-button notification-button" aria-label="Notifications" onClick={() => (newRequests && canSee("Orders") ? changePage("Orders") : setModal("notifications"))}>
               <Bell size={18} />
-              <i />
+              {newRequests > 0 && <i />}
             </button>
             <div className="top-divider" />
             <button className="top-profile" onClick={() => setModal("profile")}>
-              <div className="profile-avatar small-avatar">PM</div>
-              <span>
-                <strong>Pendo Mbolela</strong>
-                <small>Admin</small>
-              </span>
+              <div className="profile-avatar small-avatar">{initials}</div>
+              <span><strong>{session.name}</strong><small>{session.staffRole}</small></span>
               <ChevronDown size={14} />
             </button>
           </div>
         </header>
 
         <div className="page-wrap">
-          {viewedOrder ? (
-            <section className="welcome-row order-page-heading">
-              <div>
-                <div className="eyebrow">ORDER DETAILS</div>
-                <h1>{viewedOrder.id}</h1>
-                <p>Review the rental, customer, and payment details.</p>
-              </div>
-            </section>
-          ) : (
           <section className="welcome-row">
             <div>
-              <div className="eyebrow">
-                <span className="eyebrow-dot" /> THURSDAY, OCTOBER 1, 2026
-              </div>
-              <h1>
-                {isInventory
-                  ? "Inventory"
-                  : activePage === "Overview"
-                    ? "Good morning, Pendo"
-                    : activePage}
-              </h1>
-              <p>
-                {isInventory
-                  ? "Keep your gear ready for the next great adventure."
-                  : activePage === "Overview"
-                    ? "Here’s what’s happening with your rentals today."
-                    : `Stay on top of ${activePage.toLowerCase()} for your rental business.`}
-              </p>
+              <div className="eyebrow"><span className="eyebrow-dot" /> {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
+              <h1>{activePage === "Overview" ? `${greeting}, ${firstName}` : activePage}</h1>
+              <p>{activePage === "Overview" ? "Here’s what’s happening with your rentals today." : PAGE_COPY[activePage]}</p>
             </div>
             <div className="welcome-actions">
-              {!["Reports", "Settings", "Users & Roles"].includes(activePage) && (
-                <button
-                  className="button button-secondary"
-                  onClick={handleExport}
-                  aria-label={activePage === "Orders" ? "Export orders" : "Export report"}
-                >
-                  <Download size={16} /> Export
-                </button>
+              {activePage === "Inventory" && canEditInventory && (
+                <button className="button button-primary" onClick={() => setInventoryAddOpen(true)}><Plus size={17} /> Add items</button>
               )}
-              {(isInventory || activePage === "Overview") && (
-                <button
-                  className="button button-primary"
-                  onClick={() => (isInventory ? setInventoryAddOpen(true) : setModal("booking"))}
-                >
-                  <Plus size={17} /> {isInventory ? "Add items" : "New booking"}
-                </button>
+              {activePage === "Overview" && isManager(session) && (
+                <button className="button button-primary" onClick={() => openNewOrder(null)}><Plus size={17} /> New order</button>
               )}
             </div>
           </section>
-          )}
-
-          {isInventory ? (
-            <InventoryManager
-              session={session}
-              query={query}
-              items={inventoryItems}
-              setItems={setInventoryItems}
-              status={inventoryStatus}
-              reload={loadInventory}
-              addOpen={inventoryAddOpen}
-              setAddOpen={setInventoryAddOpen}
-              onUnauthorized={onLogout}
-            />
-          ) : activePage === "Overview" ? (
-            <>
-              <section className="metrics-grid" aria-label="Business overview">
-                <Metric
-                  icon={Package}
-                  label="Total items"
-                  value="248"
-                  change="12.8%"
-                  kind="up"
-                  color="mint-icon"
-                  caption="vs last month"
-                />
-                <Metric
-                  icon={CalendarDays}
-                  label="Rented out"
-                  value="72"
-                  change="8.2%"
-                  kind="up"
-                  color="blue-icon"
-                  caption="vs last month"
-                />
-                <Metric
-                  icon={Sparkles}
-                  label="Available now"
-                  value="176"
-                  change="4.6%"
-                  kind="up"
-                  color="purple-icon"
-                  caption="vs last month"
-                />
-                <Metric
-                  icon={ShieldCheck}
-                  label="Needs attention"
-                  value="12"
-                  change="2 items"
-                  kind="down"
-                  color="orange-icon"
-                  caption="need inspection"
-                />
-              </section>
-              <section className="overview-grid">
-                <article className="panel revenue-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <div className="panel-kicker">YOUR BUSINESS</div>
-                      <h2>Revenue overview</h2>
-                    </div>
-                    <button
-                      className="select-button"
-                      onClick={() =>
-                        setPeriod(
-                          period === "This week" ? "This month" : "This week",
-                        )
-                      }
-                    >
-                      {period}
-                      <ChevronDown size={14} />
-                    </button>
-                  </div>
-                  <div className="revenue-total">
-                    <strong>TSh 8,420</strong>
-                    <span className="positive-pill">
-                      <ArrowUpRight size={13} /> 12.8%
-                    </span>
-                    <small>compared to last week</small>
-                  </div>
-                  <div className="chart-wrap">
-                    <div className="chart-y-labels">
-                      <span>TSh 2,000</span>
-                      <span>TSh 1,500</span>
-                      <span>TSh 1,000</span>
-                      <span>TSh 500</span>
-                      <span>TSh 0</span>
-                    </div>
-                    <div className="chart-main">
-                      <div className="chart-gridlines">
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                      </div>
-                      <div className="chart-bars">
-                        {chartData.map((item, index) => (
-                          <div className="bar-column" key={item.day}>
-                            <div
-                              className={`bar ${index === 5 ? "bar-emphasis" : ""}`}
-                              style={{ height: `${item.value}%` }}
-                            >
-                              <span className="bar-tooltip">
-                                TSh {(item.value * 18).toLocaleString()}
-                              </span>
-                            </div>
-                            <span className="bar-label">{item.day}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="chart-footer">
-                    <span>
-                      <i className="legend-dot" /> Rental income
-                    </span>
-                    <button onClick={() => changePage("Reports")}>
-                      View detailed report <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </article>
-                <article className="panel availability-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <div className="panel-kicker">AT A GLANCE</div>
-                      <h2>Item availability</h2>
-                    </div>
-                    <button
-                      className="icon-button subtle-button"
-                      aria-label="More availability options"
-                    >
-                      <Ellipsis size={19} />
-                    </button>
-                  </div>
-                  <div className="availability-ring-wrap">
-                    <div className="availability-ring">
-                      <div>
-                        <strong>72</strong>
-                        <span>of 248 rented</span>
-                      </div>
-                    </div>
-                    <div className="availability-key">
-                      <span>
-                        <i className="key-dot rented-dot" />
-                        Rented out <strong>29%</strong>
-                      </span>
-                      <span>
-                        <i className="key-dot available-dot" />
-                        Available <strong>71%</strong>
-                      </span>
-                      <span>
-                        <i className="key-dot repair-dot" />
-                        In service <strong>5</strong>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="availability-note">
-                    <span className="note-icon">
-                      <Sparkles size={15} />
-                    </span>
-                    <span>
-                      <strong>Looking good!</strong> Your availability is up 6%
-                      this week.
-                    </span>
-                  </div>
-                </article>
-              </section>
-              <section className="panel bookings-panel">
-                <div className="panel-heading bookings-heading">
-                  <div>
-                    <div className="panel-kicker">KEEP THINGS MOVING</div>
-                    <h2>
-                      Upcoming bookings <span className="heading-count">8</span>
-                    </h2>
-                  </div>
-                  <div className="heading-actions">
-                    <button
-                      className="icon-button subtle-button filter-button"
-                      aria-label="Filter bookings"
-                    >
-                      <SlidersHorizontal size={17} />
-                    </button>
-                    <button
-                      className="text-action"
-                      onClick={() => changePage("Bookings")}
-                    >
-                      See all bookings <ArrowRight size={15} />
-                    </button>
-                  </div>
-                </div>
-                <div className="table-scroll">
-                  <table className="booking-table">
-                    <thead>
-                      <tr>
-                        <th>CUSTOMER</th>
-                        <th>RENTAL</th>
-                        <th>STARTS</th>
-                        <th>AMOUNT</th>
-                        <th>STATUS</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookings.map((booking) => (
-                        <tr key={booking.name}>
-                          <td>
-                            <div className="customer-cell">
-                              <div
-                                className={`customer-avatar ${booking.color}`}
-                              >
-                                {booking.initials}
-                              </div>
-                              <span>
-                                <strong>{booking.name}</strong>
-                                <small>{booking.detail}</small>
-                              </span>
-                            </div>
-                          </td>
-                          <td className="rental-cell">{booking.item}</td>
-                          <td className="date-cell">{booking.date}</td>
-                          <td className="amount-cell">{booking.amount}</td>
-                          <td>
-                            <span className={`status-pill ${booking.tone}`}>
-                              <i />
-                              {booking.status}
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              className="row-more"
-                              aria-label={`More options for ${booking.name}`}
-                            >
-                              <Ellipsis size={18} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="table-bottom">
-                  <span>
-                    Showing <strong>4</strong> of <strong>8</strong> upcoming
-                    bookings
-                  </span>
-                  <div className="pagination">
-                    <button aria-label="Previous page">
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span>1</span>
-                    <button aria-label="Next page">
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </section>
-              <section className="panel inventory-panel">
-                <div className="panel-heading inventory-heading">
-                  <div>
-                    <div className="panel-kicker">
-                      READY FOR THE NEXT ADVENTURE
-                    </div>
-                    <h2>Popular inventory</h2>
-                  </div>
-                  <button
-                    className="text-action"
-                    onClick={() => changePage("Inventory")}
-                  >
-                    Manage inventory <ArrowRight size={15} />
-                  </button>
-                </div>
-                <div className="inventory-cards">
-                  {inventory.slice(0, 3).map((item) => (
-                    <InventoryCard key={item.sku} item={item} />
-                  ))}
-                </div>
-              </section>
-            </>
-          ) : (
-            <WorkspacePage
-              page={activePage}
-              query={query}
-              onModal={setModal}
-                onOrderView={setViewedOrder}
-                orders={orders}
-                setOrders={setOrders}
-                onLogout={onLogout}
-            />
-          )}
+          {content}
           <footer className="page-footer">
-            <span>© 2026 Pendo Rentals</span>
-            <span>
-              <i className="online-dot" /> All systems operational
-            </span>
-            <button onClick={() => setModal("help")}>
-              Help &amp; support <ArrowRight size={13} />
-            </button>
+            <span>© {new Date().getFullYear()} {BUSINESS_INFO.name}</span>
+            <span><i className="online-dot" /> Connected</span>
+            <button onClick={() => setModal("help")}>Help &amp; support <ArrowRight size={13} /></button>
           </footer>
         </div>
       </main>
-      {modal && (
-        <Modal
-          type={modal}
-          onClose={() => {
-            setModal("");
-            setSaved(false);
-          }}
-          saved={saved}
-          onSave={() => setSaved(true)}
-          onExport={async (format) => {
-            try {
-              const report = getReportData(activePage, orders, inventoryItems);
-              await downloadTableReport(report.title, report.columns, report.rows, format);
-              setExportError("");
-              setModal("");
-            } catch (error) {
-              setExportError(error instanceof Error ? error.message : "Export failed. Please try again.");
-            }
-          }}
-          exportError={exportError}
-          exportTitle={activePage}
-          onLogout={onLogout}
-        />
-      )}
+      {modal && <Modal type={modal} session={session} onClose={() => setModal("")} onLogout={onLogout} />}
     </div>
   );
 }
@@ -2778,7 +2095,7 @@ function InventoryConfirmDelete({ item, onClose, onConfirm }) {
   );
 }
 
-function InventoryManager({ session, query, items, setItems, status, reload, addOpen, setAddOpen, onUnauthorized }) {
+function InventoryManager({ session, query, items, setItems, status, reload, addOpen, setAddOpen, onUnauthorized, canEdit = true }) {
   const [statusFilter, setStatusFilter] = useState("All items");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [search, setSearch] = useState("");
@@ -2854,9 +2171,11 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
             <select className="inv-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
               {["All categories", ...INVENTORY_CATEGORIES].map((option) => <option key={option}>{option}</option>)}
             </select>
-            <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}>
-              <Plus size={16} /> Add items
-            </button>
+            {canEdit && (
+              <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}>
+                <Plus size={16} /> Add items
+              </button>
+            )}
           </div>
         </div>
 
@@ -2869,7 +2188,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
             <span className="inv-empty-icon"><Package size={26} /></span>
             <strong>No items yet</strong>
             <small>Add your tents, chairs, tables and other equipment to start tracking stock.</small>
-            <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}><Plus size={16} /> Add your first items</button>
+            {canEdit && <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}><Plus size={16} /> Add your first items</button>}
           </div>
         ) : (
           <>
@@ -2896,7 +2215,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
               ]}
               rows={visible}
               rowKey="id"
-              renderActions={(row) => [
+              renderActions={(row) => (!canEdit ? [{ label: "View only", onClick: () => {} }] : [
                 { label: "Edit item", onClick: () => setEditing(row) },
                 {
                   label: row.status === "Available" ? "Mark as maintenance" : "Mark as available",
@@ -2912,7 +2231,7 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
                   },
                 },
                 { label: "Delete item", danger: true, onClick: () => setDeleting(row) },
-              ]}
+              ])}
             />
             <div className="table-bottom inv-bottom">
               <span>Showing <strong>{visible.length}</strong> of {items.length} items</span>
@@ -2966,79 +2285,1425 @@ function InventoryManager({ session, query, items, setItems, status, reload, add
   );
 }
 
-function InventoryCard({ item }) {
-  return (
-    <article className="mini-item">
-      <img
-        src={`https://images.unsplash.com/${item.image}?auto=format&fit=crop&w=240&q=85`}
-        alt={item.name}
-      />
-      <div className="mini-item-copy">
-        <span className="mini-category">{item.category}</span>
-        <strong>{item.name}</strong>
-        <span className="mini-rate">
-          TSh {item.rate}
-          <small> / day</small>
-        </span>
+// ===== Workspace data layer =====
+const ApiContext = createContext(null);
+const useApi = () => useContext(ApiContext);
+
+// Loads `path` from the API; returns { data, status, error, reload, setData }.
+function useResource(path) {
+  const { call } = useApi();
+  const [state, setState] = useState({ data: null, status: "loading", error: "" });
+  const load = useCallback(() => {
+    if (!path) return Promise.resolve();
+    setState((current) => ({ ...current, status: current.data ? "refreshing" : "loading", error: "" }));
+    return call(path)
+      .then((data) => setState({ data, status: "ready", error: "" }))
+      .catch((error) => setState((current) => ({ ...current, status: "error", error: error.message })));
+  }, [call, path]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const setData = useCallback((update) => setState((current) => ({ ...current, data: typeof update === "function" ? update(current.data) : update })), []);
+  return { ...state, reload: load, setData };
+}
+
+const MANAGER_ROLES = ["Admin", "Store manager"];
+const isManager = (session) => MANAGER_ROLES.includes(session?.staffRole);
+const ORDER_STATUSES = ["New request", "Confirmed", "Ready for pickup", "Out for delivery", "Completed", "Cancelled"];
+const orderTone = (status) => ({ "New request": "blue", Confirmed: "green", "Ready for pickup": "amber", "Out for delivery": "blue", Completed: "green", Cancelled: "red" }[status] || "blue");
+const invoiceTone = (status) => ({ Paid: "green", "Partially paid": "amber", Unpaid: "blue", Overdue: "red", Cancelled: "red" }[status] || "blue");
+const PAYMENT_METHODS = [["payMpesa", "M-Pesa"], ["payTigo", "Tigo Pesa"], ["payAirtel", "Airtel Money"], ["payCash", "Cash"], ["payBank", "Bank transfer"], ["payCard", "Card"]];
+const shortDate = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const orderItemsText = (items) => items.map((item) => `${item.custom || itemLabel(item.name)} ×${item.quantity}`).join(", ");
+const orderDates = (order) => {
+  const start = new Date(`${order.eventDate}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + order.days - 1);
+  const fmt = (date) => date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return order.days > 1 ? `${fmt(start)} – ${fmt(end)}` : `${fmt(start)}, ${start.getFullYear()}`;
+};
+
+function StatusPill({ tone, children }) {
+  return <span className={`status-pill ${tone}`}><i />{children}</span>;
+}
+
+function Toast({ message, onDone }) {
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = setTimeout(onDone, 3200);
+    return () => clearTimeout(timer);
+  }, [message, onDone]);
+  return message ? <div className="set-toast" role="status"><Check size={15} /> {message}</div> : null;
+}
+
+function useToast() {
+  const [message, setMessage] = useState("");
+  const clear = useCallback(() => setMessage(""), []);
+  return [message ? <Toast message={message} onDone={clear} /> : null, setMessage];
+}
+
+function LoadState({ status, error, onRetry, empty, emptyIcon: EmptyIcon = Package, emptyText, action }) {
+  if (status === "loading") return <div className="inv-empty"><LoaderCircle size={22} className="auth-spin" /><strong>Loading…</strong></div>;
+  if (status === "error") return <div className="inv-empty"><CircleAlert size={22} /><strong>{error || "Couldn’t load this."}</strong><button className="button button-secondary" onClick={onRetry}><RotateCcw size={14} /> Try again</button></div>;
+  if (empty) {
+    return (
+      <div className="inv-empty">
+        <span className="inv-empty-icon"><EmptyIcon size={26} /></span>
+        <strong>{empty}</strong>
+        {emptyText && <small>{emptyText}</small>}
+        {action}
       </div>
-      <span className={`status-pill ${item.tone}`}>
-        <i />
-        {item.status}
-      </span>
-    </article>
+    );
+  }
+  return null;
+}
+
+function ExportMenu({ title, columns, rows, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState("");
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => !event.target.closest(".ws-export") && setOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+  async function run(format) {
+    setBusy(format);
+    try {
+      await downloadTableReport(title, columns, rows, format, { subtitle: `${rows.length} rows · Generated ${new Date().toLocaleString("en-US")}` });
+      setOpen(false);
+    } finally {
+      setBusy("");
+    }
+  }
+  return (
+    <div className="ws-export report-export-wrap">
+      <button className="button button-secondary" onClick={() => setOpen((value) => !value)} disabled={disabled || rows.length === 0} aria-expanded={open}>
+        <Download size={15} /> Export
+      </button>
+      {open && (
+        <div className="report-export-menu" role="menu">
+          <button role="menuitem" onClick={() => run("excel")} disabled={Boolean(busy)}>
+            <FileSpreadsheet size={16} /><span><strong>{busy === "excel" ? "Preparing…" : "Excel workbook"}</strong><small>.xlsx · {rows.length} rows</small></span>
+          </button>
+          <button role="menuitem" onClick={() => run("pdf")} disabled={Boolean(busy)}>
+            <FileText size={16} /><span><strong>{busy === "pdf" ? "Preparing…" : "PDF document"}</strong><small>Print-ready</small></span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
-function WorkspacePage({ page, query, onModal, onOrderView, orders, setOrders, onLogout }) {
-  const [tab, setTab] = useState("All");
-  const [period, setPeriod] = useState("This month");
+function WsModal({ title, kicker, onClose, wide, busy, children }) {
+  useEffect(() => {
+    const onKey = (event) => event.key === "Escape" && !busy && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, busy]);
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <section className={`modal team-modal ws-modal ${wide ? "ws-modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal-heading">
+          <div>
+            {kicker && <span className="modal-kicker">{kicker}</span>}
+            <h2>{title}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close" disabled={busy}><X size={19} /></button>
+        </div>
+        {children}
+      </section>
+    </div>,
+    document.body,
+  );
+}
 
-  if (page === "Orders")
-    return (
-      <OrdersPage
-        query={query}
-        onCreate={() => onModal("booking")}
-        onOrderView={onOrderView}
-        orders={orders}
-        setOrders={setOrders}
-      />
-    );
-  if (page === "Customers")
-    return <CustomersPage query={query} onAdd={() => onModal("customer")} />;
-  if (page === "Invoices")
-    return <InvoicesPage query={query} onCreate={() => onModal("invoice")} />;
-  if (page === "Finance")
-    return (
-      <FinancePage
-        tab={tab}
-        setTab={setTab}
-        period={period}
-        setPeriod={setPeriod}
-        onAdd={() => onModal("expense")}
-      />
-    );
-  if (page === "SMS & Notifications")
-    return <MessagingPage onEdit={() => onModal("template")} />;
-  if (page === "Reports")
-    return <ReportsPage period={period} setPeriod={setPeriod} />;
-  if (page === "Users & Roles")
-    return <UsersPage query={query} />;
-  if (page === "Settings")
-    return <SettingsPage onLogout={onLogout} />;
+function FieldError({ message }) {
+  return message ? <small className="set-error"><CircleAlert size={12} /> {message}</small> : null;
+}
+
+function TempPasswordNote({ phone, password }) {
+  if (!password) return null;
   return (
-    <section className="panel empty-page">
-      <div className="empty-illustration">
-        <ClipboardList size={26} />
+    <div className="rent-sms-card login ws-temp-password">
+      <span><KeyRound size={16} /></span>
+      <div>
+        <strong>SMS not sent — share these login details</strong>
+        <div className="rent-credentials"><span>Username <b>{phone}</b></span><span>Password <b>{password}</b></span></div>
       </div>
-      <h2>{page}</h2>
-      <p>This workspace view is ready for your rental team.</p>
-      <button
-        className="button button-primary"
-        onClick={() => onModal("booking")}
-      >
-        <Plus size={15} /> Create a booking
-      </button>
-    </section>
+    </div>
+  );
+}
+
+// ===== Record payment =====
+function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
+  const { call } = useApi();
+  const methods = PAYMENT_METHODS.filter(([key]) => settings?.[key] !== false).map(([, label]) => label);
+  const balance = invoice ? invoice.balance : order?.balance;
+  const [form, setForm] = useState({ amount: balance ? String(balance) : "", method: methods[0] || "Cash", reference: "", paidOn: localTodayIso(), notify: true });
+  const [errors, setErrors] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const tithePercent = settings?.titheEnabled ? Number(settings.tithePercent) || 0 : 0;
+  const tithe = Math.round(((Number(form.amount) || 0) * tithePercent) / 100);
+  const label = invoice ? `${invoice.code} · ${invoice.customer}` : `${order.id} · ${order.customer.name}`;
+
+  async function save(event) {
+    event.preventDefault();
+    const next = {};
+    if (!(Number(form.amount) >= 1) || !Number.isInteger(Number(form.amount))) next.amount = "Enter the amount received (whole TSh).";
+    if (form.paidOn > localTodayIso()) next.paidOn = "Not in the future.";
+    setErrors(next);
+    if (Object.keys(next).length) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await call("/payments", {
+        method: "POST",
+        body: {
+          ...(invoice ? { invoiceId: invoice.id } : { orderCode: order.id }),
+          amount: Number(form.amount),
+          method: form.method,
+          reference: form.reference,
+          paidOn: form.paidOn,
+          notifyCustomer: form.notify,
+        },
+      });
+      onSaved(data);
+    } catch (saveError) {
+      setErrors(saveError.fields || {});
+      setError(saveError.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <WsModal title="Record payment" kicker={label} onClose={onClose} busy={busy}>
+      <form className="team-form" onSubmit={save} noValidate>
+        {balance !== null && balance !== undefined && (
+          <div className="ws-balance"><span>Balance due</span><strong>{formatShillings(balance)}</strong></div>
+        )}
+        <div className="set-grid">
+          <label className="set-field"><span>Amount received (TSh)</span><input type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} aria-invalid={Boolean(errors.amount)} autoFocus /><FieldError message={errors.amount} /></label>
+          <label className="set-field"><span>Method</span><select value={form.method} onChange={(event) => setForm({ ...form, method: event.target.value })}>{methods.map((method) => <option key={method}>{method}</option>)}</select></label>
+          <label className="set-field"><span>Transaction ref. <em>Optional</em></span><input value={form.reference} maxLength={40} placeholder="e.g. M-Pesa code" onChange={(event) => setForm({ ...form, reference: event.target.value.toUpperCase() })} /></label>
+          <label className="set-field"><span>Date received</span><input type="date" max={localTodayIso()} value={form.paidOn} onChange={(event) => setForm({ ...form, paidOn: event.target.value })} aria-invalid={Boolean(errors.paidOn)} /><FieldError message={errors.paidOn} /></label>
+        </div>
+        {tithePercent > 0 && (
+          <p className="team-form-note"><Info size={13} /> Tithe ({tithePercent}%) set aside from this payment: <strong>&nbsp;{formatShillings(tithe)}</strong></p>
+        )}
+        <label className="auth-check ws-check"><input type="checkbox" checked={form.notify} onChange={(event) => setForm({ ...form, notify: event.target.checked })} /><span>Send the customer an SMS receipt</span></label>
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Banknote size={15} /> Record payment</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+// ===== Create / edit order =====
+function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSaved }) {
+  const { call, session } = useApi();
+  const creating = !order;
+  const customers = useResource(creating && !prefillCustomer ? "/customers" : null);
+  const [customerMode, setCustomerMode] = useState(prefillCustomer ? "existing" : "existing");
+  const [form, setForm] = useState(() => ({
+    customerId: prefillCustomer ? String(prefillCustomer.id) : "",
+    newCustomer: { firstName: "", lastName: "", phone: "", area: "" },
+    eventDate: order?.eventDate || "",
+    days: String(order?.days || 1),
+    area: order?.area || prefillCustomer?.area || "",
+    place: order?.place || "",
+    notes: order?.notes || "",
+    items: order ? order.items.map((item) => ({ key: `i${item.id}`, inventoryItemId: item.inventoryItemId || "", isCustom: !item.inventoryItemId, name: item.name, custom: item.custom || "", quantity: String(item.quantity), rate: item.rate === null ? "" : String(item.rate) }))
+      : [{ key: "i0", inventoryItemId: "", isCustom: false, name: "", custom: "", quantity: "1", rate: "" }],
+    deliveryRequired: order?.deliveryRequired || false,
+    deliveryFee: String(order?.deliveryFee || 0),
+    deliveryStatus: order?.deliveryStatus || "Not needed",
+    driverId: order?.driver?.id ? String(order.driver.id) : "",
+    discount: String(order?.discount || 0),
+    status: order?.status || "Confirmed",
+    notify: true,
+  }));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const setItem = (key, changes) => setForm((current) => ({ ...current, items: current.items.map((item) => (item.key === key ? { ...item, ...changes } : item)) }));
+  const days = Math.max(1, Number(form.days) || 1);
+  const lines = form.items.map((item) => (item.rate === "" ? null : (Number(item.rate) || 0) * (Number(item.quantity) || 0) * days));
+  const priced = lines.every((line) => line !== null) && form.items.length > 0;
+  const subtotal = lines.reduce((sum, line) => sum + (line || 0), 0);
+  const delivery = form.deliveryRequired ? Number(form.deliveryFee) || 0 : 0;
+  const total = priced ? Math.max(0, subtotal + delivery - (Number(form.discount) || 0)) : null;
+  const managerView = isManager(session);
+
+  async function save(event) {
+    event.preventDefault();
+    setError("");
+    const errors = {};
+    if (creating && customerMode === "existing" && !form.customerId) errors.customer = "Choose a customer.";
+    if (creating && customerMode === "new") {
+      if (!form.newCustomer.firstName.trim() || !form.newCustomer.lastName.trim()) errors.customer = "Enter the customer’s first and last name.";
+      else if (!/^0[67]\d{8}$/.test(normalizePhone(form.newCustomer.phone))) errors.customer = "Enter a valid customer phone number.";
+    }
+    if (!form.eventDate) errors.eventDate = "Choose the event date.";
+    form.items.forEach((item, index) => {
+      if (!item.inventoryItemId && (!item.isCustom || (item.custom || item.name).trim().length < 2)) errors[`item${index}`] = "Choose an item or type a name.";
+      else if (!(Number(item.quantity) >= 1)) errors[`item${index}`] = "Enter a quantity.";
+    });
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) return;
+    const body = {
+      eventDate: form.eventDate,
+      days,
+      area: form.area,
+      place: form.place,
+      notes: form.notes,
+      items: form.items.map((item) => ({
+        ...(item.inventoryItemId ? { inventoryItemId: item.inventoryItemId } : { name: item.name.trim(), ...(item.custom ? { custom: item.custom } : {}) }),
+        quantity: Number(item.quantity),
+        rate: item.rate === "" ? null : Number(item.rate),
+      })),
+      deliveryRequired: form.deliveryRequired,
+      deliveryFee: form.deliveryRequired ? Number(form.deliveryFee) || 0 : 0,
+      deliveryStatus: form.deliveryRequired ? (form.deliveryStatus === "Not needed" ? "Scheduled" : form.deliveryStatus) : "Not needed",
+      driverId: form.deliveryRequired && form.driverId ? Number(form.driverId) : null,
+      discount: Number(form.discount) || 0,
+      status: form.status,
+      notifyCustomer: form.notify,
+    };
+    if (creating) {
+      if (customerMode === "existing") body.customerId = Number(form.customerId);
+      else body.customer = form.newCustomer;
+    }
+    setBusy(true);
+    try {
+      const data = creating
+        ? await call("/orders", { method: "POST", body })
+        : await call(`/orders/${order.id}`, { method: "PATCH", body });
+      onSaved(data, creating);
+    } catch (saveError) {
+      setError(saveError.message);
+      setBusy(false);
+    }
+  }
+
+  const customerOptions = customers.data?.customers || [];
+
+  return (
+    <WsModal title={creating ? "New order" : `Order ${order.id}`} kicker={creating ? "ORDERS" : `${order.customer.name} · ${order.customer.phone}`} onClose={onClose} wide busy={busy}>
+      <form className="team-form ws-order-form" onSubmit={save} noValidate>
+        {creating && (
+          <section className="ws-form-section">
+            <h3>Customer</h3>
+            {prefillCustomer ? (
+              <p className="ws-chosen"><UserRound size={14} /> {prefillCustomer.name} · {prefillCustomer.phone}</p>
+            ) : (
+              <>
+                <div className="inv-tabs ws-mini-tabs" role="tablist">
+                  {[["existing", "Existing customer"], ["new", "New customer"]].map(([value, text]) => (
+                    <button type="button" key={value} role="tab" aria-selected={customerMode === value} className={customerMode === value ? "active" : ""} onClick={() => setCustomerMode(value)}>{text}</button>
+                  ))}
+                </div>
+                {customerMode === "existing" ? (
+                  <label className="set-field">
+                    <span>Customer</span>
+                    <select value={form.customerId} onChange={(event) => set("customerId", event.target.value)} aria-invalid={Boolean(fieldErrors.customer)}>
+                      <option value="">{customers.status === "loading" ? "Loading customers…" : "Choose a customer"}</option>
+                      {customerOptions.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <div className="set-grid">
+                    <label className="set-field"><span>First name</span><input value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
+                    <label className="set-field"><span>Last name</span><input value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
+                    <label className="set-field"><span>Phone</span><input inputMode="tel" placeholder="0712 345 678" value={form.newCustomer.phone} onChange={(event) => set("newCustomer", { ...form.newCustomer, phone: event.target.value })} /></label>
+                    <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+                  </div>
+                )}
+                <FieldError message={fieldErrors.customer} />
+              </>
+            )}
+          </section>
+        )}
+
+        <section className="ws-form-section">
+          <h3>Event</h3>
+          <div className="set-grid set-grid-3">
+            <label className="set-field"><span>Event date</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /><FieldError message={fieldErrors.eventDate} /></label>
+            <label className="set-field"><span>Days</span><input type="number" min="1" max="60" value={form.days} onChange={(event) => set("days", event.target.value)} /></label>
+            <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+            <label className="set-field set-span-2"><span>Venue / landmark</span><input value={form.place} maxLength={80} onChange={(event) => set("place", event.target.value)} /></label>
+            <label className="set-field"><span>Status</span><select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!managerView}>{ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+          </div>
+        </section>
+
+        <section className="ws-form-section">
+          <h3>Items <small>Rates are per unit per day</small></h3>
+          <div className="ws-items">
+            <div className="ws-items-head" aria-hidden="true"><span>Item</span><span>Qty</span><span>Rate / day</span><span>Line total</span><span /></div>
+            {form.items.map((item, index) => (
+              <div className="ws-item-row" key={item.key}>
+                <div className="ws-item-pick">
+                  <select
+                    value={item.inventoryItemId || (item.isCustom ? "__custom" : "")}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "__custom") return setItem(item.key, { inventoryItemId: "", isCustom: true, name: item.inventoryItemId ? "" : item.name });
+                      const stock = inventory.find((entry) => entry.id === value);
+                      return setItem(item.key, stock ? { inventoryItemId: stock.id, isCustom: false, name: stock.name, custom: "", rate: String(stock.rate) } : { inventoryItemId: "", isCustom: false, name: "", custom: "" });
+                    }}
+                    aria-label={`Item ${index + 1}`}
+                    aria-invalid={Boolean(fieldErrors[`item${index}`])}
+                  >
+                    <option value="">Choose from inventory…</option>
+                    {inventory.map((stock) => <option key={stock.id} value={stock.id}>{stock.name} · {stock.sku}{stock.status === "Maintenance" ? " (maintenance)" : ""}</option>)}
+                    <option value="__custom">Other / not in inventory…</option>
+                  </select>
+                  {item.isCustom && (
+                    <input className="ws-item-name" placeholder="Item name, e.g. Flower arch" value={item.custom || item.name} maxLength={60} onChange={(event) => setItem(item.key, { name: event.target.value, custom: "" })} aria-label={`Item ${index + 1} name`} />
+                  )}
+                </div>
+                <input type="number" min="1" value={item.quantity} onChange={(event) => setItem(item.key, { quantity: event.target.value })} aria-label={`Item ${index + 1} quantity`} />
+                <input type="number" min="0" placeholder="Not priced" value={item.rate} onChange={(event) => setItem(item.key, { rate: event.target.value })} aria-label={`Item ${index + 1} rate`} />
+                <span className="ws-line-total">{lines[index] === null ? "—" : formatShillings(lines[index])}</span>
+                <button type="button" className="inv-row-remove" onClick={() => setForm((current) => ({ ...current, items: current.items.length > 1 ? current.items.filter((entry) => entry.key !== item.key) : current.items }))} aria-label={`Remove item ${index + 1}`}><X size={14} /></button>
+                <FieldError message={fieldErrors[`item${index}`]} />
+              </div>
+            ))}
+          </div>
+          <button type="button" className="inv-add-another" onClick={() => setForm((current) => ({ ...current, items: [...current.items, { key: `i${Date.now()}`, inventoryItemId: "", isCustom: false, name: "", custom: "", quantity: "1", rate: "" }] }))}><Plus size={14} /> Add item</button>
+        </section>
+
+        <section className="ws-form-section">
+          <h3>Delivery &amp; price</h3>
+          <label className="auth-check ws-check"><input type="checkbox" checked={form.deliveryRequired} onChange={(event) => set("deliveryRequired", event.target.checked)} /><span>Deliver to the customer</span></label>
+          <div className="set-grid set-grid-3">
+            {form.deliveryRequired && (
+              <>
+                <label className="set-field"><span>Delivery fee (TSh)</span><input type="number" min="0" value={form.deliveryFee} onChange={(event) => set("deliveryFee", event.target.value)} /></label>
+                <label className="set-field"><span>Driver</span><select value={form.driverId} onChange={(event) => set("driverId", event.target.value)}><option value="">Unassigned</option>{drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></label>
+                <label className="set-field"><span>Delivery status</span><select value={form.deliveryStatus === "Not needed" ? "Scheduled" : form.deliveryStatus} onChange={(event) => set("deliveryStatus", event.target.value)}>{["Scheduled", "In transit", "Delivered", "Failed"].map((status) => <option key={status}>{status}</option>)}</select></label>
+              </>
+            )}
+            <label className="set-field"><span>Discount (TSh)</span><input type="number" min="0" value={form.discount} onChange={(event) => set("discount", event.target.value)} /></label>
+            <label className="set-field set-span-2"><span>Notes</span><input value={form.notes} maxLength={500} onChange={(event) => set("notes", event.target.value)} /></label>
+          </div>
+          <div className="ws-totals">
+            <span>Items ({days} day{days === 1 ? "" : "s"})<b>{formatShillings(subtotal)}</b></span>
+            {form.deliveryRequired && <span>Delivery<b>{formatShillings(delivery)}</b></span>}
+            {Number(form.discount) > 0 && <span>Discount<b>− {formatShillings(form.discount)}</b></span>}
+            <span className="ws-total">Total<b>{total === null ? "Set all rates" : formatShillings(total)}</b></span>
+            {order && <span>Paid<b>{formatShillings(order.paid)}</b></span>}
+          </div>
+        </section>
+
+        <label className="auth-check ws-check"><input type="checkbox" checked={form.notify} onChange={(event) => set("notify", event.target.checked)} /><span>{creating ? "SMS the booking details to the customer" : "SMS the customer when the status changes"}</span></label>
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {creating ? "Create order" : "Save order"}</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
+  const { call, session } = useApi();
+  const orders = useResource("/orders");
+  const inventory = useResource("/inventory");
+  const [status, setStatus] = useState("All");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [paying, setPaying] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [credentials, setCredentials] = useState(null);
+  const [toast, setToast] = useToast();
+  const managerView = isManager(session);
+
+  useEffect(() => {
+    if (startCreate) {
+      setEditing(startCreate.customer ? { prefillCustomer: startCreate.customer } : "new");
+      onCreateHandled();
+    }
+  }, [startCreate, onCreateHandled]);
+
+  const list = orders.data?.orders || [];
+  const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = list.filter((order) => (status === "All" || order.status === status)
+    && words.every((word) => `${order.id} ${order.customer.name} ${order.customer.phone} ${orderItemsText(order.items)} ${order.area || ""}`.toLowerCase().includes(word)));
+  const count = (value) => list.filter((order) => order.status === value).length;
+  const active = list.filter((order) => ["Confirmed", "Ready for pickup", "Out for delivery"].includes(order.status));
+  const outstanding = list.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + (order.balance || 0), 0);
+  const unpriced = list.filter((order) => !order.priced && order.status !== "Cancelled").length;
+
+  function replaceOrder(updated) {
+    orders.setData((current) => ({ ...current, orders: current.orders.some((entry) => entry.id === updated.id) ? current.orders.map((entry) => (entry.id === updated.id ? updated : entry)) : [updated, ...current.orders] }));
+  }
+
+  async function setOrderStatus(order, next) {
+    try {
+      const data = await call(`/orders/${order.id}`, { method: "PATCH", body: { status: next } });
+      replaceOrder(data.order);
+      setToast(`${order.id} marked ${next.toLowerCase()}${data.sms ? (data.sms.status === "sent" ? " · SMS sent" : " · SMS not sent") : ""}`);
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
+
+  async function createInvoice(order) {
+    try {
+      const data = await call("/invoices", { method: "POST", body: { orderCode: order.id } });
+      orders.reload();
+      setToast(`Invoice ${data.invoice.code} created for ${order.id}`);
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
+
+  const exportColumns = ["Order", "Customer", "Phone", "Items", "Event", "Days", "Area", "Total", "Paid", "Balance", "Status"];
+  const exportRows = rows.map((order) => [order.id, order.customer.name, order.customer.phone, orderItemsText(order.items), order.eventDate, order.days, order.place ? `${order.place}, ${order.area}` : order.area || "", order.total === null ? "Quote pending" : formatShillings(order.total), formatShillings(order.paid), order.balance === null ? "" : formatShillings(order.balance), order.status]);
+
+  return (
+    <>
+      <section className="inv-stats">
+        {[
+          [Sparkles, "New requests", count("New request"), unpriced ? `${unpriced} need pricing` : "all priced", "blue"],
+          [CalendarDays, "Active rentals", active.length, "confirmed to out for delivery", "mint"],
+          [Banknote, "Outstanding", formatShillings(outstanding), "balance still to collect", "orange"],
+          [PackageCheck, "Completed", count("Completed"), `${list.length} orders in total`, "purple"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
+        ))}
+      </section>
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div className="inv-tabs ws-scroll-tabs" role="tablist" aria-label="Filter by status">
+            {["All", ...ORDER_STATUSES].map((option) => (
+              <button key={option} role="tab" aria-selected={status === option} className={status === option ? "active" : ""} onClick={() => setStatus(option)}>
+                {option}<span>{option === "All" ? list.length : count(option)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="inv-toolbar-actions">
+            <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order, customer, item" aria-label="Search orders" /></label>
+            <ExportMenu title="Orders" columns={exportColumns} rows={exportRows} />
+            {managerView && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> New order</button>}
+          </div>
+        </div>
+        <LoadState status={orders.status} error={orders.error} onRetry={orders.reload} empty={orders.status === "ready" && list.length === 0 ? "No orders yet" : ""} emptyIcon={CalendarDays} emptyText="Orders from Rent Now and orders your team creates appear here." action={managerView && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Create the first order</button>} />
+        {list.length > 0 && (
+          <>
+            <DataTable
+              columns={[
+                { key: "id", label: "ORDER", render: (row) => <div className="inv-item-cell"><span><strong>{row.id}</strong><small className="ws-source">{row.source === "rent_now" ? "Rent Now" : "Staff"}</small></span></div> },
+                { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer.name}</strong><small>{row.customer.phone}</small></div> },
+                { key: "items", label: "ITEMS", render: (row) => <span className="ws-items-cell" title={orderItemsText(row.items)}>{orderItemsText(row.items)}</span> },
+                { key: "eventDate", label: "EVENT", render: (row) => <div className="ws-two-line"><strong>{orderDates(row)}</strong><small>{row.place || row.area || "—"}</small></div> },
+                { key: "total", label: "TOTAL", render: (row) => (row.total === null ? <span className="ws-quote">Quote pending</span> : <div className="ws-two-line"><strong>{formatShillings(row.total)}</strong><small>{row.balance ? `${formatShillings(row.balance)} due` : "Paid in full"}</small></div>) },
+                { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={orderTone(row.status)}>{row.status}</StatusPill>{row.deliveryRequired && <small>Delivery: {row.deliveryStatus}</small>}</div> },
+              ]}
+              rows={rows}
+              rowKey="id"
+              renderActions={(order) => {
+                const actions = [{ label: managerView ? "View & edit" : "View order", onClick: () => setEditing(order) }];
+                const nextStatus = { "New request": "Confirmed", Confirmed: "Ready for pickup", "Ready for pickup": "Out for delivery", "Out for delivery": "Completed" }[order.status];
+                if (nextStatus && (managerView || ["Out for delivery", "Completed"].includes(nextStatus))) actions.push({ label: `Mark ${nextStatus.toLowerCase()}`, onClick: () => setOrderStatus(order, nextStatus) });
+                if (managerView && order.status !== "Cancelled") {
+                  if (!order.invoice && order.priced) actions.push({ label: "Create invoice", onClick: () => createInvoice(order) });
+                  if (order.priced && order.balance > 0) actions.push({ label: "Record payment", onClick: () => setPaying(order) });
+                  actions.push({ label: "Cancel order", danger: true, onClick: () => setOrderStatus(order, "Cancelled") });
+                }
+                return actions;
+              }}
+            />
+            <div className="table-bottom inv-bottom"><span>Showing <strong>{rows.length}</strong> of {list.length} orders</span></div>
+          </>
+        )}
+      </section>
+
+      {editing && (
+        <OrderEditor
+          order={editing === "new" || editing?.prefillCustomer ? null : editing}
+          prefillCustomer={editing?.prefillCustomer}
+          inventory={inventory.data?.items || []}
+          drivers={orders.data?.drivers || []}
+          onClose={() => setEditing(null)}
+          onSaved={(data, created) => {
+            replaceOrder(data.order);
+            setEditing(null);
+            if (data.temporaryPassword) setCredentials({ phone: data.order.customer.phone, password: data.temporaryPassword });
+            setToast(`${data.order.id} ${created ? "created" : "saved"}${data.sms ? (data.sms.status === "sent" ? " · SMS sent" : " · SMS not sent") : ""}`);
+          }}
+        />
+      )}
+      {paying && (
+        <PaymentModal
+          order={paying}
+          settings={settings}
+          onClose={() => setPaying(null)}
+          onSaved={(data) => {
+            setPaying(null);
+            orders.reload();
+            setReceipt(data.payment);
+            setToast(`Payment ${data.payment.receipt} recorded`);
+          }}
+        />
+      )}
+      {credentials && (
+        <WsModal title="Customer account created" kicker="LOGIN DETAILS" onClose={() => setCredentials(null)}>
+          <div className="team-form"><TempPasswordNote phone={credentials.phone} password={credentials.password} /><div className="modal-actions"><button className="button button-primary" onClick={() => setCredentials(null)}>Done</button></div></div>
+        </WsModal>
+      )}
+      {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+      {toast}
+    </>
+  );
+}
+
+// ===== Customers =====
+function CustomerModal({ customer, onClose, onSaved }) {
+  const { call } = useApi();
+  const [form, setForm] = useState({
+    firstName: customer?.firstName || "", lastName: customer?.lastName || "", phone: customer?.phone || "",
+    email: customer?.email || "", area: customer?.area || "", place: customer?.place || "", notes: customer?.notes || "", sendLogin: true,
+  });
+  const [errors, setErrors] = useState({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const bind = (key) => ({ value: form[key], onChange: (event) => setForm({ ...form, [key]: event.target.value }), "aria-invalid": Boolean(errors[key]) });
+
+  async function save(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const body = { ...form };
+      const data = customer
+        ? await call(`/customers/${customer.id}`, { method: "PATCH", body })
+        : await call("/customers", { method: "POST", body });
+      onSaved(data, !customer);
+    } catch (saveError) {
+      setErrors(saveError.fields || {});
+      setError(saveError.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <WsModal title={customer ? `Edit ${customer.name}` : "Add customer"} kicker="CUSTOMERS" onClose={onClose} busy={busy}>
+      <form className="team-form" onSubmit={save} noValidate>
+        <div className="set-grid">
+          <label className="set-field"><span>First name</span><input {...bind("firstName")} autoFocus /><FieldError message={errors.firstName} /></label>
+          <label className="set-field"><span>Last name</span><input {...bind("lastName")} /><FieldError message={errors.lastName} /></label>
+          <label className="set-field"><span>Phone</span><input {...bind("phone")} inputMode="tel" placeholder="0712 345 678" /><FieldError message={errors.phone} /></label>
+          <label className="set-field"><span>Email <em>Optional</em></span><input {...bind("email")} type="email" /><FieldError message={errors.email} /></label>
+          <label className="set-field"><span>Area</span><select {...bind("area")}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+          <label className="set-field"><span>Venue / landmark</span><input {...bind("place")} /></label>
+          <label className="set-field set-span-2"><span>Notes</span><input {...bind("notes")} maxLength={500} /></label>
+        </div>
+        {!customer && <label className="auth-check ws-check"><input type="checkbox" checked={form.sendLogin} onChange={(event) => setForm({ ...form, sendLogin: event.target.checked })} /><span>Create a login and SMS it to the customer</span></label>}
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {customer ? "Save changes" : "Add customer"}</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+function SmsModal({ to, onClose, onSent }) {
+  const { call } = useApi();
+  const [phone, setPhone] = useState(to?.phone || "");
+  const [message, setMessage] = useState(to ? `Hi ${to.firstName || to.name?.split(" ")[0] || ""}, ` : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function send(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const data = await call("/messages", { method: "POST", body: { phone, message } });
+      onSent(data.sms);
+    } catch (sendError) {
+      setError(sendError.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <WsModal title="Send SMS" kicker={to?.name || "SMS"} onClose={onClose} busy={busy}>
+      <form className="team-form" onSubmit={send} noValidate>
+        <label className="set-field"><span>Phone</span><input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" /></label>
+        <label className="set-field"><span>Message <em>{message.length}/480</em></span><textarea className="ws-textarea" rows="4" maxLength={480} value={message} onChange={(event) => setMessage(event.target.value)} autoFocus /></label>
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Sending…</> : <><Send size={15} /> Send SMS</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+function CustomersPage({ query, onNewOrder }) {
+  const { call, session } = useApi();
+  const customers = useResource("/customers");
+  const [search, setSearch] = useState("");
+  const [areaFilter, setAreaFilter] = useState("All areas");
+  const [editing, setEditing] = useState(null);
+  const [messaging, setMessaging] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [credentials, setCredentials] = useState(null);
+  const [toast, setToast] = useToast();
+  const list = customers.data?.customers || [];
+  const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = list.filter((customer) => (areaFilter === "All areas" || customer.area === areaFilter)
+    && words.every((word) => `${customer.name} ${customer.phone} ${customer.email} ${customer.area} ${customer.place}`.toLowerCase().includes(word)));
+  const monthStart = `${localTodayIso().slice(0, 7)}-01`;
+  const totalSpent = list.reduce((sum, customer) => sum + customer.spent, 0);
+  const exportRows = rows.map((customer) => [customer.name, customer.phone, customer.email, customer.area, customer.place, customer.orders, customer.lastOrder || "", formatShillings(customer.spent)]);
+
+  return (
+    <>
+      <section className="inv-stats">
+        {[
+          [Users, "Customers", list.length, "registered", "blue"],
+          [CalendarCheck, "With orders", list.filter((customer) => customer.orders > 0).length, "have booked at least once", "mint"],
+          [UserPlus, "New this month", list.filter((customer) => String(customer.createdAt).slice(0, 10) >= monthStart).length, "joined since the 1st", "purple"],
+          [Banknote, "Lifetime revenue", formatShillings(totalSpent), "paid by all customers", "orange"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
+        ))}
+      </section>
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div><div className="panel-kicker">PEOPLE WHO RENT FROM YOU</div><h2 className="ws-title">Customers <span className="heading-count">{rows.length}</span></h2></div>
+          <div className="inv-toolbar-actions">
+            <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, email" aria-label="Search customers" /></label>
+            <select className="inv-select" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by area">{["All areas", ...CUSTOMER_AREAS].map((area) => <option key={area}>{area}</option>)}</select>
+            <ExportMenu title="Customers" columns={["Name", "Phone", "Email", "Area", "Venue", "Orders", "Last order", "Spent"]} rows={exportRows} />
+            <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add customer</button>
+          </div>
+        </div>
+        <LoadState status={customers.status} error={customers.error} onRetry={customers.reload} empty={customers.status === "ready" && list.length === 0 ? "No customers yet" : ""} emptyIcon={Users} emptyText="Customers appear here when they use Rent Now or when you add them." />
+        {list.length > 0 && (
+          <>
+            <DataTable
+              columns={[
+                { key: "name", label: "CUSTOMER", render: (row) => <div className="customer-cell"><div className="customer-avatar peach">{row.firstName[0]}{row.lastName[0]}</div><span><strong>{row.name}</strong><small>{row.email || "No email"}</small></span></div> },
+                { key: "phone", label: "PHONE", render: (row) => <span className="team-muted">{row.phone}</span> },
+                { key: "area", label: "LOCATION", render: (row) => <div className="ws-two-line"><strong>{row.area || "—"}</strong><small>{row.place}</small></div> },
+                { key: "orders", label: "ORDERS", render: (row) => <strong className="inv-qty">{row.orders}</strong> },
+                { key: "lastOrder", label: "LAST EVENT", render: (row) => <span className="team-muted">{shortDate(row.lastOrder)}</span> },
+                { key: "spent", label: "PAID", render: (row) => <strong className="inv-qty">{formatShillings(row.spent)}</strong> },
+              ]}
+              rows={rows}
+              rowKey="id"
+              renderActions={(row) => [
+                { label: "New order", onClick: () => onNewOrder(row) },
+                { label: "Send SMS", onClick: () => setMessaging(row) },
+                { label: "Edit customer", onClick: () => setEditing(row) },
+                ...(session.staffRole === "Admin" ? [{ label: "Delete customer", danger: true, onClick: () => setDeleting(row) }] : []),
+              ]}
+            />
+            <div className="table-bottom inv-bottom"><span>Showing <strong>{rows.length}</strong> of {list.length} customers</span></div>
+          </>
+        )}
+      </section>
+      {editing && (
+        <CustomerModal
+          customer={editing === "new" ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={(data, created) => {
+            customers.setData((current) => ({ ...current, customers: created ? [data.customer, ...current.customers] : current.customers.map((entry) => (entry.id === data.customer.id ? data.customer : entry)) }));
+            setEditing(null);
+            if (data.temporaryPassword) setCredentials({ phone: data.customer.phone, password: data.temporaryPassword });
+            setToast(`${data.customer.name} ${created ? "added" : "updated"}${data.sms ? (data.sms.status === "sent" ? " · login sent by SMS" : " · SMS not sent") : ""}`);
+          }}
+        />
+      )}
+      {messaging && <SmsModal to={messaging} onClose={() => setMessaging(null)} onSent={(sms) => { setMessaging(null); setToast(sms.status === "sent" ? "SMS sent" : `SMS not sent (${sms.status === "not_configured" ? "SMS not set up" : sms.error || "failed"})`); }} />}
+      {deleting && (
+        <InventoryConfirmDelete
+          item={{ name: deleting.name, quantity: 0, sku: deleting.phone }}
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await call(`/customers/${deleting.id}`, { method: "DELETE" });
+            customers.setData((current) => ({ ...current, customers: current.customers.filter((entry) => entry.id !== deleting.id) }));
+            setToast(`${deleting.name} deleted`);
+            setDeleting(null);
+          }}
+        />
+      )}
+      {credentials && (
+        <WsModal title="Customer login created" kicker="LOGIN DETAILS" onClose={() => setCredentials(null)}>
+          <div className="team-form"><TempPasswordNote phone={credentials.phone} password={credentials.password} /><div className="modal-actions"><button className="button button-primary" onClick={() => setCredentials(null)}>Done</button></div></div>
+        </WsModal>
+      )}
+      {toast}
+    </>
+  );
+}
+
+// ===== Invoices =====
+async function downloadInvoicePdf(invoice) {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ format: "a5" });
+  const width = pdf.internal.pageSize.getWidth();
+  pdf.setFillColor(38, 116, 237);
+  pdf.rect(0, 0, width, 4, "F");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(18);
+  pdf.setTextColor(28, 42, 63);
+  pdf.text("Pendo", 12, 18);
+  pdf.setTextColor(38, 116, 237);
+  pdf.text("rentals", 12 + pdf.getTextWidth("Pendo"), 18);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(107, 122, 144);
+  pdf.text(`${BUSINESS_INFO.address} · ${BUSINESS_INFO.phone} · ${BUSINESS_INFO.email}`, 12, 24);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(9);
+  pdf.setTextColor(38, 116, 237);
+  pdf.text("INVOICE", width - 12, 14, { align: "right" });
+  pdf.setFontSize(12);
+  pdf.setTextColor(28, 42, 63);
+  pdf.text(invoice.code, width - 12, 20, { align: "right" });
+  pdf.setDrawColor(38, 116, 237);
+  pdf.setLineWidth(0.6);
+  pdf.line(12, 30, width - 12, 30);
+  const rows = [["BILL TO", invoice.customer], ["PHONE", invoice.phone], ["ORDER", invoice.orderCode || "—"], ["ISSUED", shortDate(invoice.issuedOn)], ["DUE", shortDate(invoice.dueOn)], ["STATUS", invoice.status]];
+  rows.forEach(([label, value], index) => {
+    const x = index % 2 === 0 ? 12 : width / 2 + 2;
+    const y = 40 + Math.floor(index / 2) * 14;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7);
+    pdf.setTextColor(132, 146, 166);
+    pdf.text(label, x, y);
+    pdf.setFontSize(10);
+    pdf.setTextColor(28, 42, 63);
+    pdf.text(String(value), x, y + 5);
+  });
+  const lines = [["Invoice amount", invoice.amount], ["Paid", invoice.paid], ["Balance due", invoice.balance]];
+  lines.forEach(([label, value], index) => {
+    const y = 92 + index * 9;
+    pdf.setFont("helvetica", index === 2 ? "bold" : "normal");
+    pdf.setFontSize(index === 2 ? 12 : 10);
+    pdf.setTextColor(index === 2 ? 16 : 75, index === 2 ? 48 : 93, index === 2 ? 94 : 119);
+    pdf.text(label, 12, y);
+    pdf.text(formatShillings(value), width - 12, y, { align: "right" });
+  });
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  pdf.setTextColor(107, 122, 144);
+  pdf.text("Pay by M-Pesa, cash or bank transfer and quote the invoice number.", width / 2, 130, { align: "center" });
+  pdf.save(`pendo-invoice-${invoice.code.toLowerCase()}.pdf`);
+}
+
+function InvoiceCreateModal({ onClose, onSaved }) {
+  const { call } = useApi();
+  const orders = useResource("/orders");
+  const [orderCode, setOrderCode] = useState("");
+  const [amount, setAmount] = useState("");
+  const [dueOn, setDueOn] = useState(shiftIsoDate(localTodayIso(), 7));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const candidates = (orders.data?.orders || []).filter((order) => !order.invoice && order.status !== "Cancelled");
+  const selected = candidates.find((order) => order.id === orderCode);
+  async function save(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn } });
+      onSaved(data.invoice);
+    } catch (saveError) {
+      setError(saveError.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <WsModal title="Create invoice" kicker="INVOICES" onClose={onClose} busy={busy}>
+      <form className="team-form" onSubmit={save} noValidate>
+        <label className="set-field">
+          <span>Order</span>
+          <select value={orderCode} onChange={(event) => { setOrderCode(event.target.value); const order = candidates.find((entry) => entry.id === event.target.value); setAmount(order?.total ? String(order.total) : ""); }}>
+            <option value="">{orders.status === "loading" ? "Loading orders…" : candidates.length ? "Choose an order without an invoice" : "No orders to invoice"}</option>
+            {candidates.map((order) => <option key={order.id} value={order.id}>{order.id} · {order.customer.name} · {order.total === null ? "not priced" : formatShillings(order.total)}</option>)}
+          </select>
+        </label>
+        <div className="set-grid">
+          <label className="set-field"><span>Amount (TSh)</span><input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder={selected && selected.total === null ? "Enter amount" : ""} /></label>
+          <label className="set-field"><span>Due date</span><input type="date" value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label>
+        </div>
+        {selected && selected.total === null && <p className="team-form-note"><Info size={13} /> This order has no prices yet — enter the invoice amount, or price the order first.</p>}
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy || !orderCode}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Creating…</> : <><Receipt size={15} /> Create invoice</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+function InvoicesPage({ query, settings }) {
+  const { call } = useApi();
+  const invoices = useResource("/invoices");
+  const [status, setStatus] = useState("All");
+  const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [paying, setPaying] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [toast, setToast] = useToast();
+  const list = invoices.data?.invoices || [];
+  const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = list.filter((invoice) => (status === "All" || invoice.status === status)
+    && words.every((word) => `${invoice.code} ${invoice.orderCode} ${invoice.customer} ${invoice.phone}`.toLowerCase().includes(word)));
+  const open = list.filter((invoice) => !["Paid", "Cancelled"].includes(invoice.status));
+  const monthStart = `${localTodayIso().slice(0, 7)}-01`;
+
+  return (
+    <>
+      <section className="inv-stats">
+        {[
+          [Receipt, "Outstanding", formatShillings(open.reduce((sum, invoice) => sum + invoice.balance, 0)), `${open.length} open invoice${open.length === 1 ? "" : "s"}`, "blue"],
+          [CircleAlert, "Overdue", list.filter((invoice) => invoice.status === "Overdue").length, formatShillings(list.filter((invoice) => invoice.status === "Overdue").reduce((sum, invoice) => sum + invoice.balance, 0)), "orange"],
+          [CircleCheck, "Paid in full", list.filter((invoice) => invoice.status === "Paid").length, "invoices", "mint"],
+          [CalendarDays, "Issued this month", list.filter((invoice) => invoice.issuedOn >= monthStart).length, formatShillings(list.filter((invoice) => invoice.issuedOn >= monthStart).reduce((sum, invoice) => sum + invoice.amount, 0)), "purple"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
+        ))}
+      </section>
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div className="inv-tabs ws-scroll-tabs" role="tablist">
+            {["All", "Unpaid", "Partially paid", "Overdue", "Paid", "Cancelled"].map((option) => (
+              <button key={option} role="tab" aria-selected={status === option} className={status === option ? "active" : ""} onClick={() => setStatus(option)}>{option}<span>{option === "All" ? list.length : list.filter((invoice) => invoice.status === option).length}</span></button>
+            ))}
+          </div>
+          <div className="inv-toolbar-actions">
+            <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoice, order, customer" aria-label="Search invoices" /></label>
+            <ExportMenu title="Invoices" columns={["Invoice", "Order", "Customer", "Issued", "Due", "Amount", "Paid", "Balance", "Status"]} rows={rows.map((invoice) => [invoice.code, invoice.orderCode || "", invoice.customer, invoice.issuedOn, invoice.dueOn, formatShillings(invoice.amount), formatShillings(invoice.paid), formatShillings(invoice.balance), invoice.status])} />
+            <button className="button button-primary inv-add-button" onClick={() => setCreating(true)}><Plus size={16} /> Create invoice</button>
+          </div>
+        </div>
+        <LoadState status={invoices.status} error={invoices.error} onRetry={invoices.reload} empty={invoices.status === "ready" && list.length === 0 ? "No invoices yet" : ""} emptyIcon={Receipt} emptyText="Create an invoice from any priced order." />
+        {list.length > 0 && (
+          <>
+            <DataTable
+              columns={[
+                { key: "code", label: "INVOICE", render: (row) => <div className="ws-two-line"><strong className="report-id">{row.code}</strong><small>{row.orderCode || "No order"}</small></div> },
+                { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer}</strong><small>{row.phone}</small></div> },
+                { key: "issuedOn", label: "ISSUED", render: (row) => <span className="team-muted">{shortDate(row.issuedOn)}</span> },
+                { key: "dueOn", label: "DUE", render: (row) => <span className="team-muted">{shortDate(row.dueOn)}</span> },
+                { key: "amount", label: "AMOUNT", render: (row) => <div className="ws-two-line"><strong>{formatShillings(row.amount)}</strong><small>{row.balance ? `${formatShillings(row.balance)} due` : "Settled"}</small></div> },
+                { key: "status", label: "STATUS", render: (row) => <StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill> },
+              ]}
+              rows={rows}
+              rowKey="id"
+              renderActions={(row) => [
+                ...(row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
+                { label: "Download PDF", onClick: () => downloadInvoicePdf(row) },
+                ...(row.status !== "Cancelled" && row.paid === 0 ? [{ label: "Cancel invoice", danger: true, onClick: async () => {
+                  try {
+                    const data = await call(`/invoices/${row.id}`, { method: "PATCH", body: { cancel: true } });
+                    invoices.setData((current) => ({ ...current, invoices: current.invoices.map((entry) => (entry.id === row.id ? data.invoice : entry)) }));
+                    setToast(`${row.code} cancelled`);
+                  } catch (error) { setToast(error.message); }
+                } }] : []),
+              ]}
+            />
+            <div className="table-bottom inv-bottom"><span>Showing <strong>{rows.length}</strong> of {list.length} invoices</span></div>
+          </>
+        )}
+      </section>
+      {creating && <InvoiceCreateModal onClose={() => setCreating(false)} onSaved={(invoice) => { setCreating(false); invoices.setData((current) => ({ ...current, invoices: [invoice, ...current.invoices] })); setToast(`Invoice ${invoice.code} created`); }} />}
+      {paying && <PaymentModal invoice={paying} settings={settings} onClose={() => setPaying(null)} onSaved={(data) => { setPaying(null); invoices.reload(); setReceipt(data.payment); setToast(`Payment ${data.payment.receipt} recorded`); }} />}
+      {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+      {toast}
+    </>
+  );
+}
+
+// ===== Finance =====
+function ExpenseModal({ expense, meta, onClose, onSaved }) {
+  const { call } = useApi();
+  const [form, setForm] = useState({
+    date: expense?.date || localTodayIso(), category: expense?.category || "", description: expense?.description || "",
+    vendor: expense?.vendor || "", method: expense?.method || "Cash", amount: expense ? String(expense.amount) : "", status: expense?.status || "Approved",
+  });
+  const [errors, setErrors] = useState({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const bind = (key) => ({ value: form[key], onChange: (event) => setForm({ ...form, [key]: event.target.value }), "aria-invalid": Boolean(errors[key]) });
+  async function save(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const body = { ...form, amount: Number(form.amount) };
+      const data = expense ? await call(`/expenses/${expense.id}`, { method: "PATCH", body }) : await call("/expenses", { method: "POST", body });
+      onSaved(data.expense, !expense);
+    } catch (saveError) {
+      setErrors(saveError.fields || {});
+      setError(saveError.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <WsModal title={expense ? "Edit expense" : "Add expense"} kicker="FINANCE" onClose={onClose} busy={busy}>
+      <form className="team-form" onSubmit={save} noValidate>
+        <div className="set-grid">
+          <label className="set-field"><span>Date</span><input type="date" {...bind("date")} /><FieldError message={errors.date} /></label>
+          <label className="set-field"><span>Amount (TSh)</span><input type="number" min="1" {...bind("amount")} autoFocus /><FieldError message={errors.amount} /></label>
+          <label className="set-field"><span>Category</span><select {...bind("category")}><option value="">Choose</option>{meta.categories.map((category) => <option key={category}>{category}</option>)}</select><FieldError message={errors.category} /></label>
+          <label className="set-field"><span>Paid with</span><select {...bind("method")}>{meta.methods.map((method) => <option key={method}>{method}</option>)}</select></label>
+          <label className="set-field set-span-2"><span>Description</span><input {...bind("description")} maxLength={120} placeholder="e.g. Tent repairs" /><FieldError message={errors.description} /></label>
+          <label className="set-field"><span>Vendor <em>Optional</em></span><input {...bind("vendor")} maxLength={80} /></label>
+          <label className="set-field"><span>Status</span><select {...bind("status")}><option>Approved</option><option>Pending</option></select></label>
+        </div>
+        {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {expense ? "Save changes" : "Add expense"}</>}</button>
+        </div>
+      </form>
+    </WsModal>
+  );
+}
+
+const FINANCE_PERIODS = ["This month", "Last month", "Last 30 days", "This year", "All time"];
+function financeRange(period) {
+  const today = localTodayIso();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  if (period === "Last month") {
+    const end = shiftIsoDate(monthStart, -1);
+    return [`${end.slice(0, 7)}-01`, end];
+  }
+  if (period === "Last 30 days") return [shiftIsoDate(today, -29), today];
+  if (period === "This year") return [`${today.slice(0, 4)}-01-01`, today];
+  if (period === "All time") return ["2000-01-01", today];
+  return [monthStart, today];
+}
+
+function FinancePage({ query, session }) {
+  const { call } = useApi();
+  const [period, setPeriod] = useState("This month");
+  const [from, to] = financeRange(period);
+  const summary = useResource(`/finance/summary?from=${from}&to=${to}`);
+  const expenses = useResource("/expenses");
+  const payments = useResource("/payments");
+  const [tab, setTab] = useState("Expenses");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [toast, setToast] = useToast();
+  const s = summary.data;
+  const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const inRange = (date) => date >= from && date <= to;
+  const expenseRows = (expenses.data?.expenses || []).filter((expense) => inRange(expense.date) && words.every((word) => `${expense.category} ${expense.description} ${expense.vendor} ${expense.method}`.toLowerCase().includes(word)));
+  const paymentRows = (payments.data?.payments || []).filter((payment) => inRange(payment.date) && words.every((word) => `${payment.receipt} ${payment.customer} ${payment.reference} ${payment.method} ${payment.transactionRef}`.toLowerCase().includes(word)));
+  const maxMethod = Math.max(1, ...(s?.byMethod || []).map((row) => row.total));
+  const maxCategory = Math.max(1, ...(s?.byCategory || []).map((row) => row.total));
+
+  return (
+    <>
+      <div className="ws-period-bar">
+        <span>Showing</span>
+        <select className="inv-select" value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Finance period">{FINANCE_PERIODS.map((option) => <option key={option}>{option}</option>)}</select>
+        <small>{period === "All time" ? "All records" : `${shortDate(from)} – ${shortDate(to)}`}</small>
+      </div>
+      <section className="inv-stats">
+        {[
+          [CircleDollarSign, "Revenue", s ? formatShillings(s.revenue) : "…", s ? `${s.payments} payment${s.payments === 1 ? "" : "s"}${s.refunded ? ` · ${formatShillings(s.refunded)} refunded` : ""}` : "", "mint"],
+          [Sparkles, "Tithe (Zaka)", s ? formatShillings(s.tithe) : "…", "set aside from payments", "purple"],
+          [Wallet, "Expenses", s ? formatShillings(s.expenses) : "…", s ? `${s.pendingExpenses ? `${formatShillings(s.pendingExpenses)} pending` : `${s.expenseCount} entries`}` : "", "orange"],
+          [ChartNoAxesCombined, "Net profit", s ? formatShillings(s.net) : "…", "revenue − tithe − expenses", "blue"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong className={label === "Net profit" && s?.net < 0 ? "negative-text" : ""}>{value}</strong><em>{hint}</em></div></article>
+        ))}
+      </section>
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div className="inv-tabs" role="tablist">
+            {[["Expenses", expenseRows.length], ["Payments", paymentRows.length], ["Breakdown", null]].map(([option, n]) => (
+              <button key={option} role="tab" aria-selected={tab === option} className={tab === option ? "active" : ""} onClick={() => setTab(option)}>{option}{n !== null && <span>{n}</span>}</button>
+            ))}
+          </div>
+          <div className="inv-toolbar-actions">
+            {tab !== "Breakdown" && <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${tab.toLowerCase()}`} aria-label={`Search ${tab}`} /></label>}
+            {tab === "Expenses" && <ExportMenu title="Expenses" columns={["Date", "Category", "Description", "Vendor", "Paid with", "Amount", "Status"]} rows={expenseRows.map((expense) => [expense.date, expense.category, expense.description, expense.vendor, expense.method, formatShillings(expense.amount), expense.status])} />}
+            {tab === "Payments" && <ExportMenu title="Payments" columns={["Receipt", "Date", "Customer", "Order", "Method", "Reference", "Amount", "Tithe", "Status"]} rows={paymentRows.map((payment) => [payment.receipt, payment.date, payment.customer, payment.reference, payment.method, payment.transactionRef, formatShillings(payment.amount), formatShillings(payment.tithe), payment.status])} />}
+            {tab === "Expenses" && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add expense</button>}
+          </div>
+        </div>
+        {tab === "Expenses" && (
+          <>
+            <LoadState status={expenses.status} error={expenses.error} onRetry={expenses.reload} empty={expenses.status === "ready" && expenseRows.length === 0 ? "No expenses in this period" : ""} emptyIcon={Wallet} emptyText="Record fuel, repairs, supplies and other costs to see your real profit." />
+            {expenseRows.length > 0 && (
+              <DataTable
+                columns={[
+                  { key: "date", label: "DATE", render: (row) => <span className="team-muted">{shortDate(row.date)}</span> },
+                  { key: "description", label: "EXPENSE", render: (row) => <div className="ws-two-line"><strong>{row.description}</strong><small>{row.category}</small></div> },
+                  { key: "vendor", label: "VENDOR", render: (row) => <span className="team-muted">{row.vendor || "—"}</span> },
+                  { key: "method", label: "PAID WITH", render: (row) => <span className="team-muted">{row.method}</span> },
+                  { key: "amount", label: "AMOUNT", render: (row) => <strong className="inv-qty">{formatShillings(row.amount)}</strong> },
+                  { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "Approved" ? "green" : "amber"}>{row.status}</StatusPill> },
+                ]}
+                rows={expenseRows}
+                rowKey="id"
+                renderActions={(row) => [
+                  { label: "Edit expense", onClick: () => setEditing(row) },
+                  ...(row.status === "Pending" ? [{ label: "Approve", onClick: async () => { try { const data = await call(`/expenses/${row.id}`, { method: "PATCH", body: { status: "Approved" } }); expenses.setData((current) => ({ ...current, expenses: current.expenses.map((entry) => (entry.id === row.id ? data.expense : entry)) })); summary.reload(); setToast("Expense approved"); } catch (error) { setToast(error.message); } } }] : []),
+                  { label: "Delete expense", danger: true, onClick: () => setDeleting(row) },
+                ]}
+              />
+            )}
+          </>
+        )}
+        {tab === "Payments" && (
+          <>
+            <LoadState status={payments.status} error={payments.error} onRetry={payments.reload} empty={payments.status === "ready" && paymentRows.length === 0 ? "No payments in this period" : ""} emptyIcon={Banknote} emptyText="Record payments from Orders or Invoices." />
+            {paymentRows.length > 0 && (
+              <DataTable
+                columns={[
+                  { key: "receipt", label: "RECEIPT", render: (row) => <div className="ws-two-line"><strong className="report-id">{row.receipt}</strong><small>{shortDate(row.date)}</small></div> },
+                  { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer}</strong><small>{row.reference}</small></div> },
+                  { key: "method", label: "METHOD", render: (row) => <div className="ws-two-line"><strong>{row.method}</strong><small>{row.transactionRef || "—"}</small></div> },
+                  { key: "amount", label: "AMOUNT", render: (row) => <div className="ws-two-line"><strong>{formatShillings(row.amount)}</strong><small>Tithe {formatShillings(row.tithe)}</small></div> },
+                  { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "Paid" ? "green" : "red"}>{row.status}</StatusPill> },
+                ]}
+                rows={paymentRows}
+                rowKey="id"
+                renderActions={(row) => [
+                  { label: "View receipt", onClick: () => setReceipt(row) },
+                  { label: "Print receipt", onClick: () => printReceipts([row]) },
+                  ...(session.staffRole === "Admin" && row.status === "Paid" ? [{ label: "Mark refunded", danger: true, onClick: async () => { try { await call(`/payments/${row.id}`, { method: "PATCH", body: { status: "Refunded" } }); payments.reload(); summary.reload(); setToast(`${row.receipt} marked refunded`); } catch (error) { setToast(error.message); } } }] : []),
+                ]}
+              />
+            )}
+          </>
+        )}
+        {tab === "Breakdown" && (
+          <div className="ws-breakdown">
+            <article>
+              <h3>Revenue by payment method</h3>
+              {(s?.byMethod || []).length === 0 ? <p className="team-muted">No payments in this period.</p> : s.byMethod.map((row) => (
+                <div className="ws-bar-row" key={row.method}><span>{row.method}</span><i><b style={{ width: `${(row.total / maxMethod) * 100}%` }} /></i><strong>{formatShillings(row.total)}</strong></div>
+              ))}
+            </article>
+            <article>
+              <h3>Expenses by category</h3>
+              {(s?.byCategory || []).length === 0 ? <p className="team-muted">No approved expenses in this period.</p> : s.byCategory.map((row) => (
+                <div className="ws-bar-row expense" key={row.category}><span>{row.category}</span><i><b style={{ width: `${(row.total / maxCategory) * 100}%` }} /></i><strong>{formatShillings(row.total)}</strong></div>
+              ))}
+            </article>
+            <article className="ws-net-card">
+              <h3>Profit & loss</h3>
+              <div><span>Revenue</span><strong>{formatShillings(s?.revenue)}</strong></div>
+              <div><span>Tithe (Zaka)</span><strong>− {formatShillings(s?.tithe)}</strong></div>
+              <div><span>Expenses</span><strong>− {formatShillings(s?.expenses)}</strong></div>
+              <div className="total"><span>Net profit</span><strong className={s?.net < 0 ? "negative-text" : ""}>{formatShillings(s?.net)}</strong></div>
+            </article>
+          </div>
+        )}
+      </section>
+      {editing && <ExpenseModal expense={editing === "new" ? null : editing} meta={expenses.data || { categories: [], methods: [] }} onClose={() => setEditing(null)} onSaved={(expense, created) => {
+        expenses.setData((current) => ({ ...current, expenses: created ? [expense, ...current.expenses] : current.expenses.map((entry) => (entry.id === expense.id ? expense : entry)) }));
+        summary.reload();
+        setEditing(null);
+        setToast(created ? "Expense added" : "Expense updated");
+      }} />}
+      {deleting && <InventoryConfirmDelete item={{ name: deleting.description, quantity: 0, sku: formatShillings(deleting.amount) }} onClose={() => setDeleting(null)} onConfirm={async () => {
+        await call(`/expenses/${deleting.id}`, { method: "DELETE" });
+        expenses.setData((current) => ({ ...current, expenses: current.expenses.filter((entry) => entry.id !== deleting.id) }));
+        summary.reload();
+        setDeleting(null);
+        setToast("Expense deleted");
+      }} />}
+      {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+      {toast}
+    </>
+  );
+}
+
+// ===== SMS & notifications =====
+const TEMPLATE_INFO = {
+  bookingConfirmed: ["Booking confirmed", "Sent when an order is marked Confirmed."],
+  outForDelivery: ["Out for delivery", "Sent when an order is marked Out for delivery."],
+  completed: ["Thank you", "Sent when an order is marked Completed."],
+  paymentReceived: ["Payment receipt", "Sent when you record a payment."],
+};
+
+function MessagingPage({ session, settingsResource }) {
+  const { call } = useApi();
+  const messages = useResource("/messages");
+  const [tab, setTab] = useState("History");
+  const [composing, setComposing] = useState(false);
+  const [templates, setTemplates] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useToast();
+  const stats = messages.data?.stats;
+  const list = messages.data?.messages || [];
+  const currentTemplates = templates || settingsResource.data?.settings?.smsTemplates || {};
+  const admin = session.staffRole === "Admin";
+
+  async function saveTemplates() {
+    setSaving(true);
+    try {
+      const data = await call("/settings", { method: "PUT", body: { settings: { smsTemplates: currentTemplates } } });
+      settingsResource.setData((current) => ({ ...current, settings: data.settings }));
+      setTemplates(null);
+      setToast("Templates saved");
+    } catch (error) {
+      setToast(error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      {messages.data && !messages.data.smsConfigured && (
+        <p className="set-notice ws-banner"><CircleAlert size={14} /> SMS sending is not set up on the server yet. Messages are recorded below as “not configured”. Add the Beem keys to GitHub secrets and redeploy.</p>
+      )}
+      <section className="inv-stats">
+        {[
+          [Send, "Sent (30 days)", stats?.month ?? "…", "all messages", "blue"],
+          [CircleCheck, "Delivered to Beem", stats?.delivered ?? "…", "accepted for delivery", "mint"],
+          [CircleAlert, "Not sent", stats?.not_sent ?? "…", "failed or not configured", "orange"],
+          [MessageSquareText, "Templates", Object.keys(TEMPLATE_INFO).length, "automatic messages", "purple"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
+        ))}
+      </section>
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div className="inv-tabs" role="tablist">
+            {["History", "Templates"].map((option) => <button key={option} role="tab" aria-selected={tab === option} className={tab === option ? "active" : ""} onClick={() => setTab(option)}>{option}</button>)}
+          </div>
+          <div className="inv-toolbar-actions">
+            <button className="button button-secondary" onClick={messages.reload}><RotateCcw size={14} /> Refresh</button>
+            <button className="button button-primary inv-add-button" onClick={() => setComposing(true)}><Send size={15} /> Send SMS</button>
+          </div>
+        </div>
+        {tab === "History" ? (
+          <>
+            <LoadState status={messages.status} error={messages.error} onRetry={messages.reload} empty={messages.status === "ready" && list.length === 0 ? "No messages yet" : ""} emptyIcon={MessageSquareText} emptyText="Every SMS the system sends — requests, bookings, receipts and invites — is listed here." />
+            {list.length > 0 && (
+              <DataTable
+                columns={[
+                  { key: "createdAt", label: "SENT", render: (row) => <span className="team-muted">{new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> },
+                  { key: "recipient", label: "TO", render: (row) => <div className="ws-two-line"><strong>{row.recipient}</strong><small>{row.phone}</small></div> },
+                  { key: "message", label: "MESSAGE", render: (row) => <span className="ws-message" title={row.message}>{row.message}</span> },
+                  { key: "kind", label: "TYPE", render: (row) => <span className="team-muted">{row.kind.replace(/_/g, " ")}{row.orderCode ? ` · ${row.orderCode}` : ""}</span> },
+                  { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" ? "amber" : "red"}>{row.status === "sent" ? "Sent" : row.status === "not_configured" ? "Not configured" : "Failed"}</StatusPill> },
+                ]}
+                rows={list}
+                rowKey="id"
+                renderActions={(row) => [{ label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) }]}
+              />
+            )}
+          </>
+        ) : (
+          <div className="ws-templates">
+            <p className="team-muted">Use placeholders: {"{firstName} {order} {date} {total} {place} {amount} {receipt} {balance} {phone}"}. Turn each message on or off in Settings → Notifications.</p>
+            {Object.entries(TEMPLATE_INFO).map(([key, [title, help]]) => (
+              <label className="set-field" key={key}>
+                <span>{title} <em>{help}</em></span>
+                <textarea className="ws-textarea" rows="3" maxLength={480} value={currentTemplates[key] || ""} readOnly={!admin} onChange={(event) => setTemplates({ ...currentTemplates, [key]: event.target.value })} />
+              </label>
+            ))}
+            {admin ? (
+              <div className="modal-actions"><button className="button button-primary" onClick={saveTemplates} disabled={saving || !templates}>{saving ? "Saving…" : <><Save size={15} /> Save templates</>}</button></div>
+            ) : <p className="team-muted">Only an Admin can change templates.</p>}
+          </div>
+        )}
+      </section>
+      {composing && <SmsModal onClose={() => setComposing(false)} onSent={(sms) => { setComposing(false); messages.reload(); setToast(sms.status === "sent" ? "SMS sent" : "SMS recorded but not sent"); }} />}
+      {toast}
+    </>
+  );
+}
+
+// ===== Overview (dashboard) =====
+function niceCeiling(value) {
+  if (value <= 0) return 1000;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const step = [1, 2, 2.5, 5, 10].find((factor) => factor * magnitude >= value) * magnitude;
+  return step;
+}
+
+function compactShillings(value) {
+  if (value >= 1e6) return `TSh ${(value / 1e6).toFixed(value % 1e6 ? 1 : 0)}M`;
+  if (value >= 1e3) return `TSh ${(value / 1e3).toFixed(value % 1e3 ? 1 : 0)}K`;
+  return `TSh ${value}`;
+}
+
+function OverviewPage({ onNavigate, onNewOrder }) {
+  const { session } = useApi();
+  const [period, setPeriod] = useState("week");
+  const dash = useResource(`/dashboard?period=${period}`);
+  const d = dash.data;
+  if (!d) return <section className="panel inv-panel"><LoadState status={dash.status} error={dash.error} onRetry={dash.reload} /></section>;
+
+  const inv = d.inventory;
+  const units = inv.units || 0;
+  const outPct = units ? Math.round((inv.out / units) * 100) : 0;
+  const repairPct = units ? Math.round((inv.maintenanceUnits / units) * 100) : 0;
+  const availablePct = Math.max(0, 100 - outPct - repairPct);
+  const peak = niceCeiling(Math.max(...d.revenue.days.map((day) => day.total)));
+  const best = Math.max(...d.revenue.days.map((day) => day.total));
+  const labelEvery = d.revenue.days.length > 10 ? 5 : 1;
+  const change = d.revenue.change;
+
+  return (
+    <>
+      <section className="metrics-grid" aria-label="Business overview">
+        <Metric icon={Package} label="Total units" value={units.toLocaleString("en-US")} change={`${inv.products} products`} kind="up" color="mint-icon" caption="in inventory" />
+        <Metric icon={CalendarDays} label="Out on rent" value={inv.out.toLocaleString("en-US")} change={`${outPct}%`} kind="up" color="blue-icon" caption="of units today" />
+        <Metric icon={Sparkles} label="Available now" value={inv.available.toLocaleString("en-US")} change={`${availablePct}%`} kind="up" color="purple-icon" caption="ready to rent" />
+        <Metric icon={ShieldCheck} label="Needs attention" value={String(d.orders.new_requests + inv.maintenance)} change={`${d.orders.new_requests} new request${d.orders.new_requests === 1 ? "" : "s"}`} kind={d.orders.new_requests + inv.maintenance ? "down" : "up"} color="orange-icon" caption={`${inv.maintenance} in maintenance`} />
+      </section>
+      <section className="overview-grid">
+        <article className="panel revenue-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="panel-kicker">YOUR BUSINESS</div>
+              <h2>Revenue overview</h2>
+            </div>
+            <select className="inv-select ws-period-select" value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Revenue period">
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+            </select>
+          </div>
+          <div className="revenue-total">
+            <strong>{formatShillings(d.revenue.total)}</strong>
+            {change !== null && (
+              <span className={change >= 0 ? "positive-pill" : "positive-pill ws-negative-pill"}>
+                {change >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />} {Math.abs(change).toFixed(1)}%
+              </span>
+            )}
+            <small>{change === null ? "payments received" : `vs previous ${period === "week" ? "7" : "30"} days`}</small>
+          </div>
+          <div className="chart-wrap">
+            <div className="chart-y-labels">
+              {[1, 0.75, 0.5, 0.25, 0].map((fraction) => <span key={fraction}>{compactShillings(Math.round(peak * fraction))}</span>)}
+            </div>
+            <div className="chart-main">
+              <div className="chart-gridlines"><i /><i /><i /><i /><i /></div>
+              <div className="chart-bars" style={{ gridTemplateColumns: `repeat(${d.revenue.days.length}, 1fr)`, gap: d.revenue.days.length > 10 ? "3px" : undefined }}>
+                {d.revenue.days.map((day, index) => {
+                  const date = new Date(`${day.date}T00:00:00`);
+                  return (
+                    <div className="bar-column" key={day.date}>
+                      <div className={`bar ${day.total && day.total === best ? "bar-emphasis" : ""}`} style={{ height: `${Math.max(2, (day.total / peak) * 100)}%` }}>
+                        <span className="bar-tooltip">{formatShillings(day.total)}</span>
+                      </div>
+                      <span className="bar-label">{index % labelEvery === 0 || index === d.revenue.days.length - 1 ? (period === "week" ? date.toLocaleDateString("en-GB", { weekday: "short" }) : date.getDate()) : ""}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="chart-footer">
+            <span><i className="legend-dot" /> Payments received</span>
+            {isManager(session) && <button onClick={() => onNavigate("Finance")}>View finance <ArrowRight size={14} /></button>}
+          </div>
+        </article>
+        <article className="panel availability-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="panel-kicker">AT A GLANCE</div>
+              <h2>Item availability</h2>
+            </div>
+          </div>
+          <div className="availability-ring-wrap">
+            <div className="availability-ring" style={{ background: units ? `conic-gradient(#4289ef 0 ${outPct}%, #72d3ae ${outPct}% ${outPct + availablePct}%, #ffb77c ${outPct + availablePct}% 100%)` : "#e8eef6" }}>
+              <div><strong>{inv.out.toLocaleString("en-US")}</strong><span>of {units.toLocaleString("en-US")} out</span></div>
+            </div>
+            <div className="availability-key">
+              <span><i className="key-dot rented-dot" />Out on rent <strong>{outPct}%</strong></span>
+              <span><i className="key-dot available-dot" />Available <strong>{availablePct}%</strong></span>
+              <span><i className="key-dot repair-dot" />In maintenance <strong>{inv.maintenanceUnits}</strong></span>
+            </div>
+          </div>
+          <div className="availability-note">
+            <span className="note-icon"><Sparkles size={15} /></span>
+            <span>{units === 0 ? <><strong>Add your inventory</strong> to track availability.</> : d.orders.new_requests ? <><strong>{d.orders.new_requests} new request{d.orders.new_requests === 1 ? "" : "s"}</strong> waiting for a price.</> : <><strong>All caught up!</strong> {d.orders.upcoming} upcoming booking{d.orders.upcoming === 1 ? "" : "s"}.</>}</span>
+          </div>
+        </article>
+      </section>
+      <section className="panel bookings-panel">
+        <div className="panel-heading bookings-heading">
+          <div>
+            <div className="panel-kicker">KEEP THINGS MOVING</div>
+            <h2>Upcoming bookings <span className="heading-count">{d.orders.upcoming}</span></h2>
+          </div>
+          <div className="heading-actions">
+            {isManager(session) && <button className="button button-primary ws-small-button" onClick={onNewOrder}><Plus size={14} /> New order</button>}
+            <button className="text-action" onClick={() => onNavigate("Orders")}>See all orders <ArrowRight size={15} /></button>
+          </div>
+        </div>
+        {d.upcoming.length === 0 ? (
+          <LoadState status="ready" empty="No upcoming bookings" emptyIcon={CalendarDays} emptyText="New Rent Now requests and orders you create will show here." />
+        ) : (
+          <div className="table-scroll">
+            <table className="booking-table ws-booking-table">
+              <thead><tr><th>CUSTOMER</th><th>RENTAL</th><th>EVENT</th><th>AMOUNT</th><th>STATUS</th></tr></thead>
+              <tbody>
+                {d.upcoming.map((order) => (
+                  <tr key={order.id} onClick={() => onNavigate("Orders")}>
+                    <td><div className="customer-cell"><div className="customer-avatar peach">{order.customer.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</div><span><strong>{order.customer.name}</strong><small>{order.id} · {order.customer.phone}</small></span></div></td>
+                    <td className="rental-cell">{orderItemsText(order.items)}</td>
+                    <td className="date-cell">{orderDates(order)}</td>
+                    <td className="amount-cell">{order.total === null ? "Quote pending" : formatShillings(order.total)}</td>
+                    <td><StatusPill tone={orderTone(order.status)}>{order.status}</StatusPill></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <section className="panel inventory-panel">
+        <div className="panel-heading inventory-heading">
+          <div>
+            <div className="panel-kicker">MOST BOOKED</div>
+            <h2>Popular inventory</h2>
+          </div>
+          <button className="text-action" onClick={() => onNavigate("Inventory")}>Manage inventory <ArrowRight size={15} /></button>
+        </div>
+        {d.popular.length === 0 ? (
+          <LoadState status="ready" empty="No inventory yet" emptyIcon={Package} emptyText="Add your tents, chairs and equipment in Inventory." />
+        ) : (
+          <div className="inventory-cards">
+            {d.popular.map((item) => {
+              const Icon = categoryIcons[item.category] || Package;
+              return (
+                <article className="mini-item" key={item.id}>
+                  <span className="inv-item-icon ws-mini-icon"><Icon size={20} /></span>
+                  <div className="mini-item-copy">
+                    <span className="mini-category">{item.category}</span>
+                    <strong>{item.name}</strong>
+                    <span className="mini-rate">{formatShillings(item.rate)}<small> / day</small></span>
+                  </div>
+                  <StatusPill tone={item.status === "Available" ? "green" : "amber"}>{item.ordered ? `${item.ordered} booked` : item.status}</StatusPill>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
@@ -3171,1071 +3836,36 @@ function DataTable({ columns, rows, rowKey, renderActions }) {
   );
 }
 
-function OrdersPage({ query, onCreate, onOrderView, orders, setOrders }) {
-  const [status, setStatus] = useState("All");
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [draft, setDraft] = useState(null);
-
-  const rows = orders.filter(
-    (order) =>
-      (status === "All" || order.status === status) &&
-      `${order.id} ${order.customer} ${order.items}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
-
-  const handleOrderAction = (order, action) => {
-    if (action === "view" || action === "contact") {
-      setDraft(null);
-      setSelectedOrder(order);
-      onOrderView(order);
-      return;
-    }
-
-    if (action === "edit") {
-      setDraft({ ...order });
-      setSelectedOrder(order);
-      onOrderView(order);
-      return;
-    }
-
-    if (action === "ready") {
-      setOrders((current) =>
-        current.map((item) =>
-          item.id === order.id
-            ? { ...item, status: "Ready for pickup", tone: "amber" }
-            : item,
-        ),
-      );
-      setSelectedOrder(null);
-      setDraft(null);
-      return;
-    }
-
-    if (action === "cancel") {
-      setOrders((current) => current.filter((item) => item.id !== order.id));
-      setSelectedOrder(null);
-      setDraft(null);
-    }
-  };
-
-  const saveDraftOrder = () => {
-    if (!draft) return;
-
-    setOrders((current) =>
-      current.map((item) =>
-        item.id === draft.id
-          ? {
-              ...item,
-              customer: draft.customer,
-              items: draft.items,
-              date: draft.date,
-              total: draft.total,
-              status: draft.status,
-              tone: draft.tone,
-            }
-          : item,
-      ),
-    );
-    setSelectedOrder(null);
-    setDraft(null);
-    onOrderView(null);
-  };
-
-  const returnToOrders = () => {
-    setSelectedOrder(null);
-    setDraft(null);
-    onOrderView(null);
-  };
-
-  return (
-    <>
-      {selectedOrder ? (
-        <>
-          <button className="order-back-link" onClick={returnToOrders}>
-            <ChevronLeft size={16} /> Back to orders
-          </button>
-          <section className="panel order-detail-panel">
-            <div className="order-detail-header">
-              <div>
-                <div className="panel-kicker">RENTAL BOOKING</div>
-                <h2>{selectedOrder.customer}</h2>
-              </div>
-            </div>
-
-          {draft ? (
-            <div className="order-detail-form">
-              <label>
-                Customer
-                <input
-                  value={draft.customer}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, customer: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Rental items
-                <input
-                  value={draft.items}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, items: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Rental dates
-                <input
-                  value={draft.date}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, date: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Total
-                <input
-                  value={draft.total}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, total: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                Status
-                <select
-                  value={draft.status}
-                  onChange={(event) => {
-                    const nextStatus = event.target.value;
-                    const toneMap = {
-                      Confirmed: "green",
-                      "Ready for pickup": "amber",
-                      "Out for delivery": "blue",
-                      "Awaiting payment": "amber",
-                    };
-                    setDraft((current) => ({
-                      ...current,
-                      status: nextStatus,
-                      tone: toneMap[nextStatus] || "green",
-                    }));
-                  }}
-                >
-                  <option>Confirmed</option>
-                  <option>Ready for pickup</option>
-                  <option>Out for delivery</option>
-                  <option>Awaiting payment</option>
-                </select>
-              </label>
-              <div className="modal-actions compact-actions">
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  onClick={() => setDraft(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="button button-primary"
-                  onClick={saveDraftOrder}
-                >
-                  Save changes
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="order-detail-summary">
-              <div className="summary-card">
-                <span>Customer</span>
-                <strong>{selectedOrder.customer}</strong>
-              </div>
-              <div className="summary-card">
-                <span>Rental items</span>
-                <strong>{selectedOrder.items}</strong>
-              </div>
-              <div className="summary-card">
-                <span>Dates</span>
-                <strong>{selectedOrder.date}</strong>
-              </div>
-              <div className="summary-card">
-                <span>Total</span>
-                <strong>{selectedOrder.total}</strong>
-              </div>
-              <div className="summary-card">
-                <span>Status</span>
-                <strong> {selectedOrder.status}</strong>
-              </div>
-              <button
-                className="button button-primary"
-                onClick={() => setDraft({ ...selectedOrder })}
-              >
-                Edit order
-              </button>
-            </div>
-          )}
-          </section>
-        </>
-      ) : (
-      <>
-      <PageSummary
-        className="orders-summary"
-        items={[
-          {
-            icon: ClipboardList,
-            label: "Total orders",
-            value: "186",
-            change: "14.2%",
-            kind: "up",
-            color: "blue-icon",
-            caption: "this month",
-          },
-          {
-            icon: CalendarClock,
-            label: "Active rentals",
-            value: "24",
-            change: "6",
-            kind: "up",
-            color: "mint-icon",
-            caption: "due this week",
-          },
-          {
-            icon: Clock3,
-            label: "Awaiting pickup",
-            value: "8",
-            change: "Today",
-            kind: "up",
-            color: "orange-icon",
-            caption: "",
-          },
-          {
-            icon: CircleDollarSign,
-            label: "Order value",
-            value: "TSh 8,420",
-            change: "12.8%",
-            kind: "up",
-            color: "purple-icon",
-            caption: "this month",
-          },
-        ]}
-      />
-      <section className="panel workspace-table-panel">
-        <div className="workspace-toolbar">
-          <div className="filter-tabs">
-            {[
-              "All",
-              "New request",
-              "Confirmed",
-              "Ready for pickup",
-              "Out for delivery",
-              "Awaiting payment",
-            ].map((option) => (
-              <button
-                key={option}
-                className={status === option ? "selected" : ""}
-                onClick={() => setStatus(option)}
-              >
-                {option}
-                <span>
-                  {option === "New request"
-                    ? orders.filter((order) => order.status === "New request").length
-                    : option === "All"
-                    ? 186
-                    : option === "Confirmed"
-                      ? 42
-                      : option === "Ready for pickup"
-                        ? 8
-                        : option === "Out for delivery"
-                          ? 6
-                          : 4}
-                </span>
-              </button>
-            ))}
-          </div>
-          <button className="button button-primary" onClick={onCreate}>
-            <Plus size={15} /> Create order
-          </button>
-        </div>
-        <DataTable
-          columns={[
-            {
-              key: "id",
-              label: "ORDER",
-              render: (row) => (
-                <div className="order-id-cell">
-                  <strong className="table-primary">{row.id}</strong>
-                  <small>Booking</small>
-                </div>
-              ),
-            },
-            { key: "customer", label: "CUSTOMER" },
-            { key: "items", label: "RENTAL ITEMS" },
-            { key: "date", label: "RENTAL DATES" },
-            {
-              key: "total",
-              label: "TOTAL",
-              render: (row) => (
-                <strong className="table-primary">{row.total}</strong>
-              ),
-            },
-            {
-              key: "status",
-              label: "STATUS",
-              render: (row) => (
-                <span className={`status-pill ${row.tone}`}>
-                  <i />
-                  {row.status}
-                </span>
-              ),
-            },
-          ]}
-          rows={rows}
-          rowKey="id"
-          renderActions={(order) => [
-            { label: "View order", onClick: () => handleOrderAction(order, "view") },
-            { label: "Edit details", onClick: () => handleOrderAction(order, "edit") },
-            { label: "Contact customer", onClick: () => handleOrderAction(order, "contact") },
-            { label: "Mark as ready", onClick: () => handleOrderAction(order, "ready") },
-            { label: "Cancel order", onClick: () => handleOrderAction(order, "cancel"), danger: true },
-          ]}
-        />
-        <div className="table-bottom">
-          <span>
-            Showing <strong>{rows.length}</strong> orders
-          </span>
-          <Pagination />
-        </div>
-      </section>
-        </>
-        )}
-    </>
-  );
-}
-
-function CustomersPage({ query, onAdd }) {
-  const [nameQuery, setNameQuery] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const search = `${query} ${nameQuery}`.trim().toLowerCase();
-  const rows = customersData.filter((customer) => {
-    const matchesName = `${customer.name} ${customer.email} ${customer.phone} ${customer.address}`
-      .toLowerCase()
-      .includes(search);
-    const matchesStart = !startDate || customer.lastOrder >= startDate;
-    const matchesEnd = !endDate || customer.lastOrder <= endDate;
-    return matchesName && matchesStart && matchesEnd;
-  });
-  return (
-    <>
-      <PageSummary
-        className="customers-summary"
-        items={[
-          {
-            icon: Users,
-            label: "Total customers",
-            value: "1,284",
-            change: "8.4%",
-            kind: "up",
-            color: "blue-icon",
-            caption: "this month",
-          },
-          {
-            icon: Sparkles,
-            label: "Returning customers",
-            value: "68%",
-            change: "4.2%",
-            kind: "up",
-            color: "mint-icon",
-            caption: "vs last month",
-          },
-          {
-            icon: CircleDollarSign,
-            label: "Average lifetime value",
-            value: "TSh 486",
-            change: "11.6%",
-            kind: "up",
-            color: "purple-icon",
-            caption: "vs last month",
-          },
-          {
-            icon: UserCog,
-            label: "New customers",
-            value: "96",
-            change: "12.4%",
-            kind: "up",
-            color: "orange-icon",
-            caption: "this month",
-          },
-        ]}
-      />
-      <section className="panel workspace-table-panel">
-        <div className="workspace-toolbar">
-          <div className="customer-toolbar-copy">
-            <div className="panel-kicker">YOUR COMMUNITY</div>
-            <h2 className="toolbar-title">
-              Customers <span className="heading-count">{rows.length}</span>
-            </h2>
-          </div>
-          <div className="customer-toolbar-controls">
-            <label className="customer-name-filter">
-              <Search size={14} />
-              <input
-                type="search"
-                value={nameQuery}
-                onChange={(event) => setNameQuery(event.target.value)}
-                placeholder="Filter by name"
-                aria-label="Filter customers by name"
-              />
-            </label>
-            <label className="customer-date-filter">
-              <span>From</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
-                aria-label="Last order from date"
-              />
-            </label>
-            <label className="customer-date-filter">
-              <span>To</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
-                aria-label="Last order to date"
-              />
-            </label>
-            <button
-              className="button button-secondary customer-clear-filters"
-              onClick={() => {
-                setNameQuery("");
-                setStartDate("");
-                setEndDate("");
-              }}
-              disabled={!nameQuery && !startDate && !endDate}
-            >
-              Clear
-            </button>
-          </div>
-          <button className="button button-primary" onClick={onAdd}>
-            <Plus size={15} /> Add customer
-          </button>
-        </div>
-        <div className="customer-table-gap" />
-        <DataTable
-          columns={[
-            {
-              key: "name",
-              label: "CUSTOMER",
-              render: (row) => (
-                <div className="customer-cell">
-                  <div className={`customer-avatar ${row.color}`}>
-                    {row.initials}
-                  </div>
-                  <span>
-                    <strong>{row.name}</strong>
-                    <small>{row.email}</small>
-                  </span>
-                </div>
-              ),
-            },
-            { key: "phone", label: "PHONE" },
-            { key: "address", label: "ADDRESS" },
-            { key: "orders", label: "ORDERS" },
-            {
-              key: "lastOrder",
-              label: "LAST ORDER",
-              render: (row) => new Date(`${row.lastOrder}T00:00:00`).toLocaleDateString("en-US", {
-                month: "short",
-                day: "2-digit",
-                year: "numeric",
-              }),
-            },
-            {
-              key: "spent",
-              label: "LIFETIME SPEND",
-              render: (row) => (
-                <strong className="table-primary">{row.spent}</strong>
-              ),
-            },
-          ]}
-          rows={rows}
-          rowKey="email"
-        />
-        <div className="table-bottom">
-          <span>
-            Showing <strong>{rows.length}</strong> of {customersData.length} customers
-          </span>
-          <Pagination />
-        </div>
-      </section>
-    </>
-  );
-}
-
-function InvoicesPage({ query, onCreate }) {
-  const [invoiceQuery, setInvoiceQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [dueFrom, setDueFrom] = useState("");
-  const [dueTo, setDueTo] = useState("");
-  const search = `${query} ${invoiceQuery}`.trim().toLowerCase();
-  const rows = invoicesData.filter((invoice) => {
-    const matchesSearch = `${invoice.id} ${invoice.customer} ${invoice.status}`
-      .toLowerCase()
-      .includes(search);
-    const dueDate = new Date(`${invoice.due} 00:00:00`).toISOString().slice(0, 10);
-    const matchesStatus = statusFilter === "All statuses" || invoice.status === statusFilter;
-    const matchesFrom = !dueFrom || dueDate >= dueFrom;
-    const matchesTo = !dueTo || dueDate <= dueTo;
-    return matchesSearch && matchesStatus && matchesFrom && matchesTo;
-  });
-  return (
-    <>
-      <PageSummary
-        className="invoices-summary"
-        items={[
-          {
-            icon: Receipt,
-            label: "Paid this month",
-            value: "TSh 12,840",
-            change: "18.2%",
-            kind: "up",
-            color: "mint-icon",
-            caption: "vs last month",
-          },
-          {
-            icon: Clock3,
-            label: "Outstanding",
-            value: "TSh 2,460",
-            change: "8 invoices",
-            kind: "up",
-            color: "orange-icon",
-            caption: "",
-          },
-          {
-            icon: CircleDollarSign,
-            label: "Overdue",
-            value: "TSh 540",
-            change: "2 invoices",
-            kind: "down",
-            color: "blue-icon",
-            caption: "",
-          },
-          {
-            icon: Receipt,
-            label: "Invoices issued",
-            value: "124",
-            change: "9.1%",
-            kind: "up",
-            color: "purple-icon",
-            caption: "this month",
-          },
-        ]}
-      />
-      <section className="panel workspace-table-panel">
-        <div className="workspace-toolbar">
-          <div className="invoice-toolbar-copy">
-            <div className="panel-kicker">BILLING</div>
-            <h2 className="toolbar-title">
-              Invoices <span className="heading-count">{rows.length}</span>
-            </h2>
-          </div>
-          <div className="invoice-toolbar-controls">
-            <label className="customer-name-filter">
-              <Search size={14} />
-              <input
-                type="search"
-                value={invoiceQuery}
-                onChange={(event) => setInvoiceQuery(event.target.value)}
-                placeholder="Invoice or customer"
-                aria-label="Search invoices or customers"
-              />
-            </label>
-            <select
-              className="invoice-status-filter"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              aria-label="Filter invoices by status"
-            >
-              {["All statuses", ...new Set(invoicesData.map((invoice) => invoice.status))].map((status) => (
-                <option key={status}>{status}</option>
-              ))}
-            </select>
-            <label className="invoice-date-filter">
-              <span>Due from</span>
-              <input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} aria-label="Due date from" />
-            </label>
-            <label className="invoice-date-filter">
-              <span>To</span>
-              <input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} aria-label="Due date to" />
-            </label>
-            <button
-              className="button button-secondary invoice-clear-filters"
-              onClick={() => {
-                setInvoiceQuery("");
-                setStatusFilter("All statuses");
-                setDueFrom("");
-                setDueTo("");
-              }}
-              disabled={!invoiceQuery && statusFilter === "All statuses" && !dueFrom && !dueTo}
-            >
-              Clear
-            </button>
-          </div>
-          <button className="button button-primary" onClick={onCreate}>
-            <Plus size={15} /> Create invoice
-          </button>
-        </div>
-        <div className="invoice-table-gap" />
-        <DataTable
-          columns={[
-            {
-              key: "id",
-              label: "INVOICE",
-              render: (row) => (
-                <strong className="table-primary">{row.id}</strong>
-              ),
-            },
-            { key: "customer", label: "CUSTOMER" },
-            { key: "issued", label: "ISSUED" },
-            { key: "due", label: "DUE DATE" },
-            {
-              key: "amount",
-              label: "AMOUNT",
-              render: (row) => (
-                <strong className="table-primary">{row.amount}</strong>
-              ),
-            },
-            {
-              key: "status",
-              label: "STATUS",
-              render: (row) => (
-                <span className={`status-pill ${row.tone}`}>
-                  <i />
-                  {row.status}
-                </span>
-              ),
-            },
-          ]}
-          rows={rows}
-          rowKey="id"
-        />
-        <div className="table-bottom">
-          <span>
-            Showing <strong>{rows.length}</strong> invoices
-          </span>
-          <Pagination />
-        </div>
-      </section>
-    </>
-  );
-}
-
-function FinancePage({ tab, setTab, period, setPeriod, onAdd }) {
-  const [expenseQuery, setExpenseQuery] = useState("");
-  const [expenseCategory, setExpenseCategory] = useState("All categories");
-  const [expenseMethod, setExpenseMethod] = useState("All methods");
-  const [expenseFrom, setExpenseFrom] = useState("");
-  const [expenseTo, setExpenseTo] = useState("");
-  const expenses = [
-    {
-      category: "Equipment maintenance",
-      description: "Tent repairs & cleaning",
-      amount: "TSh 420.00",
-      date: "2026-10-01",
-      method: "Business card",
-    },
-    {
-      category: "Delivery & transport",
-      description: "Fuel and vehicle costs",
-      amount: "TSh 285.50",
-      date: "2026-09-30",
-      method: "Business card",
-    },
-    {
-      category: "Supplies",
-      description: "Replacement tent pegs",
-      amount: "TSh 128.00",
-      date: "2026-09-28",
-      method: "Bank transfer",
-    },
-  ];
-  const filteredExpenses = expenses.filter((expense) => {
-    const matchesQuery = `${expense.category} ${expense.description} ${expense.method}`
-      .toLowerCase()
-      .includes(expenseQuery.toLowerCase());
-    const matchesCategory = expenseCategory === "All categories" || expense.category === expenseCategory;
-    const matchesMethod = expenseMethod === "All methods" || expense.method === expenseMethod;
-    const matchesFrom = !expenseFrom || expense.date >= expenseFrom;
-    const matchesTo = !expenseTo || expense.date <= expenseTo;
-    return matchesQuery && matchesCategory && matchesMethod && matchesFrom && matchesTo;
-  });
-  return (
-    <>
-      <PageSummary
-        className="finance-summary"
-        items={[
-          {
-            icon: CircleDollarSign,
-            label: "Total revenue",
-            value: "TSh 24,680",
-            change: "12.8%",
-            kind: "up",
-            color: "mint-icon",
-            caption: "this month",
-          },
-          {
-            icon: Wallet,
-            label: "Total expenses",
-            value: "TSh 6,240",
-            change: "3.6%",
-            kind: "down",
-            color: "orange-icon",
-            caption: "this month",
-          },
-          {
-            icon: ChartNoAxesCombined,
-            label: "Net profit",
-            value: "TSh 18,440",
-            change: "16.4%",
-            kind: "up",
-            color: "blue-icon",
-            caption: "this month",
-          },
-          {
-            icon: Wallet,
-            label: "Cash flow",
-            value: "TSh 18,440",
-            change: "Positive",
-            kind: "up",
-            color: "purple-icon",
-            caption: period.toLowerCase(),
-          },
-        ]}
-      />
-      <section className="panel finance-panel">
-        <div className="finance-heading">
-          <div className="finance-heading-copy">
-            <div className="panel-kicker">MONEY IN, MONEY OUT</div>
-            <h2>Finance &amp; expenses</h2>
-            <p>Track rental revenue, operating costs, and net cash flow.</p>
-          </div>
-          <button
-            className="select-button"
-            onClick={() =>
-              setPeriod(period === "This month" ? "Last month" : "This month")
-            }
-          >
-            {period}
-            <ChevronDown size={14} />
-          </button>
-        </div>
-        <div className="finance-tabs">
-          {["Expenses", "Summary"].map((option) => (
-            <button
-              key={option}
-              className={tab === option ? "active" : ""}
-              onClick={() => setTab(option)}
-            >
-              {option}
-            </button>
-          ))}
-          <button className="button button-primary" onClick={onAdd}>
-            <Plus size={14} /> Add expense
-          </button>
-        </div>
-        {tab === "Expenses" && (
-          <div className="finance-filters" aria-label="Filter expenses">
-            <label className="finance-search-filter">
-              <Search size={14} />
-              <input
-                type="search"
-                value={expenseQuery}
-                onChange={(event) => setExpenseQuery(event.target.value)}
-                placeholder="Search expenses"
-                aria-label="Search expenses"
-              />
-            </label>
-            <select
-              className="finance-category-filter"
-              value={expenseCategory}
-              onChange={(event) => setExpenseCategory(event.target.value)}
-              aria-label="Filter by expense category"
-            >
-              {["All categories", ...new Set(expenses.map((expense) => expense.category))].map((category) => (
-                <option key={category}>{category}</option>
-              ))}
-            </select>
-            <select
-              className="finance-category-filter finance-method-filter"
-              value={expenseMethod}
-              onChange={(event) => setExpenseMethod(event.target.value)}
-              aria-label="Filter by payment method"
-            >
-              {["All methods", ...new Set(expenses.map((expense) => expense.method))].map((method) => (
-                <option key={method}>{method}</option>
-              ))}
-            </select>
-            <label className="finance-date-filter">
-              <span>From</span>
-              <input type="date" value={expenseFrom} onChange={(event) => setExpenseFrom(event.target.value)} aria-label="Expense date from" />
-            </label>
-            <label className="finance-date-filter">
-              <span>To</span>
-              <input type="date" value={expenseTo} onChange={(event) => setExpenseTo(event.target.value)} aria-label="Expense date to" />
-            </label>
-            <button
-              className="button button-secondary finance-clear-filters"
-              onClick={() => {
-                setExpenseQuery("");
-                setExpenseCategory("All categories");
-                setExpenseMethod("All methods");
-                setExpenseFrom("");
-                setExpenseTo("");
-              }}
-              disabled={!expenseQuery && expenseCategory === "All categories" && expenseMethod === "All methods" && !expenseFrom && !expenseTo}
-            >
-              Clear
-            </button>
-            <span className="finance-filter-count">{filteredExpenses.length} expenses</span>
-          </div>
-        )}
-        <div className="finance-content-gap" />
-        {tab === "Expenses" ? (
-          <DataTable
-            columns={[
-              { key: "category", label: "CATEGORY" },
-              { key: "description", label: "DESCRIPTION" },
-              {
-                key: "amount",
-                label: "AMOUNT",
-                render: (row) => (
-                  <strong className="table-primary">{row.amount}</strong>
-                ),
-              },
-              {
-                key: "date",
-                label: "DATE",
-                render: (row) => new Date(`${row.date}T00:00:00`).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "2-digit",
-                  year: "numeric",
-                }),
-              },
-              { key: "method", label: "PAID WITH" },
-            ]}
-            rows={filteredExpenses}
-            rowKey="description"
-          />
-        ) : (
-          <FinanceSummary />
-        )}
-      </section>
-    </>
-  );
-}
-
-function FinanceSummary() {
-  return (
-    <div className="summary-content">
-      <div className="summary-row">
-        <span>Rental income</span>
-        <strong>TSh 24,680.00</strong>
-      </div>
-      <div className="summary-row">
-        <span>Operating expenses</span>
-        <strong>−TSh 6,240.00</strong>
-      </div>
-      <div className="summary-row">
-        <span>Tax collected</span>
-        <strong>TSh 1,974.40</strong>
-      </div>
-      <div className="summary-row summary-total">
-        <span>Net operating profit</span>
-        <strong>TSh 18,440.00</strong>
-      </div>
-    </div>
-  );
-}
-
-function MessagingPage({ onEdit }) {
-  const [channel, setChannel] = useState("SMS templates");
-  const templates = [
-    {
-      icon: CalendarDays,
-      title: "Booking confirmation",
-      text: "Your booking is confirmed! We can’t wait to help you get outside.",
-      usage: "Sent after order confirmation",
-    },
-    {
-      icon: Clock3,
-      title: "Return reminder",
-      text: "A friendly reminder: your rental is due back tomorrow. See you soon!",
-      usage: "Sent one day before return",
-    },
-    {
-      icon: Sparkles,
-      title: "Thank you",
-      text: "Thanks for renting with Pendo. We hope your adventure was a great one!",
-      usage: "Sent after item return",
-    },
-  ];
-  return (
-    <>
-      <PageSummary
-        className="messaging-summary"
-        items={[
-          {
-            icon: MessageSquareText,
-            label: "Active templates",
-            value: "3",
-            change: "All enabled",
-            kind: "up",
-            color: "blue-icon",
-            caption: "",
-          },
-          {
-            icon: Send,
-            label: "Messages sent",
-            value: "248",
-            change: "This month",
-            kind: "up",
-            color: "mint-icon",
-            caption: "",
-          },
-          {
-            icon: Check,
-            label: "Delivery rate",
-            value: "98.4%",
-            change: "Healthy",
-            kind: "up",
-            color: "purple-icon",
-            caption: "",
-          },
-          {
-            icon: Clock3,
-            label: "Queued",
-            value: "2",
-            change: "Sending shortly",
-            kind: "up",
-            color: "orange-icon",
-            caption: "",
-          },
-        ]}
-      />
-      <section className="panel messaging-panel">
-        <div className="messaging-toolbar">
-          <div>
-            <div className="panel-kicker">CUSTOMER COMMUNICATIONS</div>
-            <h2>{channel === "SMS templates" ? "SMS templates" : "Notification history"}</h2>
-            <p>{channel === "SMS templates" ? "Automated messages for every step of a rental." : "Recent messages sent to your customers."}</p>
-          </div>
-          <div className="message-tabs" role="tablist" aria-label="Messaging views">
-            {["SMS templates", "Notification history"].map((item) => (
-              <button
-                key={item}
-                role="tab"
-                aria-selected={channel === item}
-                className={channel === item ? "active" : ""}
-                onClick={() => setChannel(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-      {channel === "SMS templates" ? (
-        <section className="template-grid">
-          {templates.map(({ icon: Icon, title, text, usage }) => (
-            <article className="panel template-card" key={title}>
-              <div className="template-top">
-                <span className="template-icon">
-                  <Icon size={17} />
-                </span>
-                <span className="status-pill green">
-                  <i />
-                  Active
-                </span>
-              </div>
-              <div className="template-card-body">
-                <span className="template-trigger">AUTOMATION</span>
-                <h3>{title}</h3>
-                <p>“{text}”</p>
-              </div>
-              <div className="template-bottom">
-                <span>{usage}</span>
-                <button className="button button-secondary" onClick={onEdit}>
-                  Edit template
-                </button>
-              </div>
-            </article>
-          ))}
-          <button className="add-template" onClick={onEdit}>
-            <Plus size={20} />
-            <strong>Create template</strong>
-            <span>Write a message for your customers</span>
-          </button>
-        </section>
-      ) : (
-        <section className="message-history">
-          <div className="message-history-heading">
-            <div>
-              <strong>Recent activity</strong>
-              <span>Latest SMS delivery attempts</span>
-            </div>
-            <span className="history-count">2 messages</span>
-          </div>
-          <div className="panel workspace-table-panel">
-          <DataTable
-            columns={[
-              { key: "id", label: "CUSTOMER" },
-              { key: "template", label: "MESSAGE" },
-              { key: "date", label: "SENT" },
-              { key: "status", label: "STATUS" },
-            ]}
-            rows={[
-              {
-                id: "Jordan Mitchell",
-                template: "Booking confirmation",
-                date: "Today, 9:42 am",
-                status: "Delivered",
-              },
-              {
-                id: "Avery Sinclair",
-                template: "Booking confirmation",
-                date: "Today, 8:15 am",
-                status: "Delivered",
-              },
-            ]}
-            rowKey="id"
-          />
-          </div>
-        </section>
-      )}
-      <section className="panel channel-settings">
-        <div className="template-icon">
-          <Send size={16} />
-        </div>
-        <div>
-          <strong>SMS delivery</strong>
-          <span>Connected and sending with your configured SMS provider.</span>
-        </div>
-        <span className="status-pill green">
-          <i />
-          Connected
-        </span>
-      </section>
-      </section>
-    </>
-  );
-}
-
-function ReportsPage({ period, setPeriod }) {
+function ReportsPage() {
+  const { call } = useApi();
   const [category, setCategory] = useState("All reports");
   const [reportQuery, setReportQuery] = useState("");
   const [activeReportId, setActiveReportId] = useState(null);
-  const activeReport = reportDefinitions.find((report) => report.id === activeReportId);
+  const [reportRows, setReportRows] = useState({});
+  const [loadStatus, setLoadStatus] = useState("loading");
+  const loadReports = useCallback(() => {
+    setLoadStatus("loading");
+    Promise.all(reportDefinitions.map((report) => call(`/reports/${report.id}`).then((data) => [report.id, data.rows])))
+      .then((entries) => {
+        setReportRows(Object.fromEntries(entries));
+        setLoadStatus("ready");
+      })
+      .catch(() => setLoadStatus("error"));
+  }, [call]);
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+  const reports = reportDefinitions.map((report) => ({ ...report, rows: reportRows[report.id] || [] }));
+  const activeReport = reports.find((report) => report.id === activeReportId);
   const categories = ["All reports", "Finance", "Inventory", "Customers", "Operations"];
-  const visibleReports = reportDefinitions.filter((report) => {
+  const rowsOf = (id) => reportRows[id] || [];
+  const revenue = rowsOf("finance").filter((row) => row.status === "Paid").reduce((sum, row) => sum + row.amount, 0);
+  const tithe = rowsOf("finance").filter((row) => row.status === "Paid").reduce((sum, row) => sum + (row.tithe || 0), 0);
+  const completed = rowsOf("sales").filter((row) => row.status === "Completed").length;
+  const stock = rowsOf("inventory").reduce((sum, row) => sum + row.quantity, 0);
+  const out = rowsOf("inventory").reduce((sum, row) => sum + row.rented, 0);
+  const activeCustomers = rowsOf("customers").filter((row) => row.status === "Active").length;
+  const visibleReports = reports.filter((report) => {
     const matchesCategory = category === "All reports" || report.tag.toLowerCase() === category.toLowerCase();
     const matchesQuery = `${report.title} ${report.desc} ${report.tag}`.toLowerCase().includes(reportQuery.toLowerCase());
     return matchesCategory && matchesQuery;
@@ -4264,39 +3894,33 @@ function ReportsPage({ period, setPeriod }) {
           <div>
             <span className="panel-kicker">PERFORMANCE OVERVIEW</span>
             <h2>Business at a glance</h2>
-            <p>Review the key numbers for your rental operation.</p>
+            <p>All-time numbers from your live data. Open a report to filter by period.</p>
           </div>
-          <label className="report-period-control">
-            <span>Period</span>
-            <select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Reporting period">
-              {["This week", "This month", "Last month", "Last 30 days", "This year"].map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </label>
+          <button className="button button-secondary" onClick={loadReports} disabled={loadStatus === "loading"}><RotateCcw size={14} /> Refresh</button>
         </div>
         <div className="report-summary-stats">
           <article>
             <span>Total revenue</span>
-            <strong>TSh 24,680</strong>
-            <small className="positive-text">↑ 12.8% vs previous period</small>
+            <strong>{loadStatus === "ready" ? formatShillings(revenue) : "…"}</strong>
+            <small className="positive-text">{formatShillings(tithe)} set aside as tithe</small>
           </article>
           <article>
-            <span>Orders fulfilled</span>
-            <strong>186</strong>
-            <small className="positive-text">↑ 8.4% vs previous period</small>
+            <span>Orders completed</span>
+            <strong>{loadStatus === "ready" ? completed : "…"}</strong>
+            <small>{rowsOf("sales").length} orders in total</small>
           </article>
           <article>
-            <span>Utilization</span>
-            <strong>72%</strong>
-            <small className="positive-text">↑ 4.2% vs previous period</small>
+            <span>Utilization today</span>
+            <strong>{loadStatus === "ready" ? `${stock ? Math.round((out / stock) * 100) : 0}%` : "…"}</strong>
+            <small>{out.toLocaleString("en-US")} of {stock.toLocaleString("en-US")} units out</small>
           </article>
           <article>
             <span>Active customers</span>
-            <strong>1,284</strong>
-            <small className="positive-text">↑ 8.4% vs previous period</small>
+            <strong>{loadStatus === "ready" ? activeCustomers : "…"}</strong>
+            <small>{rowsOf("customers").length} registered</small>
           </article>
         </div>
+        {loadStatus === "error" && <p className="set-notice ws-banner"><CircleAlert size={14} /> Couldn’t load report data. <button className="auth-link" onClick={loadReports}>Try again</button></p>}
       </section>
       <section className="report-library panel">
         <div className="report-library-heading">
@@ -4871,20 +4495,14 @@ const STAFF_ROLES = TEAM_ROLES.filter((role) => !role.customer);
 const ALL_PERMISSIONS = ["Dashboard", "Orders", "Inventory", "Customers", "Invoices", "Finance & receipts", "Reports", "Users & roles", "Settings"];
 const CUSTOMER_PERMISSIONS = ["Browse rentals", "Book & request quotes", "My bookings", "My receipts & invoices", "Payment history", "My profile", "Other customers’ data", "Staff workspace"];
 
-const initialTeam = [
-  { id: "pendo", name: "Pendo Mbolela", email: "pendo@pendorentals.com", phone: "0622 882 278", role: "Admin", status: "Active", lastActive: "Active now", initials: "PM", color: "peach" },
-  { id: "grace", name: "Grace Chen", email: "grace@pendorentals.com", phone: "0754 210 455", role: "Store manager", status: "Active", lastActive: "2 hours ago", initials: "GC", color: "lilac" },
-  { id: "neema", name: "Neema Joseph", email: "neema@pendorentals.com", phone: "0713 908 221", role: "Store manager", status: "Active", lastActive: "Yesterday", initials: "NJ", color: "mint" },
-  { id: "daniel", name: "Daniel Kim", email: "daniel@pendorentals.com", phone: "0765 330 812", role: "Inventory staff", status: "Active", lastActive: "Today, 9:40 am", initials: "DK", color: "blue" },
-  { id: "juma", name: "Juma Mussa", email: "juma@pendorentals.com", phone: "0688 451 093", role: "Delivery staff", status: "Inactive", lastActive: "3 weeks ago", initials: "JM", color: "peach" },
-  { id: "ava", name: "Ava Patel", email: "ava@pendorentals.com", phone: "0744 120 676", role: "Delivery staff", status: "Invited", lastActive: "Invite sent Sep 29", initials: "AP", color: "lilac" },
-];
 
 const memberTones = { Active: "green", Invited: "amber", Inactive: "red" };
 
 function InviteMemberModal({ onClose, onInvite, existingPhones }) {
   const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", email: "", role: "" });
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const errors = {};
   if (!form.firstName.trim()) errors.firstName = "Enter a first name.";
   if (!form.lastName.trim()) errors.lastName = "Enter a last name.";
@@ -4920,16 +4538,18 @@ function InviteMemberModal({ onClose, onInvite, existingPhones }) {
         <form
           className="team-form"
           noValidate
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
             setSubmitted(true);
-            if (Object.keys(errors).length) return;
-            onInvite({
-              name: `${form.firstName.trim()} ${form.lastName.trim()}`,
-              email: form.email.trim(),
-              phone: phone.replace(/^(\d{4})(\d{3})(\d{3})$/, "$1 $2 $3"),
-              role: form.role,
-            });
+            if (Object.keys(errors).length || sending) return;
+            setSending(true);
+            setSendError("");
+            try {
+              await onInvite({ firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(), phone, role: form.role });
+            } catch (inviteError) {
+              setSendError(inviteError.message);
+              setSending(false);
+            }
           }}
         >
           <div className="set-grid">
@@ -4958,10 +4578,11 @@ function InviteMemberModal({ onClose, onInvite, existingPhones }) {
             {show("role")}
             {selectedRole && <small className="set-hint">{selectedRole.desc}</small>}
           </div>
+          {sendError && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {sendError}</p>}
           <p className="team-form-note"><Info size={13} /> They’ll get an SMS invite on their phone to set a password. Customers create their own accounts from the Sign Up page.</p>
           <div className="modal-actions">
             <button type="button" className="button button-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="button button-primary"><Send size={14} /> Send invite</button>
+            <button type="submit" className="button button-primary" disabled={sending}>{sending ? <><LoaderCircle size={14} className="auth-spin" /> Sending…</> : <><Send size={14} /> Send invite</>}</button>
           </div>
         </form>
       </section>
@@ -4970,8 +4591,19 @@ function InviteMemberModal({ onClose, onInvite, existingPhones }) {
   );
 }
 
-function UsersPage({ query }) {
-  const [team, setTeam] = useState(initialTeam);
+function UsersPage({ query, session }) {
+  const { call } = useApi();
+  const teamRes = useResource("/team");
+  const [credentials, setCredentials] = useState(null);
+  const admin = session.staffRole === "Admin";
+  const team = (teamRes.data?.team || []).map((member, index) => ({
+    ...member,
+    initials: `${member.firstName[0] || ""}${member.lastName[0] || ""}`.toUpperCase(),
+    color: ["peach", "lilac", "mint", "blue"][index % 4],
+    lastActive: member.status === "Invited"
+      ? `Invite sent ${shortDate(member.createdAt)}`
+      : member.lastActiveAt ? new Date(member.lastActiveAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Never signed in",
+  }));
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All roles");
   const [statusFilter, setStatusFilter] = useState("All statuses");
@@ -4993,7 +4625,16 @@ function UsersPage({ query }) {
       && (statusFilter === "All statuses" || member.status === statusFilter);
   });
   const count = (status) => team.filter((member) => member.status === status).length;
-  const update = (id, changes) => setTeam((current) => current.map((member) => (member.id === id ? { ...member, ...changes } : member)));
+  async function update(member, changes, message) {
+    try {
+      const data = await call(`/team/${member.id}`, { method: "PATCH", body: changes });
+      await teamRes.reload();
+      if (data.temporaryPassword) setCredentials({ phone: data.member.phone, password: data.temporaryPassword });
+      setToast(message + (data.sms ? (data.sms.status === "sent" ? " · SMS sent" : " · SMS not sent") : ""));
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
   const activeRole = TEAM_ROLES.find((role) => role.name === selectedRole);
   const filtersActive = search || roleFilter !== "All roles" || statusFilter !== "All statuses";
 
@@ -5026,9 +4667,11 @@ function UsersPage({ query }) {
             <select className="team-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status">
               {["All statuses", "Active", "Invited", "Inactive"].map((option) => <option key={option}>{option}</option>)}
             </select>
-            <button className="button button-primary" onClick={() => setInviteOpen(true)}>
-              <Plus size={15} /> Invite user
-            </button>
+            {admin && (
+              <button className="button button-primary" onClick={() => setInviteOpen(true)}>
+                <Plus size={15} /> Invite user
+              </button>
+            )}
           </div>
         </div>
         <DataTable
@@ -5040,7 +4683,7 @@ function UsersPage({ query }) {
                 <div className="customer-cell">
                   <div className={`customer-avatar ${row.color}`}>{row.initials}</div>
                   <span>
-                    <strong>{row.name}{row.id === initialTeam[0].id && <em className="team-you">You</em>}</strong>
+                    <strong>{row.name}{row.id === session.id && <em className="team-you">You</em>}</strong>
                     <small>{row.email || "No email"}</small>
                   </span>
                 </div>
@@ -5061,20 +4704,27 @@ function UsersPage({ query }) {
           rows={rows}
           rowKey="id"
           renderActions={(row) => {
-            if (row.id === initialTeam[0].id) return [{ label: "This is you", onClick: () => {} }];
+            if (row.id === session.id) return [{ label: "This is you", onClick: () => {} }];
+            if (!admin) return [{ label: "Only an Admin can change team members", onClick: () => {} }];
+            const first = row.firstName;
             return [
               ...STAFF_ROLES.filter((role) => role.name !== row.role).map((role) => ({
                 label: `Make ${role.name}`,
-                onClick: () => {
-                  update(row.id, { role: role.name });
-                  setToast(`${row.name.split(" ")[0]} is now ${role.name}`);
-                },
+                onClick: () => update(row, { role: role.name }, `${first} is now ${role.name}`),
               })),
-              ...(row.status === "Invited" ? [{ label: "Resend invite", onClick: () => setToast(`Invite resent to ${row.phone}`) }] : []),
+              { label: row.status === "Invited" ? "Resend invite (new password)" : "Reset password", onClick: () => update(row, { resetPassword: true }, `New password sent to ${row.phone}`) },
               row.status === "Inactive"
-                ? { label: "Reactivate", onClick: () => { update(row.id, { status: "Active", lastActive: "Reactivated just now" }); setToast(`${row.name.split(" ")[0]} reactivated`); } }
-                : { label: "Deactivate", danger: true, onClick: () => { update(row.id, { status: "Inactive", lastActive: "Deactivated just now" }); setToast(`${row.name.split(" ")[0]} deactivated`); } },
-              { label: "Remove from team", danger: true, onClick: () => { setTeam((current) => current.filter((member) => member.id !== row.id)); setToast(`${row.name} removed`); } },
+                ? { label: "Reactivate", onClick: () => update(row, { status: "Active" }, `${first} reactivated`) }
+                : { label: "Deactivate", danger: true, onClick: () => update(row, { status: "Inactive" }, `${first} deactivated`) },
+              { label: "Remove from team", danger: true, onClick: async () => {
+                try {
+                  await call(`/team/${row.id}`, { method: "DELETE" });
+                  await teamRes.reload();
+                  setToast(`${row.name} removed`);
+                } catch (error) {
+                  setToast(error.message);
+                }
+              } },
             ];
           }}
         />
@@ -5097,11 +4747,7 @@ function UsersPage({ query }) {
           <div className="team-role-list" role="tablist" aria-label="Roles">
             {TEAM_ROLES.map((role) => {
               const members = role.customer
-                ? customerReportData.map((customer) => ({
-                  id: customer.name,
-                  initials: customer.name.split(" ").map((part) => part[0]).join("").slice(0, 2),
-                  color: ["peach", "lilac", "mint", "blue"][customer.name.length % 4],
-                }))
+                ? Array.from({ length: teamRes.data?.customerCount || 0 }, (_, index) => ({ id: `c${index}`, initials: "", color: "blue" }))
                 : team.filter((member) => member.role === role.name);
               const noun = role.customer ? "customer" : "member";
               return (
@@ -5118,7 +4764,7 @@ function UsersPage({ query }) {
                     <small>{members.length} {noun}{members.length === 1 ? "" : "s"} · {role.access.length} areas</small>
                   </span>
                   <span className="team-role-avatars" aria-hidden="true">
-                    {members.slice(0, 3).map((member) => <i key={member.id} className={member.color}>{member.initials}</i>)}
+                    {(role.customer ? [] : members).slice(0, 3).map((member) => <i key={member.id} className={member.color}>{member.initials}</i>)}
                   </span>
                 </button>
               );
@@ -5148,23 +4794,25 @@ function UsersPage({ query }) {
         <InviteMemberModal
           onClose={() => setInviteOpen(false)}
           existingPhones={team.map((member) => normalizePhone(member.phone))}
-          onInvite={(member) => {
-            const initials = member.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-            setTeam((current) => [
-              ...current,
-              { ...member, id: `invite-${Date.now()}`, status: "Invited", lastActive: "Invite sent just now", initials, color: ["peach", "lilac", "mint", "blue"][current.length % 4] },
-            ]);
+          onInvite={async (member) => {
+            const data = await call("/team", { method: "POST", body: member });
+            await teamRes.reload();
             setInviteOpen(false);
-            setToast(`Invite sent to ${member.name}`);
+            if (data.temporaryPassword) setCredentials({ phone: data.member.phone, password: data.temporaryPassword });
+            setToast(`${data.member.name} added${data.sms.status === "sent" ? " · invite sent by SMS" : " · SMS not sent"}`);
           }}
         />
+      )}
+      {credentials && (
+        <WsModal title="Login details" kicker="TEAM ACCESS" onClose={() => setCredentials(null)}>
+          <div className="team-form"><TempPasswordNote phone={credentials.phone} password={credentials.password} /><div className="modal-actions"><button className="button button-primary" onClick={() => setCredentials(null)}>Done</button></div></div>
+        </WsModal>
       )}
       {toast && <div className="set-toast" role="status"><Check size={15} /> {toast}</div>}
     </>
   );
 }
 
-const SETTINGS_KEY = "pendo-settings";
 
 const DEFAULT_SETTINGS = {
   businessName: BUSINESS_INFO.name,
@@ -5236,15 +4884,6 @@ const settingsSections = [
   { id: "integrations", icon: Plug, title: "Integrations", desc: "SMS, M-Pesa and backups" },
 ];
 
-function loadSettings() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
-    return stored ? { ...DEFAULT_SETTINGS, ...stored } : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
 function validateSettings(values) {
   const errors = {};
   if (!values.businessName.trim()) errors.businessName = "Business name is required.";
@@ -5292,10 +4931,17 @@ function SettingsCard({ title, desc, children, aside }) {
   );
 }
 
-function SettingsPage({ onLogout }) {
+function SettingsPage({ onLogout, session, settingsResource }) {
+  const { call } = useApi();
+  const admin = session.staffRole === "Admin";
   const [active, setActive] = useState("profile");
-  const [saved, setSaved] = useState(loadSettings);
+  const [saved, setSaved] = useState(() => {
+    const [firstName, ...rest] = session.name.split(" ");
+    return { ...DEFAULT_SETTINGS, ...settingsResource.data.settings, firstName, lastName: rest.join(" "), accountEmail: "" };
+  });
   const [draft, setDraft] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [toast, setToast] = useState("");
   const [notice, setNotice] = useState("");
@@ -5324,21 +4970,29 @@ function SettingsPage({ onLogout }) {
   const error = (key) => showErrors && errors[key] ? <small className="set-error"><CircleAlert size={12} /> {errors[key]}</small> : null;
   const sectionHasErrors = (id) => showErrors && Object.keys(errors).some((key) => settingsFieldSection[key] === id);
 
-  function save() {
+  async function save() {
     if (Object.keys(errors).length) {
       setShowErrors(true);
       const firstKey = Object.keys(errors)[0];
       setActive(settingsFieldSection[firstKey] || active);
       return;
     }
-    setSaved(draft);
-    setShowErrors(false);
+    setSaving(true);
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(draft));
-    } catch {
-      // Storage unavailable: changes last for this session only.
+      const { firstName: _firstName, lastName: _lastName, accountEmail: _accountEmail, ...workspace } = draft;
+      const data = await call("/settings", { method: "PUT", body: { settings: workspace } });
+      const next = { ...draft, ...data.settings };
+      setSaved(next);
+      setDraft(next);
+      settingsResource.setData((current) => ({ ...current, settings: data.settings }));
+      applyBusinessInfo(data.settings);
+      setShowErrors(false);
+      setToast("Settings saved");
+    } catch (saveError) {
+      setToast(saveError.message);
+    } finally {
+      setSaving(false);
     }
-    setToast("Settings saved");
   }
 
   function discard() {
@@ -5511,12 +5165,12 @@ function SettingsPage({ onLogout }) {
               <div className="set-grid">
                 <label className="set-field">
                   <span>First name</span>
-                  <input {...bind("firstName")} />
+                  <input {...bind("firstName")} readOnly className="set-readonly" />
                   {error("firstName")}
                 </label>
                 <label className="set-field">
                   <span>Last name</span>
-                  <input {...bind("lastName")} />
+                  <input {...bind("lastName")} readOnly className="set-readonly" />
                   {error("lastName")}
                 </label>
                 <label className="set-field">
@@ -5525,8 +5179,8 @@ function SettingsPage({ onLogout }) {
                   <small className="set-hint">Contact support to change your login number.</small>
                 </label>
                 <label className="set-field">
-                  <span>Email <em>Optional</em></span>
-                  <input {...bind("accountEmail")} type="email" />
+                  <span>Role</span>
+                  <input value={session.staffRole} readOnly className="set-readonly" />
                   {error("accountEmail")}
                 </label>
               </div>
@@ -5535,10 +5189,19 @@ function SettingsPage({ onLogout }) {
             <SettingsCard title="Change password" desc="Use at least 8 characters with a mix of letters and numbers.">
               <form
                 className="set-grid"
-                onSubmit={(event) => {
+                onSubmit={async (event) => {
                   event.preventDefault();
-                  setNotice("Password changes will be available once sign-in is connected to the Pendo server.");
-                  setPasswords({ current: "", next: "", confirm: "" });
+                  setPasswordBusy(true);
+                  setNotice("");
+                  try {
+                    await call("/me/password", { method: "POST", body: { currentPassword: passwords.current, newPassword: passwords.next } });
+                    setPasswords({ current: "", next: "", confirm: "" });
+                    setToast("Password changed · other devices signed out");
+                  } catch (passwordError) {
+                    setNotice(passwordError.message);
+                  } finally {
+                    setPasswordBusy(false);
+                  }
                 }}
               >
                 <label className="set-field set-span-2">
@@ -5559,7 +5222,7 @@ function SettingsPage({ onLogout }) {
                   <button
                     type="submit"
                     className="button button-secondary"
-                    disabled={!passwords.current || passwords.next.length < 8 || passwords.next !== passwords.confirm}
+                    disabled={passwordBusy || !passwords.current || passwords.next.length < 8 || passwords.next !== passwords.confirm}
                   >
                     <KeyRound size={14} /> Update password
                   </button>
@@ -5853,7 +5516,8 @@ function SettingsPage({ onLogout }) {
           </SettingsCard>
         )}
 
-        {(dirty || showErrors) && (
+        {!admin && <p className="set-notice"><Info size={14} /> Only an Admin can change workspace settings. You can change your own password under Account & security.</p>}
+        {admin && (dirty || showErrors) && (
           <div className="set-savebar" role="region" aria-label="Unsaved changes">
             <span>
               {showErrors && Object.keys(errors).length
@@ -5861,7 +5525,7 @@ function SettingsPage({ onLogout }) {
                 : <><Info size={15} /> You have unsaved changes</>}
             </span>
             <button type="button" className="button button-secondary" onClick={discard}>Discard</button>
-            <button type="button" className="button button-primary" onClick={save}><Save size={14} /> Save changes</button>
+            <button type="button" className="button button-primary" onClick={save} disabled={saving}>{saving ? <><LoaderCircle size={14} className="auth-spin" /> Saving…</> : <><Save size={14} /> Save changes</>}</button>
           </div>
         )}
 
@@ -5879,21 +5543,7 @@ const settingsFieldSection = {
   vatRate: "payments", tithePercent: "payments",
 };
 
-function Pagination() {
-  return (
-    <div className="pagination">
-      <button aria-label="Previous page">
-        <ChevronLeft size={16} />
-      </button>
-      <span>1</span>
-      <button aria-label="Next page">
-        <ChevronRight size={16} />
-      </button>
-    </div>
-  );
-}
-
-function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle, onLogout }) {
+function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle, onLogout, session }) {
   const isItem = type === "item";
   const isBooking = type === "booking";
   const formTitles = {
@@ -6039,11 +5689,11 @@ function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitl
             </div>
             <p>
               {type === "notifications"
-                ? "You’re all caught up. New booking and inventory updates will show here."
+                ? "You’re all caught up. New Rent Now requests will show here."
                 : type === "profile"
-                  ? "Signed in as Pendo Mbolela (0622 882 278), Admin."
+                  ? `Signed in as ${session?.name} (${session?.phone?.replace(/^(\d{4})(\d{3})(\d{3})$/, "$1 $2 $3")}), ${session?.staffRole}.`
                   : type === "help"
-                    ? "Our support team is ready to help with your rentals, bookings, and workspace."
+                    ? `Need help with the workspace? Call ${BUSINESS_INFO.phone} or email ${BUSINESS_INFO.email}.`
                     : "Your report is ready to export for the selected date range."}
             </p>
             {type === "profile" ? (

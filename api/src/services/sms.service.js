@@ -1,3 +1,5 @@
+import { query } from '../config/db.js';
+
 const BEEM_URL = process.env.BEEM_URL || 'https://apisms.beem.africa/v1/send';
 
 export function smsConfigured() {
@@ -5,13 +7,10 @@ export function smsConfigured() {
 }
 
 // 0712345678 -> 255712345678
-export function toInternational(phone) {
-    return `255${phone.slice(1)}`;
-}
+export const toInternational = (phone) => `255${phone.slice(1)}`;
 
-export async function sendSms(phone, message) {
+async function deliver(phone, message) {
     if (!smsConfigured()) return { status: 'not_configured' };
-
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     try {
@@ -38,4 +37,19 @@ export async function sendSms(phone, message) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+// Sends and records every SMS in sms_log. Never throws.
+export async function sendSms(phone, message, { kind = 'manual', orderId = null } = {}) {
+    const result = await deliver(phone, message);
+    try {
+        await query(
+            'insert into sms_log (phone, message, kind, status, error, provider_ref, order_id) values ($1, $2, $3, $4, $5, $6, $7)',
+            [phone, message, kind, result.status, result.error || null, result.requestId ? String(result.requestId) : null, orderId],
+        );
+    } catch (error) {
+        console.error('Could not record SMS', error.message);
+    }
+    if (result.status === 'failed') console.error(`SMS to ${phone} failed: ${result.error}`);
+    return result;
 }
