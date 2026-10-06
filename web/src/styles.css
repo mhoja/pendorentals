@@ -9694,3 +9694,46 @@ input.caps-input {
 input.caps-input::placeholder {
     text-transform: none;
 }
+
+/* Phone number with a fixed +255 prefix */
+.phone-affix {
+    display: flex;
+    align-items: stretch;
+    height: 36px;
+    overflow: hidden;
+    border: 1px solid #dbe4f0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.phone-affix:focus-within {
+    border-color: #2674ed;
+    box-shadow: 0 0 0 3px #2674ed1f;
+}
+
+.phone-affix.invalid {
+    border-color: #e06a63;
+}
+
+.phone-affix b {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0 10px;
+    border-right: 1px solid #e5ebf3;
+    background: #f6f9fd;
+    color: #354a64;
+    font: 700 12.5px 'DM Sans', sans-serif;
+}
+
+.team-modal .phone-affix input,
+.phone-affix input {
+    flex: 1;
+    min-width: 0;
+    height: 100% !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    outline: 0;
+    letter-spacing: .3px;
+}

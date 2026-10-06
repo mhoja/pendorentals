@@ -2767,7 +2767,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
     if (creating && customerMode === "existing" && !form.customerId) errors.customer = "Choose a customer.";
     if (creating && customerMode === "new") {
       if (!form.newCustomer.firstName.trim() || !form.newCustomer.lastName.trim()) errors.customer = "Enter the customer’s first and last name.";
-      else if (!/^0[67]\d{8}$/.test(normalizePhone(form.newCustomer.phone))) errors.customer = "Enter a valid customer phone number.";
+      else if (!isLocalMobile(form.newCustomer.phone)) errors.customer = "Enter the customer’s 9-digit phone number after +255.";
     }
     if (!form.eventDate) errors.eventDate = "Choose the event date.";
     form.items.forEach((item, index) => {
@@ -2808,7 +2808,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
     };
     if (creating) {
       if (customerMode === "existing") body.customerId = Number(form.customerId);
-      else body.customer = form.newCustomer;
+      else body.customer = { ...form.newCustomer, phone: withCountryCode(form.newCustomer.phone) };
     }
     setBusy(true);
     try {
@@ -2854,7 +2854,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
                 <div className="ws-order-row ws-cols-4">
                   <label className="set-field"><span>First name</span><input className="caps-input" value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
                   <label className="set-field"><span>Last name</span><input className="caps-input" value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
-                  <label className="set-field"><span>Phone</span><input inputMode="tel" placeholder="0712 345 678" value={form.newCustomer.phone} onChange={(event) => set("newCustomer", { ...form.newCustomer, phone: event.target.value })} /></label>
+                  <label className="set-field"><span>Phone</span><PhoneInput value={form.newCustomer.phone} onChange={(phone) => set("newCustomer", { ...form.newCustomer, phone })} label="Customer phone number" /></label>
                   <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option><AreaOptions current={form.newCustomer.area} /></select></label>
                 </div>
               )}
@@ -3130,11 +3130,31 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
   );
 }
 
+// Tanzanian mobile numbers: the +255 prefix is fixed and staff type the 9 digits after it.
+function phoneLocalPart(phone) {
+  let digits = String(phone || "").replace(/\D/g, "");
+  if (digits.startsWith("255") && digits.length > 9) digits = digits.slice(3);
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  return digits.slice(0, 9);
+}
+const isLocalMobile = (digits) => /^[67]\d{8}$/.test(digits);
+const withCountryCode = (digits) => `+255${digits}`;
+
+function PhoneInput({ value, onChange, invalid, autoFocus, label = "Phone number" }) {
+  const shown = value.replace(/(\d{3})(?=\d)/g, "$1 ");
+  return (
+    <span className={`phone-affix ${invalid ? "invalid" : ""}`}>
+      <b>+255</b>
+      <input inputMode="tel" autoComplete="tel-national" placeholder="712 345 678" value={shown} onChange={(event) => onChange(phoneLocalPart(event.target.value))} aria-invalid={invalid} aria-label={label} autoFocus={autoFocus} />
+    </span>
+  );
+}
+
 // ===== Customers =====
 function CustomerModal({ customer, onClose, onSaved }) {
   const { call } = useApi();
   const [form, setForm] = useState({
-    firstName: customer?.firstName || "", lastName: customer?.lastName || "", phone: customer?.phone || "",
+    firstName: customer?.firstName || "", lastName: customer?.lastName || "", phone: phoneLocalPart(customer?.phone),
     email: customer?.email || "", area: customer?.area || "", place: customer?.place || "", notes: customer?.notes || "", sendLogin: true,
   });
   const [errors, setErrors] = useState({});
@@ -3144,10 +3164,14 @@ function CustomerModal({ customer, onClose, onSaved }) {
 
   async function save(event) {
     event.preventDefault();
+    if (!isLocalMobile(form.phone)) {
+      setErrors({ ...errors, phone: "Enter the 9 digits after +255, e.g. 712 345 678." });
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      const body = { ...form };
+      const body = { ...form, phone: withCountryCode(form.phone) };
       const data = customer
         ? await call(`/customers/${customer.id}`, { method: "PATCH", body })
         : await call("/customers", { method: "POST", body });
@@ -3165,7 +3189,7 @@ function CustomerModal({ customer, onClose, onSaved }) {
         <div className="set-grid">
           <label className="set-field"><span>First name</span><input {...bind("firstName")} className="caps-input" autoFocus /><FieldError message={errors.firstName} /></label>
           <label className="set-field"><span>Last name</span><input {...bind("lastName")} className="caps-input" /><FieldError message={errors.lastName} /></label>
-          <label className="set-field"><span>Phone</span><input {...bind("phone")} inputMode="tel" placeholder="0712 345 678" /><FieldError message={errors.phone} /></label>
+          <label className="set-field"><span>Phone</span><PhoneInput value={form.phone} onChange={(phone) => { setForm({ ...form, phone }); setErrors({ ...errors, phone: undefined }); }} invalid={Boolean(errors.phone)} /><FieldError message={errors.phone} /></label>
           <label className="set-field"><span>Email <em>Optional</em></span><input {...bind("email")} type="email" /><FieldError message={errors.email} /></label>
           <label className="set-field"><span>Area</span><select {...bind("area")}><option value="">Choose</option><AreaOptions current={form.area} /></select></label>
           <label className="set-field"><span>Venue / landmark</span><input {...bind("place")} /></label>
