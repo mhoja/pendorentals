@@ -7,6 +7,15 @@ import { sendSms } from '../services/sms.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
 
+// An order can't be confirmed or processed until every item has a rate.
+const PRICED_STATUSES = ['Confirmed', 'Ready for pickup', 'Out for delivery', 'Completed'];
+function requirePrices(status, items) {
+    const priced = items.length > 0 && items.every((item) => item.rate !== null && item.rate !== undefined);
+    if (PRICED_STATUSES.includes(status) && !priced) {
+        throw new HttpError(400, `Set a rate for every item before marking the order ${status.toLowerCase()}.`, { fields: { status: 'Set a rate for every item first.' } });
+    }
+}
+
 function validateOrderBody(body, { partial }) {
     const value = validateSchedule(body, { partial });
     const text = { area: 40, place: 80, notes: 500 };
@@ -92,6 +101,8 @@ export async function createOrder(request, response) {
     const body = request.body || {};
     const value = validateOrderBody(body, { partial: false });
     const items = await validateOrderItems(body.items);
+    if (!value.status) value.status = items.every((item) => item.rate !== null) ? 'Confirmed' : 'New request';
+    requirePrices(value.status, items);
     const { code, customer, temporaryPassword } = await transaction(async (db) => {
         const { customer: owner, temporaryPassword: password } = await resolveCustomer(db, body);
         const orderCode = await nextCode(db, 'order_number_seq', 'ORD-', 4);
@@ -130,6 +141,8 @@ export async function updateOrder(request, response) {
     const before = await loadOrder(request.params.code);
     const value = validateOrderBody(body, { partial: true });
     const items = body.items !== undefined ? await validateOrderItems(body.items) : null;
+    const statusAfter = value.status || before.status;
+    if (value.status || items) requirePrices(statusAfter, items || before.items);
     await transaction(async (db) => {
         const keys = Object.keys(value);
         if (keys.length) {

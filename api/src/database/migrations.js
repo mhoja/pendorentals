@@ -193,6 +193,28 @@ const migrations = [
             alter table inventory_items add column dimensions jsonb not null default '{}'::jsonb;
         `,
     },
+    {
+        id: 3,
+        name: 'service areas',
+        sql: `
+            create table service_areas (
+                id serial primary key,
+                name text not null unique,
+                position integer not null default 0,
+                created_at timestamptz not null default now()
+            );
+
+            insert into service_areas (name, position) values
+                ('Kayenze', 1), ('Geita Town', 2), ('Katoro', 3), ('Kalangalala', 4), ('Nyankumbu', 5), ('Nyarugusu', 6)
+            on conflict (name) do nothing;
+
+            -- Areas already used by customers or orders are kept in the list too.
+            insert into service_areas (name, position)
+            select distinct area, 100 from (select area from customers union select area from orders) used
+            where area is not null and btrim(area) <> '' and area <> 'Other area'
+              and area not in (select name from service_areas);
+        `,
+    },
 ];
 
 export async function migrate() {

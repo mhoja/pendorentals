@@ -3,6 +3,7 @@ import { createSession, hashPassword, newTemporaryPassword } from '../services/a
 import { HttpError, cleanText, formatDate, isIsoDate, isPhone, normalizePhone, prettyPhone, todayIso } from '../utils/helpers.js';
 import { loadOrder, nextCode } from '../services/orders.service.js';
 import { getSettings } from '../services/settings.service.js';
+import { OTHER_AREA, isKnownArea } from '../services/areas.service.js';
 import { sendSms } from '../services/sms.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
@@ -11,7 +12,6 @@ export const RENTAL_CATALOG = [
     'Tents', 'Chairs', 'Tables', 'Seat covers', 'Lights', 'Red carpet', 'Carpet',
     'PA system', 'Microphone', 'LED screen', 'Camera', 'Light box', 'Utensils (cooking vessels)',
 ];
-export const AREAS = ['Kayenze', 'Geita Town', 'Katoro', 'Kalangalala', 'Nyankumbu', 'Nyarugusu', 'Other area'];
 
 function itemsSummary(items) {
     const parts = items.map((item) => `${item.custom || item.name.replace(' (cooking vessels)', '')} x${item.quantity}`);
@@ -34,8 +34,7 @@ function validateRequest(body) {
     if (!value.firstName) errors.firstName = 'Enter your first name.';
     if (!value.lastName) errors.lastName = 'Enter your last name.';
     if (!isPhone(value.phone)) errors.phone = 'Enter a valid phone number, e.g. 0712 345 678.';
-    if (!AREAS.includes(value.area)) errors.area = 'Choose your area.';
-    if (value.area === 'Other area' && !value.place) errors.place = 'Tell us where the event is.';
+    if (value.area === OTHER_AREA && !value.place) errors.place = 'Tell us where the event is.';
     if (!isIsoDate(value.eventDate)) errors.eventDate = 'Choose the event date.';
     else if (value.eventDate < todayIso()) errors.eventDate = 'The event date cannot be in the past.';
     if (!Number.isInteger(value.days) || value.days < 1 || value.days > 30) errors.days = 'Choose between 1 and 30 days.';
@@ -82,6 +81,7 @@ export async function getBusinessInfo(_request, response) {
 // POST /api/rental-requests
 export async function createRentalRequest(request, response) {
     const { errors, value } = validateRequest(request.body || {});
+    if (!value.area || !(await isKnownArea(value.area))) errors.area = 'Choose your area.';
     if (Object.keys(errors).length) throw new HttpError(400, 'Please check the highlighted fields.', { fields: errors });
 
     const { orderCode, customer, temporaryPassword, session } = await transaction(async (db) => {

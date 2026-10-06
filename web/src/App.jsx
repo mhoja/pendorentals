@@ -798,7 +798,37 @@ function clearSession() {
   }
 }
 
-const CUSTOMER_AREAS = ["Kayenze", "Geita Town", "Katoro", "Kalangalala", "Nyankumbu", "Nyarugusu", "Other area"];
+// Service areas come from the API (Settings → Service areas). "Other area" is built in:
+// it means the customer types the place themselves.
+const OTHER_AREA = "Other area";
+let areasCache = null;
+const areaListeners = new Set();
+
+function refreshAreas() {
+  return api("/areas").then((data) => {
+    areasCache = data.areas;
+    areaListeners.forEach((listener) => listener(areasCache));
+    return areasCache;
+  });
+}
+
+function useAreas() {
+  const [areas, setAreas] = useState(areasCache || []);
+  useEffect(() => {
+    areaListeners.add(setAreas);
+    if (!areasCache) refreshAreas().catch(() => {});
+    return () => areaListeners.delete(setAreas);
+  }, []);
+  return areas;
+}
+
+// <option>s for an area <select>. Keeps an old value that has since left the list.
+function AreaOptions({ current, other = true }) {
+  const names = useAreas().map((area) => area.name);
+  if (current && current !== OTHER_AREA && !names.includes(current)) names.push(current);
+  if (other) names.push(OTHER_AREA);
+  return names.map((name) => <option key={name} value={name}>{name}</option>);
+}
 
 const authShowcaseContent = {
   staff: {
@@ -1181,7 +1211,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
                     <span className="sr-only">Area</span>
                     <select value={form.area} onChange={(event) => update("area", event.target.value)} aria-invalid={invalid("area")} className={form.area ? "" : "is-placeholder"}>
                       <option value="" disabled>Area</option>
-                      {CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}
+                      <AreaOptions current={form.area} />
                     </select>
                     <ChevronDown size={15} className="auth-select-caret" />
                   </label>
@@ -2166,6 +2196,50 @@ function InventoryEditModal({ item, onClose, onSave, categories }) {
   );
 }
 
+// "Are you sure?" dialog. `ask({ title, message, confirmLabel, danger })` resolves true or false.
+function ConfirmDialog({ title, message, confirmLabel = "Yes, continue", danger = false, onCancel, onConfirm }) {
+  const confirmRef = useRef(null);
+  useEffect(() => {
+    confirmRef.current?.focus();
+    // Capture Escape here so it doesn't also close a form underneath.
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.stopImmediatePropagation();
+      onCancel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onCancel]);
+  return createPortal(
+    <div className="modal-backdrop confirm-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onCancel()}>
+      <section className="modal inv-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+        <div className="inv-confirm-body">
+          <span className={`inv-confirm-icon ${danger ? "" : "info"}`}>{danger ? <CircleAlert size={22} /> : <CircleHelp size={22} />}</span>
+          <h2 id="confirm-title">{title}</h2>
+          {message && <p id="confirm-message">{message}</p>}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onCancel}>No, go back</button>
+          <button type="button" ref={confirmRef} className={`button button-primary ${danger ? "inv-danger" : ""}`} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function useConfirm() {
+  const [request, setRequest] = useState(null);
+  const ask = useCallback((options) => new Promise((resolve) => setRequest({ ...options, resolve })), []);
+  const answer = useCallback((value) => setRequest((current) => {
+    current?.resolve(value);
+    return null;
+  }), []);
+  const cancel = useCallback(() => answer(false), [answer]);
+  const dialog = request ? <ConfirmDialog {...request} onCancel={cancel} onConfirm={() => answer(true)} /> : null;
+  return [ask, dialog];
+}
+
 function InventoryConfirmDelete({ item, onClose, onConfirm }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -2333,6 +2407,9 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
                 { label: "Edit item", onClick: () => setEditing(row) },
                 {
                   label: row.status === "Available" ? "Mark as maintenance" : "Mark as available",
+                  confirm: row.status === "Available"
+                    ? { title: `Send ${row.name} to maintenance?`, message: "It won’t be available to rent until you mark it available again.", confirmLabel: "Yes, mark maintenance" }
+                    : { title: `Mark ${row.name} as available?`, message: "It will be available to rent on new orders.", confirmLabel: "Yes, mark available" },
                   onClick: async () => {
                     try {
                       const next = row.status === "Available" ? "Maintenance" : "Available";
@@ -2555,6 +2632,7 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
   const tithePercent = settings?.titheEnabled ? Number(settings.tithePercent) || 0 : 0;
   const tithe = Math.round(((Number(form.amount) || 0) * tithePercent) / 100);
   const label = invoice ? `${invoice.code} · ${invoice.customer}` : `${order.id} · ${order.customer.name}`;
+  const [ask, confirmDialog] = useConfirm();
 
   async function save(event) {
     event.preventDefault();
@@ -2563,6 +2641,12 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
     if (form.paidOn > localTodayIso()) next.paidOn = "Not in the future.";
     setErrors(next);
     if (Object.keys(next).length) return;
+    const ok = await ask({
+      title: `Record ${formatShillings(Number(form.amount))}?`,
+      message: `${form.method} payment for ${label} on ${shortDate(form.paidOn)}.${tithe ? ` Tithe set aside: ${formatShillings(tithe)}.` : ""} A receipt will be issued.`,
+      confirmLabel: "Yes, record payment",
+    });
+    if (!ok) return;
     setBusy(true);
     setError("");
     try {
@@ -2607,11 +2691,15 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
           <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Banknote size={15} /> Record payment</>}</button>
         </div>
       </form>
+      {confirmDialog}
     </WsModal>
   );
 }
 
 // ===== Create / edit order =====
+// An order must have a rate on every item before it can move past "New request".
+const PRICED_STATUSES = ["Confirmed", "Ready for pickup", "Out for delivery", "Completed"];
+
 function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSaved }) {
   const { call, session } = useApi();
   const creating = !order;
@@ -2638,6 +2726,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [ask, confirmDialog] = useConfirm();
   // Editing a field clears its error message.
   const clearError = (name) => setFieldErrors((current) => {
     if (!current[name]) return current;
@@ -2652,6 +2741,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
   const setItem = (key, changes) => {
     setForm((current) => ({ ...current, items: current.items.map((item) => (item.key === key ? { ...item, ...changes } : item)) }));
     clearError(`item${form.items.findIndex((item) => item.key === key)}`);
+    if ("rate" in changes || "inventoryItemId" in changes) clearError("status");
   };
   const days = Math.max(1, Number(form.days) || 1);
   const lines = form.items.map((item) => (item.rate === "" ? null : (Number(item.rate) || 0) * (Number(item.quantity) || 0) * days));
@@ -2675,8 +2765,19 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
       if (!item.inventoryItemId && (!item.isCustom || (item.custom || item.name).trim().length < 2)) errors[`item${index}`] = "Choose an item or type a name.";
       else if (!(Number(item.quantity) >= 1)) errors[`item${index}`] = "Enter a quantity.";
     });
+    if (!priced && PRICED_STATUSES.includes(form.status)) errors.status = "Set a rate for every item first, or keep the order as “New request”.";
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
+    const customerName = !creating ? order.customer.name
+      : prefillCustomer ? prefillCustomer.name
+        : customerMode === "existing" ? customerOptions.find((customer) => String(customer.id) === form.customerId)?.name
+          : `${form.newCustomer.firstName.trim()} ${form.newCustomer.lastName.trim()}`;
+    const ok = await ask({
+      title: creating ? "Create this order?" : `Save changes to ${order.id}?`,
+      message: `${customerName} · ${shortDate(form.eventDate)} · ${form.items.length} item${form.items.length === 1 ? "" : "s"} · ${total === null ? "price to be set" : formatShillings(total)} · ${form.status}${form.notify ? ". The customer will get an SMS." : "."}`,
+      confirmLabel: creating ? "Yes, create order" : "Yes, save order",
+    });
+    if (!ok) return;
     const body = {
       eventDate: form.eventDate,
       days,
@@ -2745,7 +2846,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
                   <label className="set-field"><span>First name</span><input value={form.newCustomer.firstName} onChange={(event) => set("newCustomer", { ...form.newCustomer, firstName: event.target.value })} /></label>
                   <label className="set-field"><span>Last name</span><input value={form.newCustomer.lastName} onChange={(event) => set("newCustomer", { ...form.newCustomer, lastName: event.target.value })} /></label>
                   <label className="set-field"><span>Phone</span><input inputMode="tel" placeholder="0712 345 678" value={form.newCustomer.phone} onChange={(event) => set("newCustomer", { ...form.newCustomer, phone: event.target.value })} /></label>
-                  <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+                  <label className="set-field"><span>Area</span><select value={form.newCustomer.area} onChange={(event) => set("newCustomer", { ...form.newCustomer, area: event.target.value })}><option value="">Choose</option><AreaOptions current={form.newCustomer.area} /></select></label>
                 </div>
               )}
               <FieldError message={fieldErrors.customer} />
@@ -2757,7 +2858,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
             <div className="ws-order-row ws-cols-event">
               <label className="set-field"><span>Event date</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /></label>
               <label className="set-field"><span>Days</span><input type="number" min="1" max="60" value={form.days} onChange={(event) => set("days", event.target.value)} /></label>
-              <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+              <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option><AreaOptions current={form.area} /></select></label>
               <label className="set-field"><span>Venue / landmark</span><input value={form.place} maxLength={80} placeholder="e.g. Kayenze Primary School" onChange={(event) => set("place", event.target.value)} /></label>
             </div>
             <FieldError message={fieldErrors.eventDate} />
@@ -2804,7 +2905,13 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
         </div>
 
         <aside className="ws-order-side">
-          <label className="set-field"><span>Status</span><select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!managerView}>{ORDER_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+          <label className="set-field">
+            <span>Status</span>
+            <select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!managerView} aria-invalid={Boolean(fieldErrors.status)}>
+              {ORDER_STATUSES.map((status) => <option key={status} value={status}>{status}{!priced && PRICED_STATUSES.includes(status) ? " — needs prices" : ""}</option>)}
+            </select>
+            {fieldErrors.status ? <FieldError message={fieldErrors.status} /> : !priced && PRICED_STATUSES.includes(form.status) && <small className="ws-price-hint"><CircleAlert size={12} /> Add a rate to every item to {form.status === "Confirmed" ? "confirm" : "process"} this order.</small>}
+          </label>
 
           <div className="ws-side-block">
             <label className="ws-switch">
@@ -2839,6 +2946,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
           </div>
         </aside>
       </form>
+      {confirmDialog}
     </WsModal>
   );
 }
@@ -2951,11 +3059,19 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
               renderActions={(order) => {
                 const actions = [{ label: managerView ? "View & edit" : "View order", onClick: () => setEditing(order) }];
                 const nextStatus = { "New request": "Confirmed", Confirmed: "Ready for pickup", "Ready for pickup": "Out for delivery", "Out for delivery": "Completed" }[order.status];
-                if (nextStatus && (managerView || ["Out for delivery", "Completed"].includes(nextStatus))) actions.push({ label: `Mark ${nextStatus.toLowerCase()}`, onClick: () => setOrderStatus(order, nextStatus) });
+                if (nextStatus && !order.priced) {
+                  if (managerView) actions.push({ label: "Set prices to confirm", onClick: () => setEditing(order) });
+                } else if (nextStatus && (managerView || ["Out for delivery", "Completed"].includes(nextStatus))) {
+                  actions.push({
+                    label: `Mark ${nextStatus.toLowerCase()}`,
+                    confirm: { title: `Mark ${order.id} as ${nextStatus.toLowerCase()}?`, message: `${order.customer.name} · ${orderItemsText(order.items)}${nextStatus === "Confirmed" ? ` · ${formatShillings(order.total)}` : ""}. The customer may get an SMS about this change.`, confirmLabel: `Yes, mark ${nextStatus.toLowerCase()}` },
+                    onClick: () => setOrderStatus(order, nextStatus),
+                  });
+                }
                 if (managerView && order.status !== "Cancelled") {
-                  if (!order.invoice && order.priced) actions.push({ label: "Create invoice", onClick: () => createInvoice(order) });
+                  if (!order.invoice && order.priced) actions.push({ label: "Create invoice", confirm: { title: `Create an invoice for ${order.id}?`, message: `${order.customer.name} will be invoiced ${formatShillings(order.total)}.`, confirmLabel: "Yes, create invoice" }, onClick: () => createInvoice(order) });
                   if (order.priced && order.balance > 0) actions.push({ label: "Record payment", onClick: () => setPaying(order) });
-                  actions.push({ label: "Cancel order", danger: true, onClick: () => setOrderStatus(order, "Cancelled") });
+                  actions.push({ label: "Cancel order", danger: true, confirm: { title: `Cancel ${order.id}?`, message: `${order.customer.name}’s booking for ${orderDates(order)} will be cancelled.`, confirmLabel: "Yes, cancel order" }, onClick: () => setOrderStatus(order, "Cancelled") });
                 }
                 return actions;
               }}
@@ -3040,7 +3156,7 @@ function CustomerModal({ customer, onClose, onSaved }) {
           <label className="set-field"><span>Last name</span><input {...bind("lastName")} /><FieldError message={errors.lastName} /></label>
           <label className="set-field"><span>Phone</span><input {...bind("phone")} inputMode="tel" placeholder="0712 345 678" /><FieldError message={errors.phone} /></label>
           <label className="set-field"><span>Email <em>Optional</em></span><input {...bind("email")} type="email" /><FieldError message={errors.email} /></label>
-          <label className="set-field"><span>Area</span><select {...bind("area")}><option value="">Choose</option>{CUSTOMER_AREAS.map((area) => <option key={area}>{area}</option>)}</select></label>
+          <label className="set-field"><span>Area</span><select {...bind("area")}><option value="">Choose</option><AreaOptions current={form.area} /></select></label>
           <label className="set-field"><span>Venue / landmark</span><input {...bind("place")} /></label>
           <label className="set-field set-span-2"><span>Notes</span><input {...bind("notes")} maxLength={500} /></label>
         </div>
@@ -3061,8 +3177,10 @@ function SmsModal({ to, onClose, onSent }) {
   const [message, setMessage] = useState(to ? `Hi ${to.firstName || to.name?.split(" ")[0] || ""}, ` : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [ask, confirmDialog] = useConfirm();
   async function send(event) {
     event.preventDefault();
+    if (phone.trim() && message.trim() && !(await ask({ title: `Send this SMS to ${phone.trim()}?`, message: `“${message.trim().slice(0, 140)}${message.trim().length > 140 ? "…" : ""}”`, confirmLabel: "Yes, send SMS" }))) return;
     setBusy(true);
     setError("");
     try {
@@ -3084,6 +3202,7 @@ function SmsModal({ to, onClose, onSent }) {
           <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Sending…</> : <><Send size={15} /> Send SMS</>}</button>
         </div>
       </form>
+      {confirmDialog}
     </WsModal>
   );
 }
@@ -3127,7 +3246,7 @@ function CustomersPage({ query, onNewOrder }) {
           <div><div className="panel-kicker">PEOPLE WHO RENT FROM YOU</div><h2 className="ws-title">Customers <span className="heading-count">{rows.length}</span></h2></div>
           <div className="inv-toolbar-actions">
             <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, email" aria-label="Search customers" /></label>
-            <select className="inv-select" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by area">{["All areas", ...CUSTOMER_AREAS].map((area) => <option key={area}>{area}</option>)}</select>
+            <select className="inv-select" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by area"><option value="All areas">All areas</option><AreaOptions current={areaFilter === "All areas" ? "" : areaFilter} /></select>
             <DateRangeFilter range={joined} label="Joined" />
             <ClearFiltersButton active={customersFiltered} onClear={clearCustomerFilters} />
             <ExportMenu title="Customers" columns={["Name", "Phone", "Email", "Area", "Venue", "Orders", "Last order", "Spent"]} rows={exportRows} />
@@ -3260,8 +3379,14 @@ function InvoiceCreateModal({ onClose, onSaved }) {
   const [error, setError] = useState("");
   const candidates = (orders.data?.orders || []).filter((order) => !order.invoice && order.status !== "Cancelled");
   const selected = candidates.find((order) => order.id === orderCode);
+  const [ask, confirmDialog] = useConfirm();
   async function save(event) {
     event.preventDefault();
+    if (selected && !(await ask({
+      title: `Create an invoice for ${selected.id}?`,
+      message: `${selected.customer.name} will be invoiced ${amount === "" ? "the order total" : formatShillings(Number(amount))}, due ${shortDate(dueOn)}.`,
+      confirmLabel: "Yes, create invoice",
+    }))) return;
     setBusy(true);
     setError("");
     try {
@@ -3293,6 +3418,7 @@ function InvoiceCreateModal({ onClose, onSaved }) {
           <button type="submit" className="button button-primary" disabled={busy || !orderCode}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Creating…</> : <><Receipt size={15} /> Create invoice</>}</button>
         </div>
       </form>
+      {confirmDialog}
     </WsModal>
   );
 }
@@ -3366,7 +3492,7 @@ function InvoicesPage({ query, settings }) {
               renderActions={(row) => [
                 ...(row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
                 { label: "Download PDF", onClick: () => downloadInvoicePdf(row) },
-                ...(row.status !== "Cancelled" && row.paid === 0 ? [{ label: "Cancel invoice", danger: true, onClick: async () => {
+                ...(row.status !== "Cancelled" && row.paid === 0 ? [{ label: "Cancel invoice", danger: true, confirm: { title: `Cancel invoice ${row.code}?`, message: `${row.customer} will no longer owe ${formatShillings(row.amount)} on this invoice.`, confirmLabel: "Yes, cancel invoice" }, onClick: async () => {
                   try {
                     const data = await call(`/invoices/${row.id}`, { method: "PATCH", body: { cancel: true } });
                     invoices.setData((current) => ({ ...current, invoices: current.invoices.map((entry) => (entry.id === row.id ? data.invoice : entry)) }));
@@ -3515,7 +3641,7 @@ function FinancePage({ query, session }) {
                 rowKey="id"
                 renderActions={(row) => [
                   { label: "Edit expense", onClick: () => setEditing(row) },
-                  ...(row.status === "Pending" ? [{ label: "Approve", onClick: async () => { try { const data = await call(`/expenses/${row.id}`, { method: "PATCH", body: { status: "Approved" } }); expenses.setData((current) => ({ ...current, expenses: current.expenses.map((entry) => (entry.id === row.id ? data.expense : entry)) })); summary.reload(); setToast("Expense approved"); } catch (error) { setToast(error.message); } } }] : []),
+                  ...(row.status === "Pending" ? [{ label: "Approve", confirm: { title: "Approve this expense?", message: `${row.description} · ${formatShillings(row.amount)} will count against profit.`, confirmLabel: "Yes, approve" }, onClick: async () => { try { const data = await call(`/expenses/${row.id}`, { method: "PATCH", body: { status: "Approved" } }); expenses.setData((current) => ({ ...current, expenses: current.expenses.map((entry) => (entry.id === row.id ? data.expense : entry)) })); summary.reload(); setToast("Expense approved"); } catch (error) { setToast(error.message); } } }] : []),
                   { label: "Delete expense", danger: true, onClick: () => setDeleting(row) },
                 ]}
               />
@@ -3540,7 +3666,7 @@ function FinancePage({ query, session }) {
                 renderActions={(row) => [
                   { label: "View receipt", onClick: () => setReceipt(row) },
                   { label: "Print receipt", onClick: () => printReceipts([row]) },
-                  ...(session.staffRole === "Admin" && row.status === "Paid" ? [{ label: "Mark refunded", danger: true, onClick: async () => { try { await call(`/payments/${row.id}`, { method: "PATCH", body: { status: "Refunded" } }); payments.reload(); summary.reload(); setToast(`${row.receipt} marked refunded`); } catch (error) { setToast(error.message); } } }] : []),
+                  ...(session.staffRole === "Admin" && row.status === "Paid" ? [{ label: "Mark refunded", danger: true, confirm: { title: `Mark ${row.receipt} as refunded?`, message: `${formatShillings(row.amount)} from ${row.customer} will be removed from revenue.`, confirmLabel: "Yes, mark refunded" }, onClick: async () => { try { await call(`/payments/${row.id}`, { method: "PATCH", body: { status: "Refunded" } }); payments.reload(); summary.reload(); setToast(`${row.receipt} marked refunded`); } catch (error) { setToast(error.message); } } }] : []),
                 ]}
               />
             )}
@@ -3893,6 +4019,7 @@ function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", t
   const [panelPosition, setPanelPosition] = useState({});
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
+  const [ask, confirmDialog] = useConfirm();
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
   const first = (current - 1) * pageSize;
@@ -3982,15 +4109,16 @@ function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", t
                         >
                           <div className="anchored-panel-header">Quick actions</div>
                           <div className="anchored-panel-list">
-                            {actions.map(({ label, onClick, danger }) => (
+                            {actions.map(({ label, onClick, danger, confirm }) => (
                               <button
                                 key={label}
                                 type="button"
                                 className={`panel-action-button ${danger ? "danger" : ""}`}
-                                onClick={(event) => {
+                                onClick={async (event) => {
                                   event.stopPropagation();
-                                  onClick?.(row);
                                   setOpenMenuId(null);
+                                  if (confirm && !(await ask({ danger, ...confirm }))) return;
+                                  onClick?.(row);
                                 }}
                               >
                                 {label}
@@ -4034,6 +4162,7 @@ function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", t
           </nav>
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }
@@ -4919,13 +5048,14 @@ function UsersPage({ query, session }) {
             return [
               ...STAFF_ROLES.filter((role) => role.name !== row.role).map((role) => ({
                 label: `Make ${role.name}`,
+                confirm: { title: `Make ${row.name} ${role.name}?`, message: `Their access will change to what a ${role.name} can see and do.`, confirmLabel: "Yes, change role" },
                 onClick: () => update(row, { role: role.name }, `${first} is now ${role.name}`),
               })),
-              { label: row.status === "Invited" ? "Resend invite (new password)" : "Reset password", onClick: () => update(row, { resetPassword: true }, `New password sent to ${row.phone}`) },
+              { label: row.status === "Invited" ? "Resend invite (new password)" : "Reset password", confirm: { title: `Reset ${first}’s password?`, message: `A new password will be sent by SMS to ${row.phone}. The old one stops working.`, confirmLabel: "Yes, reset password" }, onClick: () => update(row, { resetPassword: true }, `New password sent to ${row.phone}`) },
               row.status === "Inactive"
-                ? { label: "Reactivate", onClick: () => update(row, { status: "Active" }, `${first} reactivated`) }
-                : { label: "Deactivate", danger: true, onClick: () => update(row, { status: "Inactive" }, `${first} deactivated`) },
-              { label: "Remove from team", danger: true, onClick: async () => {
+                ? { label: "Reactivate", confirm: { title: `Reactivate ${row.name}?`, message: "They will be able to sign in again.", confirmLabel: "Yes, reactivate" }, onClick: () => update(row, { status: "Active" }, `${first} reactivated`) }
+                : { label: "Deactivate", danger: true, confirm: { title: `Deactivate ${row.name}?`, message: "They will be signed out and can’t sign in until reactivated.", confirmLabel: "Yes, deactivate" }, onClick: () => update(row, { status: "Inactive" }, `${first} deactivated`) },
+              { label: "Remove from team", danger: true, confirm: { title: `Remove ${row.name} from the team?`, message: "Their account will be deleted. This can’t be undone.", confirmLabel: "Yes, remove" }, onClick: async () => {
                 try {
                   await call(`/team/${row.id}`, { method: "DELETE" });
                   await teamRes.reload();
@@ -5081,6 +5211,7 @@ const settingsSections = [
   { id: "account", icon: UserCog, title: "Account & security", desc: "Your profile and password" },
   { id: "notifications", icon: Bell, title: "Notifications", desc: "Team alerts and customer SMS" },
   { id: "categories", icon: Layers, title: "Inventory categories", desc: "Categories and their dimensions" },
+  { id: "areas", icon: MapPin, title: "Service areas", desc: "Areas used on orders and Rent Now" },
   { id: "policies", icon: ScrollText, title: "Rental policies", desc: "Deposits, fees and returns" },
   { id: "payments", icon: CreditCard, title: "Payments & receipts", desc: "Methods, tax and receipt format" },
   { id: "integrations", icon: Plug, title: "Integrations", desc: "SMS, M-Pesa and backups" },
@@ -5190,6 +5321,114 @@ function CategoryModal({ category, units, onClose, onSaved }) {
         </div>
       </form>
     </WsModal>
+  );
+}
+
+function AreaManager({ session }) {
+  const { call } = useApi();
+  const areas = useAreas();
+  const [status, setStatus] = useState(areasCache ? "ready" : "loading");
+  const [loadError, setLoadError] = useState("");
+  const [newName, setNewName] = useState("");
+  const [renaming, setRenaming] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useToast();
+  const [ask, confirmDialog] = useConfirm();
+  const canManage = isManager(session);
+
+  const load = useCallback(() => {
+    setStatus("loading");
+    refreshAreas().then(() => setStatus("ready")).catch((loadFailure) => { setLoadError(loadFailure.message); setStatus("error"); });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function run(work, message) {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+      await refreshAreas();
+      setToast(message);
+      return true;
+    } catch (failure) {
+      setError(failure.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function add(event) {
+    event.preventDefault();
+    const name = newName.trim();
+    if (name.length < 2) return setError("Enter an area name.");
+    if (!(await ask({ title: `Add “${name}” as a service area?`, message: "It will appear on orders, customers and the Rent Now form.", confirmLabel: "Yes, add area" }))) return undefined;
+    if (await run(() => call("/areas", { method: "POST", body: { name } }), `${name} added`)) setNewName("");
+    return undefined;
+  }
+
+  async function rename(area) {
+    const name = renaming.name.trim();
+    if (name === area.name) return setRenaming(null);
+    const used = area.customerCount + area.orderCount;
+    if (!(await ask({ title: `Rename “${area.name}” to “${name}”?`, message: used ? `${area.customerCount} customer${area.customerCount === 1 ? "" : "s"} and ${area.orderCount} order${area.orderCount === 1 ? "" : "s"} will be updated to the new name.` : "Nothing uses this area yet.", confirmLabel: "Yes, rename" }))) return undefined;
+    if (await run(() => call(`/areas/${area.id}`, { method: "PATCH", body: { name } }), `Renamed to ${name}`)) setRenaming(null);
+    return undefined;
+  }
+
+  async function remove(area) {
+    const used = area.customerCount + area.orderCount;
+    if (!(await ask({ title: `Remove “${area.name}”?`, message: used ? `It leaves the list for new orders. ${area.customerCount} customer${area.customerCount === 1 ? "" : "s"} and ${area.orderCount} order${area.orderCount === 1 ? "" : "s"} keep it as their area.` : "It will no longer appear in area lists.", confirmLabel: "Yes, remove", danger: true }))) return;
+    await run(() => call(`/areas/${area.id}`, { method: "DELETE" }), `${area.name} removed`);
+  }
+
+  return (
+    <SettingsCard title="Service areas" desc="The places you deliver to and set up events. Used on orders, customers, Rent Now and free delivery.">
+      {canManage && (
+        <form className="area-add" onSubmit={add}>
+          <label className="set-field">
+            <span>New area</span>
+            <input value={newName} maxLength={40} placeholder="e.g. Nyamalembo" onChange={(event) => { setNewName(event.target.value); setError(""); }} disabled={busy} />
+          </label>
+          <button type="submit" className="button button-primary" disabled={busy || !newName.trim()}><Plus size={14} /> Add area</button>
+        </form>
+      )}
+      {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+      <LoadState status={status} error={loadError} onRetry={load} empty={status === "ready" && areas.length === 0 ? "No areas yet" : ""} emptyIcon={MapPin} />
+      <div className="cat-list">
+        {areas.map((area) => (
+          <div className="cat-row area-row" key={area.id}>
+            <span className="set-row-icon"><MapPin size={15} /></span>
+            {renaming?.id === area.id ? (
+              <form className="area-rename" onSubmit={(event) => { event.preventDefault(); rename(area); }}>
+                <input value={renaming.name} maxLength={40} autoFocus onChange={(event) => setRenaming({ ...renaming, name: event.target.value })} aria-label={`New name for ${area.name}`} disabled={busy} />
+                <button type="submit" className="button button-primary" disabled={busy || renaming.name.trim().length < 2}>Save</button>
+                <button type="button" className="button button-secondary" onClick={() => setRenaming(null)} disabled={busy}>Cancel</button>
+              </form>
+            ) : (
+              <span className="set-row-copy">
+                <strong>{area.name}</strong>
+                <small>{area.customerCount} customer{area.customerCount === 1 ? "" : "s"} · {area.orderCount} order{area.orderCount === 1 ? "" : "s"}</small>
+              </span>
+            )}
+            {canManage && renaming?.id !== area.id && (
+              <span className="cat-actions">
+                <button type="button" className="report-icon-button" onClick={() => { setRenaming({ id: area.id, name: area.name }); setError(""); }} aria-label={`Rename ${area.name}`} title="Rename" disabled={busy}><PencilLine size={13} /></button>
+                <button type="button" className="report-icon-button cat-delete" onClick={() => remove(area)} aria-label={`Remove ${area.name}`} title="Remove" disabled={busy}><X size={13} /></button>
+              </span>
+            )}
+          </div>
+        ))}
+        <div className="cat-row area-row area-builtin">
+          <span className="set-row-icon"><MapPin size={15} /></span>
+          <span className="set-row-copy"><strong>{OTHER_AREA}</strong><small>Always available — the customer types the place</small></span>
+        </div>
+      </div>
+      {!canManage && <p className="team-muted">Only an Admin or Store manager can change areas.</p>}
+      {confirmDialog}
+      {toast}
+    </SettingsCard>
   );
 }
 
@@ -5623,6 +5862,7 @@ function SettingsPage({ onLogout, session, settingsResource }) {
         )}
 
         {active === "categories" && <CategoryManager session={session} />}
+        {active === "areas" && <AreaManager session={session} />}
 
         {active === "policies" && (
           <>
@@ -5690,7 +5930,8 @@ function SettingsPage({ onLogout, session, settingsResource }) {
                 <label className="set-field">
                   <span>Free delivery in</span>
                   <select {...bind("freeDeliveryArea")}>
-                    {["No free area", ...CUSTOMER_AREAS.filter((area) => area !== "Other area")].map((option) => <option key={option}>{option}</option>)}
+                    <option value="No free area">No free area</option>
+                    <AreaOptions current={draft.freeDeliveryArea === "No free area" ? "" : draft.freeDeliveryArea} other={false} />
                   </select>
                 </label>
               </div>
