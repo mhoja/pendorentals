@@ -10389,3 +10389,73 @@ button.inv-open:hover .report-id {
 .report-kpis.report-kpis-wide .report-kpis-scope small {
     font-size: 11px;
 }
+
+/* All eight finance cards on one row */
+.report-kpis.report-kpis-wide {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.report-kpis.report-kpis-wide article,
+.report-kpis.report-kpis-wide article:nth-of-type(4n) {
+    border-right: 1px solid #edf1f6;
+}
+
+.report-kpis.report-kpis-wide article:last-of-type {
+    border-right: 0;
+}
+
+.report-kpis.report-kpis-wide article:nth-of-type(n + 5) {
+    border-top: 0;
+}
+
+.report-kpis.report-kpis-wide article {
+    align-content: start;
+    gap: 1px;
+    padding: 8px 10px 9px;
+}
+
+.report-kpis.report-kpis-wide strong {
+    font-size: 13.5px;
+}
+
+.report-kpis.report-kpis-wide small {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.report-kpis.report-kpis-wide .report-kpi-compare {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    margin-top: 3px;
+}
+
+.report-kpis.report-kpis-wide .report-kpi-compare i {
+    font-size: 10px;
+}
+
+@media (max-width: 1250px) {
+    .report-kpis.report-kpis-wide {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .report-kpis.report-kpis-wide article:nth-of-type(4n) {
+        border-right: 0;
+    }
+    .report-kpis.report-kpis-wide article:nth-of-type(n + 5) {
+        border-top: 1px solid #edf1f6;
+    }
+}
+
+@media (max-width: 700px) {
+    .report-kpis.report-kpis-wide {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .report-kpis.report-kpis-wide article:nth-of-type(2n) {
+        border-right: 0;
+    }
+    .report-kpis.report-kpis-wide article:nth-of-type(n + 3) {
+        border-top: 1px solid #edf1f6;
+    }
+}

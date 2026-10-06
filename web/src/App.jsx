@@ -303,23 +303,23 @@ const reportDefinitions = [
         return {
           collected, tithe, giving, net: collected - tithe - giving,
           payments: kept.length, receipts: list.length,
-          average: kept.length ? collected / kept.length : 0,
+          average: kept.length ? Math.round(collected / kept.length) : 0,
           refunded: sumBy(refunds, "amount"), refunds: refunds.length,
           topMethod: topLabel ? { label: topLabel, value: topValue } : null,
         };
       };
       const now = totals(rows);
       const before = previous ? totals(previous) : null;
-      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatTSh, ...extra });
+      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatShillings, ...extra });
       return [
-        card("Total collected", "collected", formatTSh(now.collected), `${now.payments} payment${now.payments === 1 ? "" : "s"}`),
-        card("Tithe", "tithe", formatTSh(now.tithe), "set aside from payments"),
-        card("Giving", "giving", formatTSh(now.giving), "set aside from payments"),
-        card("Net", "net", formatTSh(now.net), "collected − tithe − giving", { tone: now.net < 0 ? "negative" : "" }),
+        card("Total collected", "collected", formatShillings(now.collected), `${now.payments} payment${now.payments === 1 ? "" : "s"}`),
+        card("Tithe", "tithe", formatShillings(now.tithe), "set aside"),
+        card("Giving", "giving", formatShillings(now.giving), "set aside"),
+        card("Net", "net", formatShillings(now.net), "after tithe & giving", { tone: now.net < 0 ? "negative" : "" }),
         card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), "including refunds", { format: (value) => value.toLocaleString("en-US") }),
-        card("Average receipt", "average", formatTSh(now.average), "excluding refunds"),
-        card("Refunded", "refunded", formatTSh(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
-        { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? `${formatTSh(now.topMethod.value)} collected` : "no payments" },
+        card("Average receipt", "average", formatShillings(now.average), "excluding refunds"),
+        card("Refunded", "refunded", formatShillings(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
+        { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? formatShillings(now.topMethod.value) : "no payments" },
       ];
     },
   },
