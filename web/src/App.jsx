@@ -63,7 +63,6 @@ import {
   CalendarCheck,
   Building2,
   PencilLine,
-  UserPlus,
   Banknote,
   ScrollText,
   CreditCard,
@@ -1706,6 +1705,7 @@ function WorkspaceShell({ session, onLogout }) {
   const [inventoryCategories, setInventoryCategories] = useState([]);
   const [inventoryStatus, setInventoryStatus] = useState("loading");
   const [inventoryAddOpen, setInventoryAddOpen] = useState(false);
+  const [customerAddOpen, setCustomerAddOpen] = useState(false);
 
   const loadInventory = useCallback(() => {
     setInventoryStatus("loading");
@@ -1782,7 +1782,7 @@ function WorkspaceShell({ session, onLogout }) {
       />
     );
   } else if (activePage === "Orders") content = <OrdersPage query={query} settings={settings} startCreate={startCreate} onCreateHandled={() => setStartCreate(null)} />;
-  else if (activePage === "Customers") content = <CustomersPage query={query} onNewOrder={(customer) => openNewOrder(customer)} />;
+  else if (activePage === "Customers") content = <CustomersPage query={query} onNewOrder={(customer) => openNewOrder(customer)} addOpen={customerAddOpen} setAddOpen={setCustomerAddOpen} />;
   else if (activePage === "Invoices") content = <InvoicesPage query={query} settings={settings} />;
   else if (activePage === "Finance") content = <FinancePage query={query} session={session} />;
   else if (activePage === "SMS & Notifications") content = <MessagingPage session={session} settingsResource={settingsRes} />;
@@ -1858,6 +1858,9 @@ function WorkspaceShell({ session, onLogout }) {
             <div className="welcome-actions">
               {activePage === "Inventory" && canEditInventory && (
                 <button className="button button-primary" onClick={() => setInventoryAddOpen(true)}><Plus size={17} /> Add items</button>
+              )}
+              {activePage === "Customers" && isManager(session) && (
+                <button className="button button-primary" onClick={() => setCustomerAddOpen(true)}><Plus size={17} /> Add customer</button>
               )}
               {["Overview", "Orders"].includes(activePage) && isManager(session) && (
                 <button className="button button-primary" onClick={() => openNewOrder(null)}><Plus size={17} /> New order</button>
@@ -2581,13 +2584,19 @@ function ExportMenu({ title, columns, rows, disabled }) {
 }
 
 function WsModal({ title, kicker, onClose, wide, busy, className = "", children }) {
+  const backdropRef = useRef(null);
   useEffect(() => {
-    const onKey = (event) => event.key === "Escape" && !busy && onClose();
+    // With modals stacked (e.g. Edit over a profile), Escape closes only the top one.
+    const isTop = () => {
+      const open = document.querySelectorAll(".modal-backdrop");
+      return open[open.length - 1] === backdropRef.current;
+    };
+    const onKey = (event) => event.key === "Escape" && !busy && isTop() && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, busy]);
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+    <div className="modal-backdrop" ref={backdropRef} onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
       <section className={`modal team-modal ws-modal ${wide ? "ws-modal-wide" : ""} ${className}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-heading">
           <div>
@@ -3209,50 +3218,232 @@ function SmsModal({ to, onClose, onSent }) {
   );
 }
 
-function CustomersPage({ query, onNewOrder }) {
+const CUSTOMER_SEGMENTS = ["All customers", "With orders", "No orders yet", "Owes a balance", "Has app login", "No app login"];
+const inSegment = (customer, segment) => ({
+  "With orders": customer.orders > 0,
+  "No orders yet": customer.orders === 0,
+  "Owes a balance": customer.balance > 0,
+  "Has app login": customer.hasLogin,
+  "No app login": !customer.hasLogin,
+}[segment] ?? true);
+const smsKindLabel = (kind) => ({
+  order_created: "Booking created", order_status: "Order update", rental_request: "Rent Now request", customer_invite: "Login details",
+  customer_login: "Login details", payment_receipt: "Payment receipt", manual: "Message",
+}[kind] || "Message");
+
+// Customer profile: details, account totals and full history from GET /api/customers/:id.
+function CustomerProfile({ customerId, onClose, onEdit, onMessage, onNewOrder, onLogin, onRemoveLogin, reloadKey }) {
+  const profile = useResource(`/customers/${customerId}?v=${reloadKey}`);
+  const [tab, setTab] = useState("Orders");
+  const [receipt, setReceipt] = useState(null);
+  const data = profile.data;
+  const customer = data?.customer;
+  const paid = customer?.spent || 0;
+  const tabs = data ? [["Orders", data.orders.length], ["Invoices", data.invoices.length], ["Payments", data.payments.length], ["Messages", data.messages.length]] : [];
+
+  return (
+    <WsModal title={customer ? customer.name : "Customer"} kicker="CUSTOMER PROFILE" onClose={onClose} wide className="cust-profile-modal">
+      {!data ? (
+        <div className="cust-profile-body"><LoadState status={profile.status} error={profile.error} onRetry={profile.reload} /></div>
+      ) : (
+        <div className="cust-profile-body">
+          <section className="cust-profile-head">
+            <div className="customer-avatar peach cust-profile-avatar">{customer.firstName[0]}{customer.lastName[0]}</div>
+            <div className="cust-profile-id">
+              <div className="cust-profile-chips">
+                <span className={`cust-chip ${customer.hasLogin ? "ok" : ""}`}><KeyRound size={12} /> {customer.hasLogin ? "App login active" : "No app login"}</span>
+                {customer.balance > 0 && <span className="cust-chip due"><CircleAlert size={12} /> Owes {formatShillings(customer.balance)}</span>}
+              </div>
+              <ul className="cust-profile-facts">
+                <li><Phone size={13} /> {customer.phone}</li>
+                <li><Mail size={13} /> {customer.email || "No email"}</li>
+                <li><MapPin size={13} /> {[customer.place, customer.area].filter(Boolean).join(", ") || "No location"}</li>
+                <li><CalendarCheck size={13} /> Customer since {shortDate(customer.createdAt)}</li>
+              </ul>
+            </div>
+            <div className="cust-profile-actions">
+              <button type="button" className="button button-primary" onClick={() => onNewOrder(customer)}><Plus size={14} /> New order</button>
+              <button type="button" className="button button-secondary" onClick={() => onMessage(customer)}><MessageSquareText size={14} /> Send SMS</button>
+              <button type="button" className="button button-secondary" onClick={() => onEdit(customer)}><PencilLine size={14} /> Edit</button>
+              <button type="button" className="button button-secondary" onClick={() => onLogin(customer)}><KeyRound size={14} /> {customer.hasLogin ? "New password" : "Create login"}</button>
+              {customer.hasLogin && <button type="button" className="button button-secondary cust-danger" onClick={() => onRemoveLogin(customer)}><Lock size={14} /> Remove access</button>}
+            </div>
+          </section>
+
+          <section className="cust-profile-stats">
+            {[
+              ["Orders", customer.orders, `${customer.activeOrders} active · ${customer.completedOrders} completed`],
+              ["Billed", formatShillings(customer.billed), customer.unpricedOrders ? `${customer.unpricedOrders} awaiting prices` : "priced orders"],
+              ["Paid", formatShillings(paid), data.refunded ? `${formatShillings(data.refunded)} refunded` : `${data.payments.length} payment${data.payments.length === 1 ? "" : "s"}`],
+              ["Balance due", formatShillings(customer.balance), customer.balance > 0 ? "still to collect" : "nothing owed"],
+            ].map(([label, value, hint]) => (
+              <div key={label} className={label === "Balance due" && customer.balance > 0 ? "due" : ""}><small>{label}</small><strong>{value}</strong><em>{hint}</em></div>
+            ))}
+          </section>
+
+          {customer.notes && <p className="cust-notes"><StickyNote size={13} /> {customer.notes}</p>}
+
+          <div className="inv-tabs ws-mini-tabs cust-tabs" role="tablist">
+            {tabs.map(([name, count]) => (
+              <button type="button" key={name} role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""} onClick={() => setTab(name)}>{name}<span>{count}</span></button>
+            ))}
+          </div>
+
+          <div className="cust-history">
+            {tab === "Orders" && (data.orders.length === 0 ? <p className="cust-empty">No orders yet.</p> : (
+              <table className="cust-table">
+                <thead><tr><th>Order</th><th>Event</th><th>Items</th><th>Total</th><th>Balance</th><th>Status</th></tr></thead>
+                <tbody>{data.orders.map((order) => (
+                  <tr key={order.id}>
+                    <td><strong>{order.id}</strong><small>{order.source === "rent_now" ? "Rent Now" : "Staff"}</small></td>
+                    <td>{orderDates(order)}<small>{order.place || order.area || "—"}</small></td>
+                    <td className="cust-items" title={orderItemsText(order.items)}>{orderItemsText(order.items)}</td>
+                    <td>{order.total === null ? <span className="ws-quote">Quote pending</span> : formatShillings(order.total)}</td>
+                    <td>{order.balance ? <b className="cust-due">{formatShillings(order.balance)}</b> : order.total === null ? "—" : "Paid"}</td>
+                    <td><StatusPill tone={orderTone(order.status)}>{order.status}</StatusPill></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            ))}
+            {tab === "Invoices" && (data.invoices.length === 0 ? <p className="cust-empty">No invoices yet.</p> : (
+              <table className="cust-table">
+                <thead><tr><th>Invoice</th><th>Order</th><th>Issued</th><th>Due</th><th>Amount</th><th>Balance</th><th>Status</th><th /></tr></thead>
+                <tbody>{data.invoices.map((invoice) => (
+                  <tr key={invoice.id}>
+                    <td><strong>{invoice.code}</strong></td>
+                    <td>{invoice.orderCode || "—"}</td>
+                    <td>{shortDate(invoice.issuedOn)}</td>
+                    <td>{shortDate(invoice.dueOn)}</td>
+                    <td>{formatShillings(invoice.amount)}</td>
+                    <td>{invoice.balance ? <b className="cust-due">{formatShillings(invoice.balance)}</b> : "—"}</td>
+                    <td><StatusPill tone={invoiceTone(invoice.status)}>{invoice.status}</StatusPill></td>
+                    <td><button type="button" className="report-icon-button" onClick={() => downloadInvoicePdf(invoice)} title="Download PDF" aria-label={`Download ${invoice.code}`}><Download size={13} /></button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            ))}
+            {tab === "Payments" && (data.payments.length === 0 ? <p className="cust-empty">No payments yet.</p> : (
+              <table className="cust-table">
+                <thead><tr><th>Receipt</th><th>Date</th><th>Order</th><th>Method</th><th>Amount</th><th>Status</th><th /></tr></thead>
+                <tbody>{data.payments.map((payment) => (
+                  <tr key={payment.id}>
+                    <td><strong>{payment.receipt}</strong></td>
+                    <td>{shortDate(payment.date)}</td>
+                    <td>{payment.reference}</td>
+                    <td>{payment.method}<small>{payment.transactionRef}</small></td>
+                    <td>{formatShillings(payment.amount)}</td>
+                    <td><StatusPill tone={payment.status === "Paid" ? "green" : "red"}>{payment.status}</StatusPill></td>
+                    <td><button type="button" className="report-icon-button" onClick={() => setReceipt(payment)} title="View receipt" aria-label={`View ${payment.receipt}`}><Eye size={13} /></button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            ))}
+            {tab === "Messages" && (data.messages.length === 0 ? <p className="cust-empty">No SMS sent to this number yet.</p> : (
+              <ul className="cust-messages">{data.messages.map((message) => (
+                <li key={message.id}>
+                  <header><strong>{smsKindLabel(message.kind)}</strong><span>{new Date(message.sentAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span><StatusPill tone={message.status === "sent" ? "green" : message.status === "failed" ? "red" : "amber"}>{message.status === "sent" ? "Sent" : message.status === "failed" ? "Failed" : "Not sent"}</StatusPill></header>
+                  <p>{message.message}</p>
+                </li>
+              ))}</ul>
+            ))}
+          </div>
+        </div>
+      )}
+      {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+    </WsModal>
+  );
+}
+
+function CustomersPage({ query, onNewOrder, addOpen, setAddOpen }) {
   const { call, session } = useApi();
   const customers = useResource("/customers");
   const [search, setSearch] = useState("");
   const [areaFilter, setAreaFilter] = useState("All areas");
+  const [segment, setSegment] = useState("All customers");
   const joined = useDateRange();
   const [editing, setEditing] = useState(null);
   const [messaging, setMessaging] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [credentials, setCredentials] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  const [profileVersion, setProfileVersion] = useState(0);
   const [toast, setToast] = useToast();
+  const [ask, confirmDialog] = useConfirm();
   const list = customers.data?.customers || [];
+
+  useEffect(() => {
+    if (addOpen) {
+      setEditing("new");
+      setAddOpen(false);
+    }
+  }, [addOpen, setAddOpen]);
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const rows = list.filter((customer) => (areaFilter === "All areas" || customer.area === areaFilter)
+    && inSegment(customer, segment)
     && joined.matches(customer.createdAt)
     && words.every((word) => `${customer.name} ${customer.phone} ${customer.email} ${customer.area} ${customer.place}`.toLowerCase().includes(word)));
   const monthStart = `${localTodayIso().slice(0, 7)}-01`;
   const totalSpent = rows.reduce((sum, customer) => sum + customer.spent, 0);
-  const customersFiltered = Boolean(search) || areaFilter !== "All areas" || joined.active;
-  const clearCustomerFilters = () => { setSearch(""); setAreaFilter("All areas"); joined.reset(); };
-  const exportRows = rows.map((customer) => [customer.name, customer.phone, customer.email, customer.area, customer.place, customer.orders, customer.lastOrder || "", formatShillings(customer.spent)]);
+  const owing = rows.filter((customer) => customer.balance > 0);
+  const newThisMonth = rows.filter((customer) => localDay(customer.createdAt) >= monthStart).length;
+  const customersFiltered = Boolean(search) || areaFilter !== "All areas" || segment !== "All customers" || joined.active;
+  const clearCustomerFilters = () => { setSearch(""); setAreaFilter("All areas"); setSegment("All customers"); joined.reset(); };
+  const exportRows = rows.map((customer) => [customer.name, customer.phone, customer.email, customer.area, customer.place, customer.orders, customer.lastOrder || "", formatShillings(customer.billed), formatShillings(customer.spent), formatShillings(customer.balance), customer.hasLogin ? "Yes" : "No", localDay(customer.createdAt)]);
+
+  // Keeps the table and an open profile in step after any change.
+  function applyCustomer(updated) {
+    customers.setData((current) => ({ ...current, customers: current.customers.map((entry) => (entry.id === updated.id ? updated : entry)) }));
+    setProfileVersion((value) => value + 1);
+  }
+
+  async function sendLogin(customer) {
+    const ok = await ask(customer.hasLogin
+      ? { title: `Send ${customer.firstName} a new password?`, message: `A new password goes by SMS to ${customer.phone}. Their old password stops working and they are signed out.`, confirmLabel: "Yes, send new password" }
+      : { title: `Create an app login for ${customer.firstName}?`, message: `They can track orders and payments. The login goes by SMS to ${customer.phone}.`, confirmLabel: "Yes, create login" });
+    if (!ok) return;
+    try {
+      const data = await call(`/customers/${customer.id}/login`, { method: "POST" });
+      applyCustomer(data.customer);
+      if (data.temporaryPassword) setCredentials({ phone: data.customer.phone, password: data.temporaryPassword });
+      setToast(data.sms.status === "sent" ? `Login sent to ${data.customer.phone}` : "SMS not sent — share the password shown");
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
+
+  async function removeLogin(customer) {
+    const ok = await ask({ title: `Remove ${customer.firstName}’s app access?`, message: "They are signed out and can’t sign in until you create a new login. Their orders and payments stay.", confirmLabel: "Yes, remove access", danger: true });
+    if (!ok) return;
+    try {
+      const data = await call(`/customers/${customer.id}/login`, { method: "DELETE" });
+      applyCustomer(data.customer);
+      setToast(`${customer.firstName}’s app access removed`);
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
 
   return (
     <>
       <section className="inv-stats">
         {[
-          [Users, "Customers", rows.length, customersFiltered ? "matching filters" : "registered", "blue"],
-          [CalendarCheck, "With orders", rows.filter((customer) => customer.orders > 0).length, "have booked at least once", "mint"],
-          [UserPlus, "New this month", rows.filter((customer) => localDay(customer.createdAt) >= monthStart).length, "joined since the 1st", "purple"],
-          [Banknote, "Lifetime revenue", formatShillings(totalSpent), customersFiltered ? "paid by these customers" : "paid by all customers", "orange"],
+          [Users, "Customers", rows.length, `${newThisMonth} new this month${customersFiltered ? " · filtered" : ""}`, "blue"],
+          [CalendarCheck, "With orders", rows.filter((customer) => customer.orders > 0).length, `${rows.filter((customer) => customer.activeOrders > 0).length} with active rentals`, "mint"],
+          [CircleAlert, "Balance due", formatShillings(owing.reduce((sum, customer) => sum + customer.balance, 0)), `${owing.length} customer${owing.length === 1 ? " owes" : "s owe"}`, "orange"],
+          [Banknote, "Lifetime revenue", formatShillings(totalSpent), customersFiltered ? "paid by these customers" : "paid by all customers", "purple"],
         ].map(([Icon, label, value, hint, tone]) => (
           <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
         ))}
       </section>
       <section className="panel inv-panel">
         <div className="inv-toolbar">
-          <div><div className="panel-kicker">PEOPLE WHO RENT FROM YOU</div><h2 className="ws-title">Customers <span className="heading-count">{rows.length}</span></h2></div>
           <div className="inv-toolbar-actions">
             <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, email" aria-label="Search customers" /></label>
             <select className="inv-select" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} aria-label="Filter by area"><option value="All areas">All areas</option><AreaOptions current={areaFilter === "All areas" ? "" : areaFilter} /></select>
+            <select className="inv-select" value={segment} onChange={(event) => setSegment(event.target.value)} aria-label="Filter customers">{CUSTOMER_SEGMENTS.map((option) => <option key={option}>{option}</option>)}</select>
             <DateRangeFilter range={joined} label="Joined" />
             <ClearFiltersButton active={customersFiltered} onClear={clearCustomerFilters} />
-            <ExportMenu title="Customers" columns={["Name", "Phone", "Email", "Area", "Venue", "Orders", "Last order", "Spent"]} rows={exportRows} />
-            <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add customer</button>
+            <ExportMenu title="Customers" columns={["Name", "Phone", "Email", "Area", "Venue", "Orders", "Last event", "Billed", "Paid", "Balance", "App login", "Joined"]} rows={exportRows} />
           </div>
         </div>
         <LoadState status={customers.status} error={customers.error} onRetry={customers.reload} empty={customers.status === "ready" && list.length === 0 ? "No customers yet" : ""} emptyIcon={Users} emptyText="Customers appear here when they use Rent Now or when you add them." />
@@ -3260,22 +3451,26 @@ function CustomersPage({ query, onNewOrder }) {
           <>
             <DataTable
               columns={[
-                { key: "name", label: "CUSTOMER", render: (row) => <div className="customer-cell"><div className="customer-avatar peach">{row.firstName[0]}{row.lastName[0]}</div><span><strong>{row.name}</strong><small>{row.email || "No email"}</small></span></div> },
-                { key: "phone", label: "PHONE", render: (row) => <span className="team-muted">{row.phone}</span> },
+                { key: "name", label: "CUSTOMER", render: (row) => <button type="button" className="customer-cell cust-open" onClick={() => setViewing(row.id)} title="Open profile"><div className="customer-avatar peach">{row.firstName[0]}{row.lastName[0]}</div><span><strong>{row.name}</strong><small>{row.email || "No email"}</small></span></button> },
+                { key: "phone", label: "PHONE", render: (row) => <div className="ws-two-line"><span className="team-muted">{row.phone}</span><small className={`cust-login ${row.hasLogin ? "ok" : ""}`}>{row.hasLogin ? "App login" : "No login"}</small></div> },
                 { key: "area", label: "LOCATION", render: (row) => <div className="ws-two-line"><strong>{row.area || "—"}</strong><small>{row.place}</small></div> },
                 { key: "orders", label: "ORDERS", render: (row) => <strong className="inv-qty">{row.orders}</strong> },
                 { key: "lastOrder", label: "LAST EVENT", render: (row) => <span className="team-muted">{shortDate(row.lastOrder)}</span> },
                 { key: "spent", label: "PAID", render: (row) => <strong className="inv-qty">{formatShillings(row.spent)}</strong> },
+                { key: "balance", label: "BALANCE", render: (row) => (row.balance > 0 ? <strong className="cust-due">{formatShillings(row.balance)}</strong> : <span className="team-muted">—</span>) },
               ]}
               rows={rows}
               itemLabel="customers"
               totalCount={list.length}
               rowKey="id"
               renderActions={(row) => [
+                { label: "View profile", onClick: () => setViewing(row.id) },
                 { label: "New order", onClick: () => onNewOrder(row) },
                 { label: "Send SMS", onClick: () => setMessaging(row) },
                 { label: "Edit customer", onClick: () => setEditing(row) },
-                ...(session.staffRole === "Admin" ? [{ label: "Delete customer", danger: true, onClick: () => setDeleting(row) }] : []),
+                { label: row.hasLogin ? "Send new password" : "Create app login", onClick: () => sendLogin(row) },
+                ...(row.hasLogin ? [{ label: "Remove app access", danger: true, onClick: () => removeLogin(row) }] : []),
+                ...(session.staffRole === "Admin" && row.orders === 0 && row.spent === 0 ? [{ label: "Delete customer", danger: true, onClick: () => setDeleting(row) }] : []),
               ]}
             />
           </>
@@ -3286,14 +3481,27 @@ function CustomersPage({ query, onNewOrder }) {
           customer={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
           onSaved={(data, created) => {
-            customers.setData((current) => ({ ...current, customers: created ? [data.customer, ...current.customers] : current.customers.map((entry) => (entry.id === data.customer.id ? data.customer : entry)) }));
+            if (created) customers.setData((current) => ({ ...current, customers: [data.customer, ...current.customers] }));
+            else applyCustomer(data.customer);
             setEditing(null);
             if (data.temporaryPassword) setCredentials({ phone: data.customer.phone, password: data.temporaryPassword });
             setToast(`${data.customer.name} ${created ? "added" : "updated"}${data.sms ? (data.sms.status === "sent" ? " · login sent by SMS" : " · SMS not sent") : ""}`);
           }}
         />
       )}
-      {messaging && <SmsModal to={messaging} onClose={() => setMessaging(null)} onSent={(sms) => { setMessaging(null); setToast(sms.status === "sent" ? "SMS sent" : `SMS not sent (${sms.status === "not_configured" ? "SMS not set up" : sms.error || "failed"})`); }} />}
+      {viewing && (
+        <CustomerProfile
+          customerId={viewing}
+          reloadKey={profileVersion}
+          onClose={() => setViewing(null)}
+          onEdit={(customer) => setEditing(customer)}
+          onMessage={(customer) => setMessaging(customer)}
+          onNewOrder={(customer) => { setViewing(null); onNewOrder(customer); }}
+          onLogin={sendLogin}
+          onRemoveLogin={removeLogin}
+        />
+      )}
+      {messaging && <SmsModal to={messaging} onClose={() => setMessaging(null)} onSent={(sms) => { setMessaging(null); setProfileVersion((value) => value + 1); setToast(sms.status === "sent" ? "SMS sent" : `SMS not sent (${sms.status === "not_configured" ? "SMS not set up" : sms.error || "failed"})`); }} />}
       {deleting && (
         <InventoryConfirmDelete
           item={{ name: deleting.name, quantity: 0, sku: deleting.phone }}
@@ -3311,6 +3519,7 @@ function CustomersPage({ query, onNewOrder }) {
           <div className="team-form"><TempPasswordNote phone={credentials.phone} password={credentials.password} /><div className="modal-actions"><button className="button button-primary" onClick={() => setCredentials(null)}>Done</button></div></div>
         </WsModal>
       )}
+      {confirmDialog}
       {toast}
     </>
   );

@@ -1,8 +1,10 @@
-import { query } from '../config/db.js';
+import { query, transaction } from '../config/db.js';
 import { hashPassword, newTemporaryPassword } from '../services/auth.service.js';
 import { HttpError, cleanText, isEmail, isPhone, normalizePhone, prettyPhone } from '../utils/helpers.js';
 import { getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
+import { loadOrders } from '../services/orders.service.js';
+import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
 
@@ -14,7 +16,25 @@ const CUSTOMER_SELECT = `
       from customers c
       left join orders o on o.customer_id = c.id`;
 
-const shape = (row) => ({
+// Billed, paid and outstanding per customer, from their priced orders that aren't cancelled.
+function accountTotals(orders) {
+    const totals = { billed: 0, balance: 0, activeOrders: 0, completedOrders: 0, unpricedOrders: 0 };
+    for (const order of orders) {
+        if (order.status === 'Cancelled') continue;
+        if (order.total === null) totals.unpricedOrders += 1;
+        else {
+            totals.billed += order.total;
+            totals.balance += order.balance || 0;
+        }
+        if (['Confirmed', 'Ready for pickup', 'Out for delivery'].includes(order.status)) totals.activeOrders += 1;
+        if (order.status === 'Completed') totals.completedOrders += 1;
+    }
+    return totals;
+}
+
+const loadCustomerRow = async (id) => (await query(`${CUSTOMER_SELECT} where c.id = $1 group by c.id`, [id])).rows[0];
+
+const shape = (row, orders = []) => ({
     id: row.id,
     firstName: row.first_name,
     lastName: row.last_name,
@@ -29,6 +49,7 @@ const shape = (row) => ({
     spent: row.spent,
     hasLogin: Boolean(row.password_hash),
     createdAt: row.created_at,
+    ...accountTotals(orders),
 });
 
 function validate(body, { partial }) {
@@ -48,8 +69,70 @@ function validate(body, { partial }) {
 
 // GET /api/customers
 export async function listCustomers(_request, response) {
-    const { rows } = await query(`${CUSTOMER_SELECT} group by c.id order by c.created_at desc`);
-    response.json({ customers: rows.map(shape) });
+    const [{ rows }, orders] = await Promise.all([
+        query(`${CUSTOMER_SELECT} group by c.id order by c.created_at desc`),
+        loadOrders(),
+    ]);
+    response.json({ customers: rows.map((row) => shape(row, orders.filter((order) => order.customer.id === row.id))) });
+}
+
+// GET /api/customers/:id — profile with orders, invoices, payments and SMS history.
+export async function getCustomer(request, response) {
+    const id = Number(request.params.id);
+    const row = Number.isInteger(id) ? await loadCustomerRow(id) : null;
+    if (!row) throw new HttpError(404, 'Customer not found.');
+    const [orders, invoices, payments, messages] = await Promise.all([
+        loadOrders('o.customer_id = $1', [id]),
+        query(`${INVOICE_SELECT} where i.customer_id = $1 order by i.id desc`, [id]),
+        query(`${PAYMENT_SELECT} where p.customer_id = $1 order by p.paid_on desc, p.id desc`, [id]),
+        query('select id, message, kind, status, error, created_at from sms_log where phone = $1 order by id desc limit 100', [row.phone]),
+    ]);
+    const paymentRows = payments.rows.map(shapePayment);
+    response.json({
+        customer: shape(row, orders),
+        orders,
+        invoices: invoices.rows.map(shapeInvoice),
+        payments: paymentRows,
+        messages: messages.rows.map((message) => ({
+            id: message.id, message: message.message, kind: message.kind, status: message.status, error: message.error || '', sentAt: message.created_at,
+        })),
+        refunded: paymentRows.filter((payment) => payment.status === 'Refunded').reduce((sum, payment) => sum + payment.amount, 0),
+    });
+}
+
+// POST /api/customers/:id/login — creates or resets the customer's app login and SMSes it.
+export async function resetCustomerLogin(request, response) {
+    const id = Number(request.params.id);
+    const row = Number.isInteger(id) ? await loadCustomerRow(id) : null;
+    if (!row) throw new HttpError(404, 'Customer not found.');
+    const password = newTemporaryPassword();
+    await transaction(async (db) => {
+        await db.query('update customers set password_hash = $2 where id = $1', [id, hashPassword(password)]);
+        await db.query("delete from sessions where kind = 'customer' and subject_id = $1", [id]);
+    });
+    const settings = await getSettings();
+    const sms = await sendSms(row.phone, `Hi ${row.first_name}, your ${settings.businessName} login: ${publicUrl} - Username: ${row.phone}, Password: ${password}. Help: ${settings.phone}`, { kind: 'customer_login' });
+    const created = !row.password_hash;
+    const orders = await loadOrders('o.customer_id = $1', [id]);
+    response.json({
+        customer: shape(await loadCustomerRow(id), orders),
+        created,
+        sms: { status: sms.status },
+        temporaryPassword: sms.status !== 'sent' ? password : undefined,
+    });
+}
+
+// DELETE /api/customers/:id/login — removes app access; the customer record stays.
+export async function removeCustomerLogin(request, response) {
+    const id = Number(request.params.id);
+    const row = Number.isInteger(id) ? await loadCustomerRow(id) : null;
+    if (!row) throw new HttpError(404, 'Customer not found.');
+    await transaction(async (db) => {
+        await db.query('update customers set password_hash = null where id = $1', [id]);
+        await db.query("delete from sessions where kind = 'customer' and subject_id = $1", [id]);
+    });
+    const orders = await loadOrders('o.customer_id = $1', [id]);
+    response.json({ customer: shape(await loadCustomerRow(id), orders) });
 }
 
 // POST /api/customers
@@ -70,13 +153,13 @@ export async function createCustomer(request, response) {
         const settings = await getSettings();
         sms = await sendSms(value.phone, `Karibu ${value.first_name}! Your ${settings.businessName} account is ready. Sign in at ${publicUrl} - Username: ${value.phone}, Password: ${password}. Help: ${settings.phone}`, { kind: 'customer_invite' });
     }
-    const { rows: [row] } = await query(`${CUSTOMER_SELECT} where c.id = $1 group by c.id`, [inserted.id]);
-    response.status(201).json({ customer: shape(row), sms: sms && { status: sms.status }, temporaryPassword: password && sms?.status !== 'sent' ? password : undefined });
+    response.status(201).json({ customer: shape(await loadCustomerRow(inserted.id)), sms: sms && { status: sms.status }, temporaryPassword: password && sms?.status !== 'sent' ? password : undefined });
 }
 
 // PATCH /api/customers/:id
 export async function updateCustomer(request, response) {
     const id = Number(request.params.id);
+    if (!Number.isInteger(id)) throw new HttpError(404, 'Customer not found.');
     const value = validate(request.body || {}, { partial: true });
     if (value.phone) {
         const { rows } = await query('select 1 from customers where phone = $1 and id <> $2', [value.phone, id]);
@@ -86,13 +169,13 @@ export async function updateCustomer(request, response) {
     if (!keys.length) throw new HttpError(400, 'Nothing to update.');
     const { rowCount } = await query(`update customers set ${keys.map((key, index) => `${key} = $${index + 2}`).join(', ')} where id = $1`, [id, ...keys.map((key) => value[key])]);
     if (!rowCount) throw new HttpError(404, 'Customer not found.');
-    const { rows: [row] } = await query(`${CUSTOMER_SELECT} where c.id = $1 group by c.id`, [id]);
-    response.json({ customer: shape(row) });
+    response.json({ customer: shape(await loadCustomerRow(id), await loadOrders('o.customer_id = $1', [id])) });
 }
 
 // DELETE /api/customers/:id
 export async function deleteCustomer(request, response) {
     const id = Number(request.params.id);
+    if (!Number.isInteger(id)) throw new HttpError(404, 'Customer not found.');
     const { rows: [usage] } = await query('select (select count(*) from orders where customer_id = $1) + (select count(*) from payments where customer_id = $1) as n', [id]);
     if (usage.n > 0) throw new HttpError(409, 'This customer has orders or payments and cannot be deleted.');
     const { rowCount } = await query('delete from customers where id = $1', [id]);
