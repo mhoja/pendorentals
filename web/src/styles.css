@@ -8792,3 +8792,24 @@ button:not(.nav-link):not(.button-primary):not(.danger) {
 .inv-dim-input input {
     color: #172a45 !important;
 }
+
+.inv-date-range {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.inv-date-range input {
+    height: 38px;
+    padding: 0 8px;
+    border: 1px solid #d8e5f7;
+    border-radius: 9px;
+    background: #f8fbff;
+    color: #354a64;
+    font: 600 12.5px 'DM Sans', sans-serif;
+}
+
+.inv-date-range i {
+    color: #8592a6;
+    font-style: normal;
+}

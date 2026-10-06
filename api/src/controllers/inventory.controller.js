@@ -62,7 +62,7 @@ async function nextSku(db, category) {
 
 // GET /api/inventory
 export async function listInventory(_request, response) {
-    const [{ rows }, categories] = await Promise.all([query('select * from inventory_items order by name'), listCategories()]);
+    const [{ rows }, categories] = await Promise.all([query('select * from inventory_items order by created_at desc, name'), listCategories()]);
     response.json({ items: rows.map(shape), categories });
 }
 

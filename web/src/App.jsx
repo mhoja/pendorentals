@@ -218,7 +218,6 @@ async function downloadTableReport(title, columns, rows, format, options = {}) {
   pdfDocument.save(`${fileName}.pdf`);
 }
 
-const REPORT_TODAY = "2026-10-01";
 const BUSINESS_INFO = {
   name: "Pendo Rentals",
   workspace: "Pendo Outdoors",
@@ -526,14 +525,15 @@ function shiftIsoDate(iso, days) {
 const reportPeriods = ["All time", "Today", "Last 7 days", "Last 30 days", "This month", "Last month", "This year", "Custom range"];
 
 function getPeriodRange(period, from, to) {
-  const monthStart = `${REPORT_TODAY.slice(0, 7)}-01`;
+  const today = localTodayIso();
+  const monthStart = `${today.slice(0, 7)}-01`;
   const lastMonthEnd = shiftIsoDate(monthStart, -1);
-  if (period === "Today") return [REPORT_TODAY, REPORT_TODAY];
-  if (period === "Last 7 days") return [shiftIsoDate(REPORT_TODAY, -6), REPORT_TODAY];
-  if (period === "Last 30 days") return [shiftIsoDate(REPORT_TODAY, -29), REPORT_TODAY];
-  if (period === "This month") return [monthStart, REPORT_TODAY];
+  if (period === "Today") return [today, today];
+  if (period === "Last 7 days") return [shiftIsoDate(today, -6), today];
+  if (period === "Last 30 days") return [shiftIsoDate(today, -29), today];
+  if (period === "This month") return [monthStart, today];
   if (period === "Last month") return [`${lastMonthEnd.slice(0, 7)}-01`, lastMonthEnd];
-  if (period === "This year") return [`${REPORT_TODAY.slice(0, 4)}-01-01`, REPORT_TODAY];
+  if (period === "This year") return [`${today.slice(0, 4)}-01-01`, today];
   if (period === "Custom range") return [from, to];
   return ["", ""];
 }
@@ -2154,6 +2154,9 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
   const [statusFilter, setStatusFilter] = useState("All items");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState("All time");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [toast, setToast] = useState("");
@@ -2174,24 +2177,36 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
   }
 
   const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const visible = items.filter((item) => {
+  const [from, to] = getPeriodRange(period, customFrom, customTo);
+  const addedOn = (item) => {
+    const date = new Date(item.createdAt);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  };
+  // Every filter except status; the status tabs count within this set.
+  const scoped = items.filter((item) => {
     const text = `${item.name} ${item.sku} ${item.category}`.toLowerCase();
+    const day = addedOn(item);
     return words.every((word) => text.includes(word))
-      && (statusFilter === "All items" || item.status === statusFilter)
-      && (categoryFilter === "All categories" || item.category === categoryFilter);
+      && (categoryFilter === "All categories" || item.category === categoryFilter)
+      && (!from || day >= from)
+      && (!to || day <= to);
   });
-  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
-  const dailyValue = items.filter((item) => item.status === "Available").reduce((sum, item) => sum + item.rate * item.quantity, 0);
-  const maintenance = items.filter((item) => item.status === "Maintenance").length;
-  const usedCategories = categories.filter((category) => items.some((item) => item.category === category.name));
-  const filtersActive = search || statusFilter !== "All items" || categoryFilter !== "All categories";
+  const visible = scoped
+    .filter((item) => statusFilter === "All items" || item.status === statusFilter)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const totalUnits = visible.reduce((sum, item) => sum + item.quantity, 0);
+  const dailyValue = visible.filter((item) => item.status === "Available").reduce((sum, item) => sum + item.rate * item.quantity, 0);
+  const maintenance = visible.filter((item) => item.status === "Maintenance").length;
+  const usedCategories = categories.filter((category) => visible.some((item) => item.category === category.name));
+  const filtersActive = search || statusFilter !== "All items" || categoryFilter !== "All categories" || period !== "All time";
+  const filteredNote = filtersActive ? "matching filters" : null;
 
   return (
     <>
       <section className="inv-stats">
         {[
-          [Package, "Products", items.length.toLocaleString("en-US"), `${usedCategories.length} categor${usedCategories.length === 1 ? "y" : "ies"}`, "blue"],
-          [Layers, "Total units", totalUnits.toLocaleString("en-US"), "in stock", "mint"],
+          [Package, "Products", visible.length.toLocaleString("en-US"), `${usedCategories.length} categor${usedCategories.length === 1 ? "y" : "ies"}${filteredNote ? ` · ${filteredNote}` : ""}`, "blue"],
+          [Layers, "Total units", totalUnits.toLocaleString("en-US"), filteredNote || "in stock", "mint"],
           [Banknote, "Rental value / day", formatShillings(dailyValue), "if all available units rent", "purple"],
           [Wrench, "In maintenance", maintenance.toLocaleString("en-US"), maintenance ? "not rentable now" : "all good", "orange"],
         ].map(([Icon, label, value, hint, tone]) => (
@@ -2214,7 +2229,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
                 onClick={() => setStatusFilter(option)}
               >
                 {option}
-                <span>{option === "All items" ? items.length : items.filter((item) => item.status === option).length}</span>
+                <span>{option === "All items" ? scoped.length : scoped.filter((item) => item.status === option).length}</span>
               </button>
             ))}
           </div>
@@ -2226,6 +2241,16 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
             <select className="inv-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
               {["All categories", ...categories.map((category) => category.name)].map((option) => <option key={option}>{option}</option>)}
             </select>
+            <select className="inv-select" value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Filter by date added">
+              {reportPeriods.map((option) => <option key={option} value={option}>{option === "All time" ? "Added: any time" : `Added: ${option.toLowerCase()}`}</option>)}
+            </select>
+            {period === "Custom range" && (
+              <span className="inv-date-range">
+                <input type="date" value={customFrom} max={customTo || undefined} onChange={(event) => setCustomFrom(event.target.value)} aria-label="Added from" />
+                <i>–</i>
+                <input type="date" value={customTo} min={customFrom || undefined} onChange={(event) => setCustomTo(event.target.value)} aria-label="Added to" />
+              </span>
+            )}
           </div>
         </div>
 
@@ -2261,7 +2286,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
                 { key: "rate", label: "DAILY RATE", render: (row) => <span className="inv-rate"><strong>{formatShillings(row.rate)}</strong> / day</span> },
                 { key: "quantity", label: "QUANTITY", render: (row) => <span className="inv-qty">{row.quantity.toLocaleString("en-US")} <small>units</small></span> },
                 { key: "status", label: "STATUS", render: (row) => <span className={`status-pill ${row.status === "Available" ? "green" : "amber"}`}><i />{row.status}</span> },
-                { key: "updatedAt", label: "UPDATED", render: (row) => <span className="inv-updated">{new Date(row.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span> },
+                { key: "createdAt", label: "ADDED", render: (row) => <span className="inv-updated">{new Date(row.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span> },
               ]}
               rows={visible}
               rowKey="id"
@@ -2286,7 +2311,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
             <div className="table-bottom inv-bottom">
               <span>Showing <strong>{visible.length}</strong> of {items.length} items</span>
               {filtersActive && (
-                <button className="report-clear" onClick={() => { setSearch(""); setStatusFilter("All items"); setCategoryFilter("All categories"); }}>
+                <button className="report-clear" onClick={() => { setSearch(""); setStatusFilter("All items"); setCategoryFilter("All categories"); setPeriod("All time"); setCustomFrom(""); setCustomTo(""); }}>
                   <RotateCcw size={12} /> Clear filters
                 </button>
               )}
@@ -2301,7 +2326,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
           onClose={() => setAddOpen(false)}
           onSave={async (newItems) => {
             const { items: created } = await call("/inventory", { method: "POST", body: { items: newItems } });
-            setItems((current) => [...current, ...created].sort((a, b) => a.name.localeCompare(b.name)));
+            setItems((current) => [...created, ...current]);
             setAddOpen(false);
             setToast(`${created.length} item${created.length === 1 ? "" : "s"} added to inventory`);
           }}
@@ -2314,7 +2339,7 @@ function InventoryManager({ session, query, items, setItems, categories = [], st
           onClose={() => setEditing(null)}
           onSave={async (changes) => {
             const { item } = await call(`/inventory/${editing.id}`, { method: "PATCH", body: changes });
-            setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)).sort((a, b) => a.name.localeCompare(b.name)));
+            setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)));
             setEditing(null);
             setToast(`${item.name} updated`);
           }}
