@@ -100,6 +100,7 @@ import {
   PackageCheck,
   StickyNote,
   Flag,
+  Layers,
 } from "lucide-react";
 
 const navigation = [
@@ -384,7 +385,7 @@ function Metric({ icon: Icon, label, value, change, kind, color, caption }) {
   );
 }
 
-function getReportData(page, orders) {
+function getReportData(page, orders, inventoryItems = inventory) {
   if (page === "Customers") {
     return {
       title: "Customers",
@@ -404,7 +405,7 @@ function getReportData(page, orders) {
     return {
       title: "Inventory",
       columns: ["Item", "Category", "SKU", "Rate (TSh/day)", "Quantity", "Status"],
-      rows: inventory.map((item) => [item.name, item.category, item.sku, `TSh ${item.rate}`, item.quantity, item.status]),
+      rows: inventoryItems.map((item) => [item.name, item.category, item.sku, `TSh ${Number(item.rate).toLocaleString("en-US")}`, item.quantity, item.status]),
     };
   }
   if (page === "Invoices") {
@@ -1927,12 +1928,27 @@ function Workspace({ session, onLogout }) {
   const [saved, setSaved] = useState(false);
   const [exportError, setExportError] = useState("");
 
-  const filteredInventory = inventory.filter((item) =>
-    `${item.name} ${item.category} ${item.sku}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [inventoryStatus, setInventoryStatus] = useState("loading");
+  const [inventoryAddOpen, setInventoryAddOpen] = useState(false);
   const isInventory = activePage === "Inventory";
+
+  function loadInventory() {
+    setInventoryStatus("loading");
+    api("/inventory", { token: session.token })
+      .then(({ items }) => {
+        setInventoryItems(items);
+        setInventoryStatus("ready");
+      })
+      .catch((error) => {
+        if (error.status === 401) onLogout();
+        setInventoryStatus("error");
+      });
+  }
+
+  useEffect(() => {
+    loadInventory();
+  }, [session.token]);
 
   function changePage(label) {
     setActivePage(label);
@@ -1965,7 +1981,9 @@ function Workspace({ session, onLogout }) {
         </a>
         <div className="nav-caption">WORKSPACE</div>
         <nav className="main-nav" aria-label="Main navigation">
-          {navigation.map(({ label, icon: Icon, count }) => (
+          {navigation.map(({ label, icon: Icon, count: sampleCount }) => {
+            const count = label === "Inventory" ? (inventoryStatus === "ready" ? String(inventoryItems.length) : null) : sampleCount;
+            return (
             <button
               key={label}
               className={`nav-link ${activePage === label ? "active" : ""}`}
@@ -1981,7 +1999,8 @@ function Workspace({ session, onLogout }) {
                 </span>
               )}
             </button>
-          ))}
+          );
+          })}
         </nav>
         <div className="nav-caption manage-caption">MANAGE</div>
         <nav className="main-nav" aria-label="Management navigation">
@@ -2117,9 +2136,9 @@ function Workspace({ session, onLogout }) {
               {(isInventory || activePage === "Overview") && (
                 <button
                   className="button button-primary"
-                  onClick={() => setModal(isInventory ? "item" : "booking")}
+                  onClick={() => (isInventory ? setInventoryAddOpen(true) : setModal("booking"))}
                 >
-                  <Plus size={17} /> {isInventory ? "Add an item" : "New booking"}
+                  <Plus size={17} /> {isInventory ? "Add items" : "New booking"}
                 </button>
               )}
             </div>
@@ -2127,9 +2146,16 @@ function Workspace({ session, onLogout }) {
           )}
 
           {isInventory ? (
-            <InventoryView
-              items={filteredInventory}
-              onAdd={() => setModal("item")}
+            <InventoryManager
+              session={session}
+              query={query}
+              items={inventoryItems}
+              setItems={setInventoryItems}
+              status={inventoryStatus}
+              reload={loadInventory}
+              addOpen={inventoryAddOpen}
+              setAddOpen={setInventoryAddOpen}
+              onUnauthorized={onLogout}
             />
           ) : activePage === "Overview" ? (
             <>
@@ -2429,7 +2455,7 @@ function Workspace({ session, onLogout }) {
           onSave={() => setSaved(true)}
           onExport={async (format) => {
             try {
-              const report = getReportData(activePage, orders);
+              const report = getReportData(activePage, orders, inventoryItems);
               await downloadTableReport(report.title, report.columns, report.rows, format);
               setExportError("");
               setModal("");
@@ -2446,105 +2472,497 @@ function Workspace({ session, onLogout }) {
   );
 }
 
-function InventoryView({ items, onAdd }) {
-  const [filter, setFilter] = useState("All items");
-  const visibleItems =
-    filter === "All items"
-      ? items
-      : items.filter((item) => item.status === filter);
-  return (
-    <section className="panel full-inventory-panel">
-      <div className="inventory-toolbar">
-        <div className="filter-tabs">
-          {["All items", "Available", "Rented"].map((option) => (
-            <button
-              key={option}
-              className={filter === option ? "selected" : ""}
-              onClick={() => setFilter(option)}
-            >
-              {option}
-              <span>
-                {option === "All items"
-                  ? 248
-                  : option === "Available"
-                    ? 176
-                    : 72}
-              </span>
-            </button>
-          ))}
+const INVENTORY_CATEGORIES = [
+  "Tents", "Chairs", "Tables", "Seat covers", "Lighting", "Carpets", "Sound (PA & mics)",
+  "Screens & cameras", "Light boxes", "Utensils", "Décor", "Other",
+];
+
+const categoryIcons = {
+  Tents: Tent,
+  Chairs: Armchair,
+  Tables: PanelTop,
+  "Seat covers": Shirt,
+  Lighting: Lightbulb,
+  Carpets: RectangleHorizontal,
+  "Sound (PA & mics)": Speaker,
+  "Screens & cameras": Monitor,
+  "Light boxes": Lamp,
+  Utensils: CookingPot,
+  Décor: Sparkles,
+  Other: Package,
+};
+
+const formatShillings = (value) => `TSh ${Number(value || 0).toLocaleString("en-US")}`;
+
+const blankInventoryRow = () => ({ key: `${Date.now()}-${Math.random()}`, name: "", category: "", rate: "", quantity: "", sku: "" });
+
+function validateInventoryRow(row) {
+  const errors = {};
+  if (row.name.trim().length < 2) errors.name = "Enter a name";
+  if (!row.category) errors.category = "Choose one";
+  if (row.rate === "" || !Number.isInteger(Number(row.rate)) || Number(row.rate) < 0) errors.rate = "Whole TSh";
+  if (row.quantity === "" || !Number.isInteger(Number(row.quantity)) || Number(row.quantity) < 0) errors.quantity = "Whole number";
+  if (row.sku && !/^[A-Za-z0-9-]{2,20}$/.test(row.sku.trim())) errors.sku = "Letters, numbers, -";
+  return errors;
+}
+
+function InventoryAddModal({ onClose, onSave }) {
+  const [rows, setRows] = useState([blankInventoryRow()]);
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [serverRows, setServerRows] = useState([]);
+
+  useEffect(() => {
+    const onKey = (event) => event.key === "Escape" && !saving && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
+
+  const rowErrors = rows.map((row, index) => ({ ...validateInventoryRow(row), ...(serverRows[index] || {}) }));
+  const filledRows = rows.filter((row) => row.name || row.category || row.rate || row.quantity);
+  const totalUnits = rows.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+
+  const updateRow = (key, field, value) => {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
+    setServerRows([]);
+  };
+  const addRow = (copyFrom) => setRows((current) => [...current, { ...blankInventoryRow(), category: copyFrom?.category || "" }]);
+
+  async function save(event) {
+    event.preventDefault();
+    setSubmitted(true);
+    setError("");
+    const toSave = rows.filter((row) => row.name || row.category || row.rate || row.quantity);
+    if (toSave.length === 0) {
+      setError("Fill in at least one item.");
+      return;
+    }
+    if (toSave.some((row) => Object.keys(validateInventoryRow(row)).length)) {
+      setRows(toSave.length ? toSave : rows);
+      setError("Some rows need fixing — check the highlighted fields.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(toSave.map((row) => ({
+        name: row.name.trim(),
+        category: row.category,
+        rate: Number(row.rate),
+        quantity: Number(row.quantity),
+        ...(row.sku.trim() ? { sku: row.sku.trim() } : {}),
+      })));
+    } catch (saveError) {
+      setRows(toSave);
+      if (saveError.rows) setServerRows(saveError.rows);
+      setError(saveError.message);
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <section className="modal inv-modal" role="dialog" aria-modal="true" aria-labelledby="inv-add-title">
+        <div className="modal-heading">
+          <div>
+            <span className="modal-kicker">INVENTORY</span>
+            <h2 id="inv-add-title">Add items</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close" disabled={saving}><X size={19} /></button>
         </div>
-        <button className="button button-secondary" onClick={onAdd}>
-          <Plus size={15} /> Add item
-        </button>
-      </div>
-      <div className="table-scroll">
-        <table className="inventory-table">
-          <thead>
-            <tr>
-              <th>ITEM</th>
-              <th>SKU</th>
-              <th>CATEGORY</th>
-              <th>DAILY RATE</th>
-              <th>QUANTITY</th>
-              <th>STATUS</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {visibleItems.map((item) => (
-              <tr key={item.sku}>
-                <td>
-                  <div className="item-cell">
-                    <img
-                      src={`https://images.unsplash.com/${item.image}?auto=format&fit=crop&w=100&q=80`}
-                      alt=""
+        <form className="inv-add-form" onSubmit={save} noValidate>
+          <p className="inv-add-intro">Add one or many items at once. Leave SKU empty to create one automatically.</p>
+          <div className="inv-add-head" aria-hidden="true">
+            <span>Item name</span><span>Category</span><span>Daily rate (TSh)</span><span>Quantity</span><span>SKU</span><span />
+          </div>
+          <div className="inv-add-rows">
+            {rows.map((row, index) => {
+              const errors = submitted ? rowErrors[index] : {};
+              const Icon = categoryIcons[row.category] || Package;
+              return (
+                <div className="inv-add-row" key={row.key}>
+                  <label className="inv-cell inv-name">
+                    <span className="inv-row-icon"><Icon size={15} /></span>
+                    <input
+                      placeholder={`Item ${index + 1}, e.g. Wedding tent 10×20`}
+                      value={row.name}
+                      onChange={(event) => updateRow(row.key, "name", event.target.value)}
+                      aria-label={`Item ${index + 1} name`}
+                      aria-invalid={Boolean(errors.name)}
+                      autoFocus={index === rows.length - 1}
+                      maxLength={60}
                     />
-                    <strong>{item.name}</strong>
-                  </div>
-                </td>
-                <td className="sku-cell">{item.sku}</td>
-                <td>{item.category}</td>
-                <td className="amount-cell">
-                  TSh {item.rate}.00 <small>/ day</small>
-                </td>
-                <td>{item.quantity} units</td>
-                <td>
-                  <span className={`status-pill ${item.tone}`}>
-                    <i />
-                    {item.status}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    className="row-more"
-                    aria-label={`More options for ${item.name}`}
+                  </label>
+                  <select
+                    className="inv-cell"
+                    value={row.category}
+                    onChange={(event) => updateRow(row.key, "category", event.target.value)}
+                    aria-label={`Item ${index + 1} category`}
+                    aria-invalid={Boolean(errors.category)}
                   >
-                    <Ellipsis size={18} />
+                    <option value="" disabled>Category</option>
+                    {INVENTORY_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
+                  </select>
+                  <input
+                    className="inv-cell"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={row.rate}
+                    onChange={(event) => updateRow(row.key, "rate", event.target.value)}
+                    aria-label={`Item ${index + 1} daily rate in TSh`}
+                    aria-invalid={Boolean(errors.rate)}
+                  />
+                  <input
+                    className="inv-cell"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={row.quantity}
+                    onChange={(event) => updateRow(row.key, "quantity", event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && index === rows.length - 1) {
+                        event.preventDefault();
+                        addRow(row);
+                      }
+                    }}
+                    aria-label={`Item ${index + 1} quantity`}
+                    aria-invalid={Boolean(errors.quantity)}
+                  />
+                  <input
+                    className="inv-cell"
+                    placeholder="Auto"
+                    value={row.sku}
+                    onChange={(event) => updateRow(row.key, "sku", event.target.value.toUpperCase())}
+                    aria-label={`Item ${index + 1} SKU`}
+                    aria-invalid={Boolean(errors.sku)}
+                    maxLength={20}
+                  />
+                  <button
+                    type="button"
+                    className="inv-row-remove"
+                    onClick={() => setRows((current) => (current.length === 1 ? [blankInventoryRow()] : current.filter((item) => item.key !== row.key)))}
+                    aria-label={`Remove item ${index + 1}`}
+                  >
+                    <X size={14} />
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {visibleItems.length === 0 && (
-          <div className="empty-state">No items match this search.</div>
-        )}
-      </div>
-      <div className="table-bottom">
-        <span>
-          Showing <strong>{visibleItems.length}</strong> items
-        </span>
-        <div className="pagination">
-          <button aria-label="Previous page">
-            <ChevronLeft size={16} />
+                  {submitted && Object.keys(errors).length > 0 && (
+                    <small className="inv-row-error"><CircleAlert size={11} /> {Object.values(errors).join(" · ")}</small>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" className="inv-add-another" onClick={() => addRow(rows[rows.length - 1])} disabled={rows.length >= 50}>
+            <Plus size={14} /> Add another item
           </button>
-          <span>1</span>
-          <button aria-label="Next page">
-            <ChevronRight size={16} />
+          {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+          <div className="modal-actions inv-add-actions">
+            <span className="inv-add-total">{filledRows.length} item{filledRows.length === 1 ? "" : "s"} · {totalUnits.toLocaleString("en-US")} units</span>
+            <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="submit" className="button button-primary" disabled={saving}>
+              {saving ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> Save {filledRows.length > 1 ? `${filledRows.length} items` : "item"}</>}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function InventoryEditModal({ item, onClose, onSave }) {
+  const [form, setForm] = useState({ name: item.name, category: item.category, rate: String(item.rate), quantity: String(item.quantity), sku: item.sku, status: item.status });
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const errors = validateInventoryRow(form);
+  const bind = (field) => ({
+    value: form[field],
+    onChange: (event) => setForm((current) => ({ ...current, [field]: field === "sku" ? event.target.value.toUpperCase() : event.target.value })),
+    "aria-invalid": Boolean(submitted && errors[field]),
+  });
+
+  async function save(event) {
+    event.preventDefault();
+    setSubmitted(true);
+    if (Object.keys(errors).length) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onSave({ name: form.name.trim(), category: form.category, rate: Number(form.rate), quantity: Number(form.quantity), sku: form.sku.trim(), status: form.status });
+    } catch (saveError) {
+      setError(saveError.message);
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <section className="modal team-modal" role="dialog" aria-modal="true" aria-labelledby="inv-edit-title">
+        <div className="modal-heading">
+          <div>
+            <span className="modal-kicker">EDIT ITEM · {item.sku}</span>
+            <h2 id="inv-edit-title">{item.name}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close"><X size={19} /></button>
+        </div>
+        <form className="team-form" onSubmit={save} noValidate>
+          <div className="set-grid">
+            <label className="set-field set-span-2"><span>Item name</span><input {...bind("name")} maxLength={60} /></label>
+            <label className="set-field">
+              <span>Category</span>
+              <select {...bind("category")}>{INVENTORY_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select>
+            </label>
+            <label className="set-field"><span>SKU</span><input {...bind("sku")} maxLength={20} /></label>
+            <label className="set-field"><span>Daily rate (TSh)</span><input type="number" min="0" {...bind("rate")} /></label>
+            <label className="set-field"><span>Quantity</span><input type="number" min="0" {...bind("quantity")} /></label>
+            <label className="set-field set-span-2">
+              <span>Status</span>
+              <select {...bind("status")}><option>Available</option><option>Maintenance</option></select>
+            </label>
+          </div>
+          {submitted && Object.keys(errors).length > 0 && <p className="inv-form-error"><CircleAlert size={14} /> {Object.values(errors).join(" · ")}</p>}
+          {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+          <div className="modal-actions">
+            <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="submit" className="button button-primary" disabled={saving}>
+              {saving ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> Save changes</>}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function InventoryConfirmDelete({ item, onClose, onConfirm }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <section className="modal inv-confirm" role="alertdialog" aria-modal="true" aria-labelledby="inv-del-title">
+        <div className="inv-confirm-body">
+          <span className="inv-confirm-icon"><CircleAlert size={22} /></span>
+          <h2 id="inv-del-title">Delete {item.name}?</h2>
+          <p>This removes {item.quantity.toLocaleString("en-US")} unit{item.quantity === 1 ? "" : "s"} ({item.sku}) from inventory. This can’t be undone.</p>
+          {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button
+            type="button"
+            className="button button-primary inv-danger"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm();
+              } catch (deleteError) {
+                setError(deleteError.message);
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <><LoaderCircle size={15} className="auth-spin" /> Deleting…</> : "Delete item"}
           </button>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function InventoryManager({ session, query, items, setItems, status, reload, addOpen, setAddOpen, onUnauthorized }) {
+  const [statusFilter, setStatusFilter] = useState("All items");
+  const [categoryFilter, setCategoryFilter] = useState("All categories");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(""), 2800);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  async function call(path, options) {
+    try {
+      return await api(path, { ...options, token: session.token });
+    } catch (error) {
+      if (error.status === 401) onUnauthorized();
+      throw error;
+    }
+  }
+
+  const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const visible = items.filter((item) => {
+    const text = `${item.name} ${item.sku} ${item.category}`.toLowerCase();
+    return words.every((word) => text.includes(word))
+      && (statusFilter === "All items" || item.status === statusFilter)
+      && (categoryFilter === "All categories" || item.category === categoryFilter);
+  });
+  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
+  const dailyValue = items.filter((item) => item.status === "Available").reduce((sum, item) => sum + item.rate * item.quantity, 0);
+  const maintenance = items.filter((item) => item.status === "Maintenance").length;
+  const usedCategories = INVENTORY_CATEGORIES.filter((category) => items.some((item) => item.category === category));
+  const filtersActive = search || statusFilter !== "All items" || categoryFilter !== "All categories";
+
+  return (
+    <>
+      <section className="inv-stats">
+        {[
+          [Package, "Products", items.length.toLocaleString("en-US"), `${usedCategories.length} categor${usedCategories.length === 1 ? "y" : "ies"}`, "blue"],
+          [Layers, "Total units", totalUnits.toLocaleString("en-US"), "in stock", "mint"],
+          [Banknote, "Rental value / day", formatShillings(dailyValue), "if all available units rent", "purple"],
+          [Wrench, "In maintenance", maintenance.toLocaleString("en-US"), maintenance ? "not rentable now" : "all good", "orange"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat">
+            <span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span>
+            <div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div>
+          </article>
+        ))}
+      </section>
+
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div className="inv-tabs" role="tablist" aria-label="Filter by status">
+            {["All items", "Available", "Maintenance"].map((option) => (
+              <button
+                key={option}
+                role="tab"
+                aria-selected={statusFilter === option}
+                className={statusFilter === option ? "active" : ""}
+                onClick={() => setStatusFilter(option)}
+              >
+                {option}
+                <span>{option === "All items" ? items.length : items.filter((item) => item.status === option).length}</span>
+              </button>
+            ))}
+          </div>
+          <div className="inv-toolbar-actions">
+            <label className="inv-search">
+              <Search size={15} />
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or SKU" aria-label="Search inventory" />
+            </label>
+            <select className="inv-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter by category">
+              {["All categories", ...INVENTORY_CATEGORIES].map((option) => <option key={option}>{option}</option>)}
+            </select>
+            <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}>
+              <Plus size={16} /> Add items
+            </button>
+          </div>
+        </div>
+
+        {status === "loading" ? (
+          <div className="inv-empty"><LoaderCircle size={22} className="auth-spin" /><strong>Loading inventory…</strong></div>
+        ) : status === "error" ? (
+          <div className="inv-empty"><CircleAlert size={22} /><strong>Couldn’t load inventory.</strong><button className="button button-secondary" onClick={reload}><RotateCcw size={14} /> Try again</button></div>
+        ) : items.length === 0 ? (
+          <div className="inv-empty">
+            <span className="inv-empty-icon"><Package size={26} /></span>
+            <strong>No items yet</strong>
+            <small>Add your tents, chairs, tables and other equipment to start tracking stock.</small>
+            <button className="button button-primary inv-add-button" onClick={() => setAddOpen(true)}><Plus size={16} /> Add your first items</button>
+          </div>
+        ) : (
+          <>
+            <DataTable
+              columns={[
+                {
+                  key: "name",
+                  label: "ITEM",
+                  render: (row) => {
+                    const Icon = categoryIcons[row.category] || Package;
+                    return (
+                      <div className="inv-item-cell">
+                        <span className="inv-item-icon"><Icon size={18} /></span>
+                        <span><strong>{row.name}</strong><small>{row.sku}</small></span>
+                      </div>
+                    );
+                  },
+                },
+                { key: "category", label: "CATEGORY", render: (row) => <span className="inv-category">{row.category}</span> },
+                { key: "rate", label: "DAILY RATE", render: (row) => <span className="inv-rate"><strong>{formatShillings(row.rate)}</strong> / day</span> },
+                { key: "quantity", label: "QUANTITY", render: (row) => <span className="inv-qty">{row.quantity.toLocaleString("en-US")} <small>units</small></span> },
+                { key: "status", label: "STATUS", render: (row) => <span className={`status-pill ${row.status === "Available" ? "green" : "amber"}`}><i />{row.status}</span> },
+                { key: "updatedAt", label: "UPDATED", render: (row) => <span className="inv-updated">{new Date(row.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span> },
+              ]}
+              rows={visible}
+              rowKey="id"
+              renderActions={(row) => [
+                { label: "Edit item", onClick: () => setEditing(row) },
+                {
+                  label: row.status === "Available" ? "Mark as maintenance" : "Mark as available",
+                  onClick: async () => {
+                    try {
+                      const next = row.status === "Available" ? "Maintenance" : "Available";
+                      const { item } = await call(`/inventory/${row.id}`, { method: "PATCH", body: { status: next } });
+                      setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)));
+                      setToast(`${item.name} marked ${next.toLowerCase()}`);
+                    } catch (error) {
+                      setToast(error.message);
+                    }
+                  },
+                },
+                { label: "Delete item", danger: true, onClick: () => setDeleting(row) },
+              ]}
+            />
+            <div className="table-bottom inv-bottom">
+              <span>Showing <strong>{visible.length}</strong> of {items.length} items</span>
+              {filtersActive && (
+                <button className="report-clear" onClick={() => { setSearch(""); setStatusFilter("All items"); setCategoryFilter("All categories"); }}>
+                  <RotateCcw size={12} /> Clear filters
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      {addOpen && (
+        <InventoryAddModal
+          onClose={() => setAddOpen(false)}
+          onSave={async (newItems) => {
+            const { items: created } = await call("/inventory", { method: "POST", body: { items: newItems } });
+            setItems((current) => [...current, ...created].sort((a, b) => a.name.localeCompare(b.name)));
+            setAddOpen(false);
+            setToast(`${created.length} item${created.length === 1 ? "" : "s"} added to inventory`);
+          }}
+        />
+      )}
+      {editing && (
+        <InventoryEditModal
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSave={async (changes) => {
+            const { item } = await call(`/inventory/${editing.id}`, { method: "PATCH", body: changes });
+            setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)).sort((a, b) => a.name.localeCompare(b.name)));
+            setEditing(null);
+            setToast(`${item.name} updated`);
+          }}
+        />
+      )}
+      {deleting && (
+        <InventoryConfirmDelete
+          item={deleting}
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await call(`/inventory/${deleting.id}`, { method: "DELETE" });
+            setItems((current) => current.filter((entry) => entry.id !== deleting.id));
+            setToast(`${deleting.name} deleted`);
+            setDeleting(null);
+          }}
+        />
+      )}
+      {toast && <div className="set-toast" role="status"><Check size={15} /> {toast}</div>}
+    </>
   );
 }
 

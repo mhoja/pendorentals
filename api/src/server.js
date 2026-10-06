@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import express from 'express';
 import { read, update } from './store.js';
 import { sendSms, smsConfigured } from './sms.js';
@@ -285,6 +286,151 @@ app.get('/api/orders', authenticate, requireRole('staff'), async (_request, resp
         orders: [...data.orders].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicOrder),
         smsConfigured: smsConfigured(),
     });
+});
+
+// ---- inventory (staff only) ----
+const INVENTORY_CATEGORIES = [
+    'Tents', 'Chairs', 'Tables', 'Seat covers', 'Lighting', 'Carpets', 'Sound (PA & mics)',
+    'Screens & cameras', 'Light boxes', 'Utensils', 'Décor', 'Other',
+];
+const INVENTORY_STATUSES = ['Available', 'Maintenance'];
+
+function validateInventoryItem(raw, { partial = false } = {}) {
+    const errors = {};
+    const value = {};
+    const has = (key) => !partial || raw[key] !== undefined;
+
+    if (has('name')) {
+        value.name = cleanText(raw.name, 60);
+        if (value.name.length < 2) errors.name = 'Enter the item name.';
+    }
+    if (has('category')) {
+        value.category = INVENTORY_CATEGORIES.includes(raw.category) ? raw.category : '';
+        if (!value.category) errors.category = 'Choose a category.';
+    }
+    if (has('rate')) {
+        value.rate = Number(raw.rate);
+        if (!Number.isInteger(value.rate) || value.rate < 0 || value.rate > 100000000) errors.rate = 'Enter the daily rate in TSh.';
+    }
+    if (has('quantity')) {
+        value.quantity = Number(raw.quantity);
+        if (!Number.isInteger(value.quantity) || value.quantity < 0 || value.quantity > 1000000) errors.quantity = 'Enter how many you have.';
+    }
+    if (has('status')) {
+        value.status = INVENTORY_STATUSES.includes(raw.status) ? raw.status : 'Available';
+    }
+    if (raw.sku !== undefined && String(raw.sku).trim() !== '') {
+        value.sku = String(raw.sku).trim().toUpperCase().slice(0, 20);
+        if (!/^[A-Z0-9-]{2,20}$/.test(value.sku)) errors.sku = 'Use letters, numbers and dashes only.';
+    }
+    return { errors, value };
+}
+
+function nextSku(data, category) {
+    const prefix = category.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'ITM';
+    let sku;
+    do {
+        sku = `${prefix}-${data.nextSkuNumber++}`;
+    } while (data.inventory.some((item) => item.sku === sku));
+    return sku;
+}
+
+app.get('/api/inventory', authenticate, requireRole('staff'), async (_request, response) => {
+    const data = await read();
+    response.json({
+        items: [...data.inventory].sort((a, b) => a.name.localeCompare(b.name)),
+        categories: INVENTORY_CATEGORIES,
+    });
+});
+
+app.post('/api/inventory', authenticate, requireRole('staff'), async (request, response) => {
+    const rows = Array.isArray(request.body?.items) ? request.body.items : [];
+    if (rows.length === 0 || rows.length > 50) {
+        response.status(400).json({ error: 'Add between 1 and 50 items at a time.' });
+        return;
+    }
+    const checked = rows.map((row) => validateInventoryItem(row || {}));
+    const rowErrors = checked.map((row) => row.errors);
+    if (rowErrors.some((errors) => Object.keys(errors).length)) {
+        response.status(400).json({ error: 'Please fix the highlighted rows.', rows: rowErrors });
+        return;
+    }
+
+    try {
+        const created = await update((data) => {
+            const skus = new Set(data.inventory.map((item) => item.sku));
+            const duplicate = checked.findIndex(({ value }) => value.sku && skus.has(value.sku));
+            if (duplicate !== -1) {
+                const error = new Error(`SKU ${checked[duplicate].value.sku} is already used.`);
+                error.status = 409;
+                throw error;
+            }
+            const now = new Date().toISOString();
+            const items = checked.map(({ value }) => {
+                const item = {
+                    id: crypto.randomUUID(),
+                    sku: value.sku || nextSku(data, value.category),
+                    name: value.name,
+                    category: value.category,
+                    rate: value.rate,
+                    quantity: value.quantity,
+                    status: value.status || 'Available',
+                    createdAt: now,
+                    updatedAt: now,
+                };
+                skus.add(item.sku);
+                data.inventory.push(item);
+                return item;
+            });
+            return items;
+        });
+        response.status(201).json({ items: created });
+    } catch (error) {
+        response.status(error.status || 500).json({ error: error.status ? error.message : 'Could not save the items. Please try again.' });
+        if (!error.status) console.error(error);
+    }
+});
+
+app.patch('/api/inventory/:id', authenticate, requireRole('staff'), async (request, response) => {
+    const { errors, value } = validateInventoryItem(request.body || {}, { partial: true });
+    if (Object.keys(errors).length) {
+        response.status(400).json({ error: 'Please check the highlighted fields.', fields: errors });
+        return;
+    }
+    try {
+        const item = await update((data) => {
+            const target = data.inventory.find((entry) => entry.id === request.params.id);
+            if (!target) {
+                const error = new Error('This item no longer exists.');
+                error.status = 404;
+                throw error;
+            }
+            if (value.sku && data.inventory.some((entry) => entry.sku === value.sku && entry.id !== target.id)) {
+                const error = new Error(`SKU ${value.sku} is already used.`);
+                error.status = 409;
+                throw error;
+            }
+            Object.assign(target, value, { updatedAt: new Date().toISOString() });
+            return target;
+        });
+        response.json({ item });
+    } catch (error) {
+        response.status(error.status || 500).json({ error: error.status ? error.message : 'Could not update the item.' });
+        if (!error.status) console.error(error);
+    }
+});
+
+app.delete('/api/inventory/:id', authenticate, requireRole('staff'), async (request, response) => {
+    const removed = await update((data) => {
+        const before = data.inventory.length;
+        data.inventory = data.inventory.filter((entry) => entry.id !== request.params.id);
+        return before !== data.inventory.length;
+    });
+    if (!removed) {
+        response.status(404).json({ error: 'This item no longer exists.' });
+        return;
+    }
+    response.json({ ok: true });
 });
 
 app.use((error, _request, response, _next) => {

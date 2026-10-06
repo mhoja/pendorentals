@@ -6,7 +6,9 @@ const dataFile = path.join(dataDir, 'store.json');
 
 const emptyStore = () => ({
     nextOrderNumber: 1050,
+    nextSkuNumber: 1001,
     customers: [],
+    inventory: [],
     orders: [],
     sessions: [],
 });
