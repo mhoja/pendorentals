@@ -272,12 +272,16 @@ const reportDefinitions = [
       { key: "receipt", label: "RECEIPT", type: "id" },
       { key: "date", label: "DATE", type: "date" },
       { key: "customer", label: "CUSTOMER" },
+      { key: "phone", label: "PHONE", hidden: true },
       { key: "reference", label: "ORDER" },
       { key: "invoice", label: "INVOICE" },
       { key: "method", label: "METHOD" },
+      { key: "transactionRef", label: "TRANSACTION REF", hidden: true },
       { key: "cashier", label: "RECEIVED BY" },
       { key: "status", label: "STATUS", type: "status" },
       { key: "tithe", label: "TITHE", type: "money", total: true },
+      { key: "giving", label: "GIVING", type: "money", total: true },
+      { key: "net", label: "NET", type: "money", total: true, hidden: true },
       { key: "amount", label: "AMOUNT", type: "money", total: true },
     ],
     groupBy: [
@@ -2666,6 +2670,8 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
   const [error, setError] = useState("");
   const tithePercent = settings?.titheEnabled ? Number(settings.tithePercent) || 0 : 0;
   const tithe = Math.round(((Number(form.amount) || 0) * tithePercent) / 100);
+  const givingPercent = settings?.givingEnabled ? Number(settings.givingPercent) || 0 : 0;
+  const giving = Math.round(((Number(form.amount) || 0) * givingPercent) / 100);
   const label = invoice ? `${invoice.code} · ${invoice.customer}` : `${order.id} · ${order.customer.name}`;
   const [ask, confirmDialog] = useConfirm();
 
@@ -2678,7 +2684,7 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
     if (Object.keys(next).length) return;
     const ok = await ask({
       title: `Record ${formatShillings(Number(form.amount))}?`,
-      message: `${form.method} payment for ${label} on ${shortDate(form.paidOn)}.${tithe ? ` Tithe set aside: ${formatShillings(tithe)}.` : ""} A receipt will be issued.`,
+      message: `${form.method} payment for ${label} on ${shortDate(form.paidOn)}.${tithe ? ` Tithe set aside: ${formatShillings(tithe)}.` : ""}${giving ? ` Giving set aside: ${formatShillings(giving)}.` : ""} A receipt will be issued.`,
       confirmLabel: "Yes, record payment",
     });
     if (!ok) return;
@@ -2718,6 +2724,9 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
         </div>
         {tithePercent > 0 && (
           <p className="team-form-note"><Info size={13} /> Tithe ({tithePercent}%) set aside from this payment: <strong>&nbsp;{formatShillings(tithe)}</strong></p>
+        )}
+        {givingPercent > 0 && (
+          <p className="team-form-note"><Info size={13} /> Giving ({givingPercent}%) set aside from this payment: <strong>&nbsp;{formatShillings(giving)}</strong></p>
         )}
         <label className="auth-check ws-check"><input type="checkbox" checked={form.notify} onChange={(event) => setForm({ ...form, notify: event.target.checked })} /><span>Send the customer an SMS receipt</span></label>
         {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
@@ -4247,9 +4256,9 @@ function FinancePage({ query, session }) {
       <section className="inv-stats">
         {[
           [CircleDollarSign, "Revenue", s ? formatShillings(s.revenue) : "…", s ? `${s.payments} payment${s.payments === 1 ? "" : "s"}${s.refunded ? ` · ${formatShillings(s.refunded)} refunded` : ""}` : "", "mint"],
-          [Sparkles, "Tithe (Zaka)", s ? formatShillings(s.tithe) : "…", "set aside from payments", "purple"],
+          [Sparkles, "Tithe & giving", s ? formatShillings(s.tithe + (s.giving || 0)) : "…", s ? `Tithe ${formatShillings(s.tithe)} · Giving ${formatShillings(s.giving || 0)}` : "", "purple"],
           [Wallet, "Expenses", s ? formatShillings(s.expenses) : "…", s ? `${s.pendingExpenses ? `${formatShillings(s.pendingExpenses)} pending` : `${s.expenseCount} entries`}` : "", "orange"],
-          [ChartNoAxesCombined, "Net profit", s ? formatShillings(s.net) : "…", "revenue − tithe − expenses", "blue"],
+          [ChartNoAxesCombined, "Net profit", s ? formatShillings(s.net) : "…", "revenue − tithe − giving − expenses", "blue"],
         ].map(([Icon, label, value, hint, tone]) => (
           <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong className={label === "Net profit" && s?.net < 0 ? "negative-text" : ""}>{value}</strong><em>{hint}</em></div></article>
         ))}
@@ -4264,7 +4273,7 @@ function FinancePage({ query, session }) {
           <div className="inv-toolbar-actions">
             {tab !== "Breakdown" && <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${tab.toLowerCase()}`} aria-label={`Search ${tab}`} /></label>}
             {tab === "Expenses" && <ExportMenu title="Expenses" columns={["Date", "Category", "Description", "Vendor", "Paid with", "Amount", "Status"]} rows={expenseRows.map((expense) => [expense.date, expense.category, expense.description, expense.vendor, expense.method, formatShillings(expense.amount), expense.status])} />}
-            {tab === "Payments" && <ExportMenu title="Payments" columns={["Receipt", "Date", "Customer", "Order", "Method", "Reference", "Amount", "Tithe", "Status"]} rows={paymentRows.map((payment) => [payment.receipt, payment.date, payment.customer, payment.reference, payment.method, payment.transactionRef, formatShillings(payment.amount), formatShillings(payment.tithe), payment.status])} />}
+            {tab === "Payments" && <ExportMenu title="Payments" columns={["Receipt", "Date", "Customer", "Order", "Method", "Reference", "Amount", "Tithe", "Giving", "Status"]} rows={paymentRows.map((payment) => [payment.receipt, payment.date, payment.customer, payment.reference, payment.method, payment.transactionRef, formatShillings(payment.amount), formatShillings(payment.tithe), formatShillings(payment.giving || 0), payment.status])} />}
             {tab === "Expenses" && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add expense</button>}
           </div>
         </div>
@@ -4302,7 +4311,7 @@ function FinancePage({ query, session }) {
                   { key: "receipt", label: "RECEIPT", render: (row) => <div className="ws-two-line"><strong className="report-id">{row.receipt}</strong><small>{shortDate(row.date)}</small></div> },
                   { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer}</strong><small>{row.reference}</small></div> },
                   { key: "method", label: "METHOD", render: (row) => <div className="ws-two-line"><strong>{row.method}</strong><small>{row.transactionRef || "—"}</small></div> },
-                  { key: "amount", label: "AMOUNT", render: (row) => <div className="ws-two-line"><strong>{formatShillings(row.amount)}</strong><small>Tithe {formatShillings(row.tithe)}</small></div> },
+                  { key: "amount", label: "AMOUNT", render: (row) => <div className="ws-two-line"><strong>{formatShillings(row.amount)}</strong><small>Tithe {formatShillings(row.tithe)}{row.giving ? ` · Giving ${formatShillings(row.giving)}` : ""}</small></div> },
                   { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "Paid" ? "green" : "red"}>{row.status}</StatusPill> },
                 ]}
                 rows={paymentRows}
@@ -4335,6 +4344,7 @@ function FinancePage({ query, session }) {
               <h3>Profit & loss</h3>
               <div><span>Revenue</span><strong>{formatShillings(s?.revenue)}</strong></div>
               <div><span>Tithe (Zaka)</span><strong>− {formatShillings(s?.tithe)}</strong></div>
+              <div><span>Giving</span><strong>− {formatShillings(s?.giving || 0)}</strong></div>
               <div><span>Expenses</span><strong>− {formatShillings(s?.expenses)}</strong></div>
               <div className="total"><span>Net profit</span><strong className={s?.net < 0 ? "negative-text" : ""}>{formatShillings(s?.net)}</strong></div>
             </article>
@@ -4980,7 +4990,41 @@ function ReportDetail({ report, onBack, onSwitch }) {
   const [exporting, setExporting] = useState("");
   const [exportError, setExportError] = useState("");
   const [receipt, setReceipt] = useState(null);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const columnStore = `pendo-report-columns-${report.id}`;
+  const defaultColumns = report.columns.filter((column) => !column.hidden).map((column) => column.key);
+  // Chosen columns are remembered on this device for each report.
+  const [shownKeys, setShownKeys] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(columnStore) || "null");
+      const known = Array.isArray(stored) ? stored.filter((key) => report.columns.some((column) => column.key === key)) : [];
+      return known.length ? known : defaultColumns;
+    } catch {
+      return defaultColumns;
+    }
+  });
+  const columns = report.columns.filter((column) => shownKeys.includes(column.key));
+  function chooseColumns(keys) {
+    setShownKeys(keys);
+    try { localStorage.setItem(columnStore, JSON.stringify(keys)); } catch { /* storage unavailable */ }
+  }
+  const toggleColumn = (key) => {
+    if (shownKeys.includes(key)) {
+      if (shownKeys.length > 1) chooseColumns(shownKeys.filter((entry) => entry !== key));
+    } else {
+      chooseColumns(report.columns.map((column) => column.key).filter((entry) => entry === key || shownKeys.includes(entry)));
+    }
+  };
   const Icon = report.icon;
+
+  useEffect(() => {
+    if (!columnsOpen) return undefined;
+    const close = (event) => {
+      if (!event.target.closest(".report-columns-wrap")) setColumnsOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [columnsOpen]);
 
   useEffect(() => {
     if (!exportOpen) return undefined;
@@ -5038,7 +5082,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
     setSort((current) => ({ key, dir: current.key === key && current.dir === "desc" ? "asc" : "desc" }));
   }
 
-  const totalsRow = report.columns.map((column, index) => {
+  const totalsRow = columns.map((column, index) => {
     if (column.total) return formatReportValue(sumBy(sortedRows, column.key), column.type);
     return index === 0 ? `Total (${sortedRows.length})` : "";
   });
@@ -5049,8 +5093,8 @@ function ReportDetail({ report, onBack, onSwitch }) {
     try {
       await downloadTableReport(
         report.title,
-        report.columns.map((column) => column.label),
-        sortedRows.map((row) => report.columns.map((column) => formatReportValue(row[column.key], column.type))),
+        columns.map((column) => column.label),
+        sortedRows.map((row) => columns.map((column) => formatReportValue(row[column.key], column.type))),
         format,
         {
           subtitle: `${activeFilters.length ? activeFilters.join(" · ") : "All records"} · ${sortedRows.length} rows · Generated ${new Date().toLocaleString("en-US")}`,
@@ -5100,6 +5144,29 @@ function ReportDetail({ report, onBack, onSwitch }) {
                 <ViewIcon size={13} /> {label}
               </button>
             ))}
+          </div>
+          <div className="report-columns-wrap">
+            <button className="button button-secondary" onClick={() => setColumnsOpen((open) => !open)} aria-expanded={columnsOpen} aria-haspopup="true">
+              <Table2 size={15} /> Columns <span className="report-columns-count">{columns.length}/{report.columns.length}</span> <ChevronDown size={13} />
+            </button>
+            {columnsOpen && (
+              <div className="report-columns-menu" role="group" aria-label="Choose columns">
+                <header><strong>Show columns</strong><small>Tick to add, untick to hide</small></header>
+                <div className="report-columns-list">
+                  {report.columns.map((column) => (
+                    <label key={column.key} className="report-column-option">
+                      <input type="checkbox" checked={shownKeys.includes(column.key)} onChange={() => toggleColumn(column.key)} disabled={shownKeys.length === 1 && shownKeys.includes(column.key)} />
+                      <span>{column.label.charAt(0) + column.label.slice(1).toLowerCase()}</span>
+                      {column.hidden && <em>Extra</em>}
+                    </label>
+                  ))}
+                </div>
+                <footer>
+                  <button type="button" onClick={() => chooseColumns(report.columns.map((column) => column.key))}>Show all</button>
+                  <button type="button" onClick={() => chooseColumns(defaultColumns)}>Reset</button>
+                </footer>
+              </div>
+            )}
           </div>
           {report.receipts && (
             <button
@@ -5218,7 +5285,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
             <table className="data-table report-table">
               <thead>
                 <tr>
-                  {report.columns.map((column) => (
+                  {columns.map((column) => (
                     <th key={column.key} className={["money", "number", "km", "percent"].includes(column.type) ? "numeric" : ""}>
                       <button className="report-sort" onClick={() => toggleSort(column.key)} aria-label={`Sort by ${column.label.toLowerCase()}`}>
                         {column.label}
@@ -5234,7 +5301,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
               <tbody>
                 {sortedRows.map((row) => (
                   <tr key={row[report.rowKey]}>
-                    {report.columns.map((column) => (
+                    {columns.map((column) => (
                       <td key={column.key} className={["money", "number", "km", "percent"].includes(column.type) ? "numeric" : ""}>
                         {column.type === "status" ? (
                           <span className={`status-pill ${statusTones[row[column.key]] || "blue"}`}><i />{row[column.key]}</span>
@@ -5266,7 +5333,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
                 <tfoot>
                   <tr>
                     {totalsRow.map((value, index) => (
-                      <td key={report.columns[index].key} className={report.columns[index].total ? "numeric" : ""}>{value}</td>
+                      <td key={columns[index].key} className={columns[index].total ? "numeric" : ""}>{value}</td>
                     ))}
                     {report.receipts && <td />}
                   </tr>
@@ -5846,6 +5913,8 @@ const DEFAULT_SETTINGS = {
   vatRate: "18",
   titheEnabled: true,
   tithePercent: "10",
+  givingEnabled: false,
+  givingPercent: "5",
   receiptPrefix: "RCT-",
   invoicePrefix: "INV-",
   receiptFooter: "Thank you for renting with Pendo. Please keep this receipt for your records.",
@@ -5877,6 +5946,7 @@ function validateSettings(values) {
   if (Number(values.refundPercent) < 0 || Number(values.refundPercent) > 100) errors.refundPercent = "Between 0 and 100.";
   if (values.vatEnabled && !(Number(values.vatRate) > 0 && Number(values.vatRate) <= 100)) errors.vatRate = "Enter a VAT rate.";
   if (values.titheEnabled && !(values.tithePercent !== "" && Number(values.tithePercent) > 0 && Number(values.tithePercent) <= 100)) errors.tithePercent = "Enter a percentage between 0.1 and 100.";
+  if (values.givingEnabled && !(values.givingPercent !== "" && Number(values.givingPercent) > 0 && Number(values.givingPercent) <= 100)) errors.givingPercent = "Enter a percentage between 0.1 and 100.";
   const methods = values.paymentMethods || [];
   const names = methods.map((method) => method.name.trim().toLowerCase());
   if (methods.some((method) => method.name.trim().length < 2)) errors.paymentMethods = "Give every payment method a name.";
@@ -6719,18 +6789,42 @@ function SettingsPage({ onLogout, session, settingsResource }) {
                     const payment = 248000;
                     const rate = Number(draft.tithePercent) || 0;
                     const tithe = Math.round(payment * rate) / 100;
+                    const givingRate = draft.givingEnabled ? Number(draft.givingPercent) || 0 : 0;
+                    const giving = Math.round(payment * givingRate) / 100;
                     return (
                       <div className="set-tithe-example" aria-label="Tithe example">
                         <small>Example payment</small>
                         <div><span>Customer pays</span><strong>{formatTSh(payment)}</strong></div>
                         <div className="tithe"><span>Tithe ({rate}%)</span><strong>− {formatTSh(tithe)}</strong></div>
-                        <div className="net"><span>Remaining for business</span><strong>{formatTSh(payment - tithe)}</strong></div>
+                        {givingRate > 0 && <div className="tithe"><span>Giving ({givingRate}%)</span><strong>− {formatTSh(giving)}</strong></div>}
+                        <div className="net"><span>Remaining for business</span><strong>{formatTSh(payment - tithe - giving)}</strong></div>
                       </div>
                     );
                   })()}
                 </div>
               ) : (
                 <p className="set-off-note"><Info size={14} /> Tithe is turned off. Payments are not set aside.</p>
+              )}
+            </SettingsCard>
+
+            <SettingsCard
+              title="Giving"
+              desc="Set aside another share of every customer payment as giving (offerings, charity, support)."
+              aside={<SettingSwitch checked={draft.givingEnabled} onChange={set("givingEnabled")} label="Set aside giving" />}
+            >
+              {draft.givingEnabled ? (
+                <label className="set-field set-giving">
+                  <span>Giving percentage</span>
+                  <span className="set-affix"><input type="number" min="0.1" max="100" step="0.5" {...bind("givingPercent")} aria-label="Giving percentage" /><i>% of each payment</i></span>
+                  {error("givingPercent") || <small className="set-hint">Worked out when a payment is recorded and kept with that payment, like tithe. Changing it later doesn’t alter past payments.</small>}
+                  <span className="set-presets">
+                    {["2", "5", "10", "15"].map((value) => (
+                      <button key={value} type="button" className={draft.givingPercent === value ? "active" : ""} onClick={() => set("givingPercent")(value)}>{value}%</button>
+                    ))}
+                  </span>
+                </label>
+              ) : (
+                <p className="set-off-note"><Info size={14} /> Giving is turned off. Nothing extra is set aside from payments.</p>
               )}
             </SettingsCard>
 
@@ -6814,7 +6908,7 @@ const settingsFieldSection = {
   firstName: "account", lastName: "account", accountEmail: "account",
   smsSender: "notifications",
   depositPercent: "policies", refundPercent: "policies",
-  vatRate: "payments", tithePercent: "payments", paymentMethods: "payments",
+  vatRate: "payments", tithePercent: "payments", givingPercent: "payments", paymentMethods: "payments",
 };
 
 function Modal({ type, onClose, saved, onSave, onExport, exportError, exportTitle, onLogout, session }) {

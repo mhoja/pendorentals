@@ -223,6 +223,16 @@ const migrations = [
             alter table payments drop constraint if exists payments_method_check;
         `,
     },
+    {
+        id: 5,
+        name: 'giving set aside per payment',
+        sql: `
+            -- Like tithe: the percentage in force when the payment is recorded is kept with it.
+            alter table payments
+                add column giving_percent numeric(5, 2) not null default 0,
+                add column giving_amount integer not null default 0;
+        `,
+    },
 ];
 
 export async function migrate() {

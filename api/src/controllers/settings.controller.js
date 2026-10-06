@@ -13,5 +13,7 @@ export async function updateWorkspaceSettings(request, response) {
     if (!body || typeof body !== 'object') throw new HttpError(400, 'Nothing to save.');
     const tithe = Number(body.tithePercent);
     if (body.tithePercent !== undefined && !(tithe >= 0 && tithe <= 100)) throw new HttpError(400, 'Tithe must be between 0 and 100%.');
+    const giving = Number(body.givingPercent);
+    if (body.givingPercent !== undefined && !(giving >= 0 && giving <= 100)) throw new HttpError(400, 'Giving must be between 0 and 100%.');
     response.json({ settings: await saveSettings(body) });
 }

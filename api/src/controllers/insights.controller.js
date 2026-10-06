@@ -73,7 +73,7 @@ export async function getFinanceSummary(request, response) {
     const from = isIsoDate(request.query.from) ? request.query.from : `${to.slice(0, 7)}-01`;
     if (from > to) throw new HttpError(400, 'The start date must be before the end date.');
     const [payments, refunds, expenses, byMethod, byCategory] = await Promise.all([
-        query(`select coalesce(sum(amount), 0) as revenue, coalesce(sum(tithe_amount), 0) as tithe, count(*) as count
+        query(`select coalesce(sum(amount), 0) as revenue, coalesce(sum(tithe_amount), 0) as tithe, coalesce(sum(giving_amount), 0) as giving, count(*) as count
                  from payments where status = 'Paid' and paid_on between $1 and $2`, [from, to]),
         query(`select coalesce(sum(amount), 0) as total from payments where status = 'Refunded' and paid_on between $1 and $2`, [from, to]),
         query(`select coalesce(sum(amount) filter (where status = 'Approved'), 0) as approved,
@@ -85,6 +85,7 @@ export async function getFinanceSummary(request, response) {
     ]);
     const revenue = payments.rows[0].revenue;
     const tithe = payments.rows[0].tithe;
+    const giving = payments.rows[0].giving;
     const spent = expenses.rows[0].approved;
     response.json({
         from,
@@ -93,10 +94,11 @@ export async function getFinanceSummary(request, response) {
         payments: payments.rows[0].count,
         refunded: refunds.rows[0].total,
         tithe,
+        giving,
         expenses: spent,
         pendingExpenses: expenses.rows[0].pending,
         expenseCount: expenses.rows[0].count,
-        net: revenue - tithe - spent,
+        net: revenue - tithe - giving - spent,
         byMethod: byMethod.rows,
         byCategory: byCategory.rows,
     });
@@ -117,7 +119,8 @@ export async function getReport(request, response) {
         response.json({ rows: rows.map((row) => ({
             id: row.id, receipt: row.code, date: row.paid_on, customer: row.customer, phone: prettyPhone(row.phone),
             reference: row.order_code || '—', invoice: row.invoice_code || '—', method: row.method, amount: row.amount,
-            status: row.status, cashier: row.cashier || '—', tithe: row.tithe_amount, transactionRef: row.reference || '',
+            status: row.status, cashier: row.cashier || '—', tithe: row.tithe_amount, giving: row.giving_amount,
+            net: row.amount - row.tithe_amount - row.giving_amount, transactionRef: row.reference || '',
         })) });
         return;
     }

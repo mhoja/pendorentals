@@ -161,12 +161,14 @@ export async function recordPayment(request, response) {
     const settings = await getSettings();
     const tithePercent = settings.titheEnabled ? Math.min(100, Math.max(0, Number(settings.tithePercent) || 0)) : 0;
     const titheAmount = Math.round((amount * tithePercent) / 100);
+    const givingPercent = settings.givingEnabled ? Math.min(100, Math.max(0, Number(settings.givingPercent) || 0)) : 0;
+    const givingAmount = Math.round((amount * givingPercent) / 100);
     const paymentId = await transaction(async (db) => {
         const code = await nextCode(db, 'receipt_number_seq', settings.receiptPrefix || 'RCT-', 4);
         const { rows: [payment] } = await db.query(
-            `insert into payments (code, invoice_id, order_id, customer_id, amount, method, reference, paid_on, tithe_percent, tithe_amount, received_by)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-            [code, invoiceId, orderId, customerId, amount, body.method, cleanText(body.reference, 40) || null, paidOn, tithePercent, titheAmount, request.user.id],
+            `insert into payments (code, invoice_id, order_id, customer_id, amount, method, reference, paid_on, tithe_percent, tithe_amount, giving_percent, giving_amount, received_by)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+            [code, invoiceId, orderId, customerId, amount, body.method, cleanText(body.reference, 40) || null, paidOn, tithePercent, titheAmount, givingPercent, givingAmount, request.user.id],
         );
         await refreshInvoiceStatus(db, invoiceId);
         return payment.id;

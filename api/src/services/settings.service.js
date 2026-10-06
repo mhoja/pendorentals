@@ -58,6 +58,8 @@ export const DEFAULT_SETTINGS = {
     vatRate: '18',
     titheEnabled: true,
     tithePercent: '10',
+    givingEnabled: false,
+    givingPercent: '5',
     receiptPrefix: 'RCT-',
     invoicePrefix: 'INV-',
     receiptFooter: 'Thank you for renting with Pendo. Please keep this receipt for your records.',
