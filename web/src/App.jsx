@@ -303,23 +303,23 @@ const reportDefinitions = [
         return {
           collected, tithe, giving, net: collected - tithe - giving,
           payments: kept.length, receipts: list.length,
-          average: kept.length ? Math.round(collected / kept.length) : 0,
+          average: kept.length ? collected / kept.length : 0,
           refunded: sumBy(refunds, "amount"), refunds: refunds.length,
           topMethod: topLabel ? { label: topLabel, value: topValue } : null,
         };
       };
       const now = totals(rows);
       const before = previous ? totals(previous) : null;
-      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatShillings, ...extra });
+      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatTSh, ...extra });
       return [
-        card("Total collected", "collected", formatShillings(now.collected), `${now.payments} payment${now.payments === 1 ? "" : "s"}`),
-        card("Tithe", "tithe", formatShillings(now.tithe), "set aside"),
-        card("Giving", "giving", formatShillings(now.giving), "set aside"),
-        card("Net", "net", formatShillings(now.net), "after tithe & giving", { tone: now.net < 0 ? "negative" : "" }),
+        card("Total collected", "collected", formatTSh(now.collected), `${now.payments} payment${now.payments === 1 ? "" : "s"}`),
+        card("Tithe", "tithe", formatTSh(now.tithe), "set aside from payments"),
+        card("Giving", "giving", formatTSh(now.giving), "set aside from payments"),
+        card("Net", "net", formatTSh(now.net), "collected − tithe − giving", { tone: now.net < 0 ? "negative" : "" }),
         card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), "including refunds", { format: (value) => value.toLocaleString("en-US") }),
-        card("Average receipt", "average", formatShillings(now.average), "excluding refunds"),
-        card("Refunded", "refunded", formatShillings(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
-        { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? formatShillings(now.topMethod.value) : "no payments" },
+        card("Average receipt", "average", formatTSh(now.average), "excluding refunds"),
+        card("Refunded", "refunded", formatTSh(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
+        { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? `${formatTSh(now.topMethod.value)} collected` : "no payments" },
       ];
     },
   },
@@ -5016,6 +5016,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
   const [exportError, setExportError] = useState("");
   const [receipt, setReceipt] = useState(null);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [moreCards, setMoreCards] = useState(false);
   const columnStore = `pendo-report-columns-${report.id}`;
   const defaultColumns = report.columns.filter((column) => !column.hidden).map((column) => column.key);
   // Chosen columns are remembered on this device for each report.
@@ -5326,18 +5327,22 @@ function ReportDetail({ report, onBack, onSwitch }) {
             <small>{cardScope.detail}</small>
           </header>
         )}
-        {cardMetrics.map((metric) => {
+        {(moreCards ? cardMetrics : cardMetrics.slice(0, 4)).map((metric) => {
           const change = compareMonths(metric);
           return (
-            <article key={metric.label} title={[`${metric.label}: ${metric.value}`, metric.hint, change && `${change.badge} · ${change.last}`].filter(Boolean).join(" · ")}>
+            <article key={metric.label}>
               <span>{metric.label}</span>
               <strong className={metric.tone === "negative" && metric.label === "Net" ? "negative-text" : ""}>{metric.value}</strong>
-              {/* With a month comparison the hint moves to the tooltip to keep cards small. */}
-              {!change && <small className={metric.tone === "negative" && metric.label !== "Net" ? "negative-text" : ""}>{metric.hint}</small>}
+              <small className={metric.tone === "negative" && metric.label !== "Net" ? "negative-text" : ""}>{metric.hint}</small>
               {change && <span className="report-kpi-compare"><em className={`report-kpi-change ${change.tone}`}>{change.badge}</em><i>{change.last}</i></span>}
             </article>
           );
         })}
+        {cardMetrics.length > 4 && (
+          <button type="button" className="report-kpis-more" onClick={() => setMoreCards((open) => !open)} aria-expanded={moreCards}>
+            {moreCards ? <>Show less <ChevronDown size={13} className="flip" /></> : <>View more analytics ({cardMetrics.length - 4}) <ChevronDown size={13} /></>}
+          </button>
+        )}
       </section>
 
       {view === "table" ? (
