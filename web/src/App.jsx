@@ -31,6 +31,7 @@ import {
   X,
   Receipt,
   Wallet,
+  ShoppingBag,
   UserCog,
   Wrench,
   Send,
@@ -1018,6 +1019,160 @@ function validateRentRequest(form) {
   return errors;
 }
 
+// Step 1 of a rental request: pick items and quantities. Shared by the public form and the customer account.
+function RentItemsSection({ items, onItems, submitted, error }) {
+  const [picker, setPicker] = useState("");
+  const selectedCount = items.length;
+  const available = RENTAL_ITEMS.filter((item) => !items.some((selected) => selected.name === item.name));
+
+  const setItems = onItems;
+
+  function addItem(name) {
+    setPicker("");
+    if (!name) return;
+    if (name === "Other") {
+      setItems((items) => [...items, { key: `other-${Date.now()}`, name: "Other", custom: "", quantity: 1 }]);
+      return;
+    }
+    const catalogItem = RENTAL_ITEMS.find((item) => item.name === name);
+    setItems((items) => [...items, { key: name, name, custom: "", quantity: catalogItem.start }]);
+  }
+
+  function setQuantity(key, value) {
+    const quantity = Math.max(1, Math.min(10000, Math.round(Number(value) || 1)));
+    setItems((items) => items.map((item) => (item.key === key ? { ...item, quantity } : item)));
+  }
+  const invalid = () => Boolean(submitted && error);
+  const show = () => (submitted && error ? <small className="auth-field-error"><CircleAlert size={12} /> {error}</small> : null);
+
+  return (
+    <fieldset className="rent-section">
+      <legend><span>1</span> What do you need?</legend>
+      <label className={`auth-input auth-select rent-picker ${invalid("items") ? "has-error" : ""}`}>
+        <Package size={17} />
+        <span className="sr-only">Add an item</span>
+        <select
+          value={picker}
+          onChange={(event) => addItem(event.target.value)}
+          aria-invalid={invalid("items")}
+          className="is-placeholder"
+        >
+          <option value="">{selectedCount ? "Add another item…" : "Choose an item to rent…"}</option>
+          {available.map((item) => (
+            <option key={item.name} value={item.name}>{item.label ? `${item.label} (${item.sub.toLowerCase()})` : item.name}</option>
+          ))}
+          <option value="Other">Other (not listed)…</option>
+        </select>
+        <ChevronDown size={15} className="auth-select-caret" />
+      </label>
+      {selectedCount > 0 && (
+        <div className="rent-selected">
+          {items.map((item) => {
+            const catalogItem = RENTAL_ITEMS.find((entry) => entry.name === item.name);
+            const Icon = catalogItem?.icon || Sparkles;
+            const unit = catalogItem?.unit || "pcs";
+            return (
+              <div className={`rent-item selected ${item.name === "Other" ? "rent-item-other" : ""}`} key={item.key}>
+                <div className="rent-item-head">
+                  <span className="rent-item-icon"><Icon size={18} /></span>
+                  {item.name === "Other" ? (
+                    <input
+                      className="rent-other-input"
+                      placeholder="Which item? e.g. Flowers"
+                      value={item.custom}
+                      maxLength={60}
+                      autoFocus
+                      aria-label="Other item name"
+                      aria-invalid={Boolean(submitted && item.custom.trim().length < 2)}
+                      onChange={(event) => setItems((items) => items.map((entry) => (entry.key === item.key ? { ...entry, custom: event.target.value } : entry)))}
+                    />
+                  ) : (
+                    <span className="rent-item-name">{catalogItem.label || catalogItem.name}{catalogItem.sub && <small>{catalogItem.sub}</small>}</span>
+                  )}
+                  <button
+                    type="button"
+                    className="rent-item-remove"
+                    onClick={() => setItems((items) => items.filter((entry) => entry.key !== item.key))}
+                    aria-label={`Remove ${item.custom || item.name}`}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+                <div className="rent-qty">
+                  <button type="button" onClick={() => setQuantity(item.key, item.quantity - 1)} aria-label={`Fewer ${item.custom || item.name}`}><Minus size={12} /></button>
+                  <input
+                    type="number"
+                    min="1"
+                    inputMode="numeric"
+                    value={item.quantity}
+                    onChange={(event) => setQuantity(item.key, event.target.value)}
+                    aria-label={`${item.custom || item.name} quantity`}
+                  />
+                  <i>{unit}</i>
+                  <button type="button" onClick={() => setQuantity(item.key, item.quantity + 1)} aria-label={`More ${item.custom || item.name}`}><Plus size={12} /></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {show("items") || <small className="rent-hint">{selectedCount ? `${selectedCount} item${selectedCount === 1 ? "" : "s"} selected — add more from the list above.` : "Pick from the list. Choose “Other” if your item isn’t listed."}</small>}
+    </fieldset>
+  );
+}
+
+// Step 2 of a rental request: event date, days, area and venue.
+function RentWhenWhereFields({ form, update, invalid, show }) {
+  return (
+    <fieldset className="rent-section">
+      <legend><span>2</span> When &amp; where?</legend>
+      <div className="auth-field-grid">
+        <div className="auth-field">
+          <label className={`auth-input ${invalid("eventDate") ? "has-error" : ""}`}>
+            <CalendarDays size={17} />
+            <span className="sr-only">Event date</span>
+            <input type="date" min={localTodayIso()} value={form.eventDate} onChange={(event) => update("eventDate", event.target.value)} aria-invalid={invalid("eventDate")} />
+          </label>
+          {show("eventDate")}
+        </div>
+        <div className="auth-field">
+          <label className={`auth-input auth-select ${invalid("days") ? "has-error" : ""}`}>
+            <Clock3 size={17} />
+            <span className="sr-only">Number of days</span>
+            <select value={form.days} onChange={(event) => update("days", event.target.value)} aria-invalid={invalid("days")}>
+              {Array.from({ length: 14 }, (_, index) => String(index + 1)).map((value) => (
+                <option key={value} value={value}>{value} day{value === "1" ? "" : "s"}</option>
+              ))}
+            </select>
+            <ChevronDown size={15} className="auth-select-caret" />
+          </label>
+          {show("days")}
+        </div>
+        <div className="auth-field">
+          <label className={`auth-input auth-select ${invalid("area") ? "has-error" : ""}`}>
+            <MapPin size={17} />
+            <span className="sr-only">Area</span>
+            <select value={form.area} onChange={(event) => update("area", event.target.value)} aria-invalid={invalid("area")} className={form.area ? "" : "is-placeholder"}>
+              <option value="" disabled>Area</option>
+              <AreaOptions current={form.area} />
+            </select>
+            <ChevronDown size={15} className="auth-select-caret" />
+          </label>
+          {show("area")}
+        </div>
+        <div className="auth-field">
+          <label className={`auth-input ${invalid("place") ? "has-error" : ""}`}>
+            <Flag size={17} />
+            <span className="sr-only">Venue or landmark</span>
+            <input placeholder={form.area === "Other area" ? "Town / village" : "Venue or landmark"} value={form.place} onChange={(event) => update("place", event.target.value)} aria-invalid={invalid("place")} maxLength={80} />
+          </label>
+          {show("place")}
+        </div>
+      </div>
+    </fieldset>
+  );
+}
+
 function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign in" }) {
   const [form, setForm] = useState({
     items: [],
@@ -1044,29 +1199,9 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
     setForm((current) => ({ ...current, [key]: value }));
     setServerErrors((current) => ({ ...current, [key]: undefined }));
   };
-  const [picker, setPicker] = useState("");
-  const selectedCount = form.items.length;
-  const available = RENTAL_ITEMS.filter((item) => !form.items.some((selected) => selected.name === item.name));
-
   function setItems(change) {
     setForm((current) => ({ ...current, items: change(current.items) }));
     setServerErrors((current) => ({ ...current, items: undefined }));
-  }
-
-  function addItem(name) {
-    setPicker("");
-    if (!name) return;
-    if (name === "Other") {
-      setItems((items) => [...items, { key: `other-${Date.now()}`, name: "Other", custom: "", quantity: 1 }]);
-      return;
-    }
-    const catalogItem = RENTAL_ITEMS.find((item) => item.name === name);
-    setItems((items) => [...items, { key: name, name, custom: "", quantity: catalogItem.start }]);
-  }
-
-  function setQuantity(key, value) {
-    const quantity = Math.max(1, Math.min(10000, Math.round(Number(value) || 1)));
-    setItems((items) => items.map((item) => (item.key === key ? { ...item, quantity } : item)));
   }
 
   async function handleSubmit(event) {
@@ -1185,125 +1320,9 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
           </div>
 
           <form className="auth-form rent-form" onSubmit={handleSubmit} noValidate>
-            <fieldset className="rent-section">
-              <legend><span>1</span> What do you need?</legend>
-              <label className={`auth-input auth-select rent-picker ${invalid("items") ? "has-error" : ""}`}>
-                <Package size={17} />
-                <span className="sr-only">Add an item</span>
-                <select
-                  value={picker}
-                  onChange={(event) => addItem(event.target.value)}
-                  aria-invalid={invalid("items")}
-                  className="is-placeholder"
-                >
-                  <option value="">{selectedCount ? "Add another item…" : "Choose an item to rent…"}</option>
-                  {available.map((item) => (
-                    <option key={item.name} value={item.name}>{item.label ? `${item.label} (${item.sub.toLowerCase()})` : item.name}</option>
-                  ))}
-                  <option value="Other">Other (not listed)…</option>
-                </select>
-                <ChevronDown size={15} className="auth-select-caret" />
-              </label>
-              {selectedCount > 0 && (
-                <div className="rent-selected">
-                  {form.items.map((item) => {
-                    const catalogItem = RENTAL_ITEMS.find((entry) => entry.name === item.name);
-                    const Icon = catalogItem?.icon || Sparkles;
-                    const unit = catalogItem?.unit || "pcs";
-                    return (
-                      <div className={`rent-item selected ${item.name === "Other" ? "rent-item-other" : ""}`} key={item.key}>
-                        <div className="rent-item-head">
-                          <span className="rent-item-icon"><Icon size={18} /></span>
-                          {item.name === "Other" ? (
-                            <input
-                              className="rent-other-input"
-                              placeholder="Which item? e.g. Flowers"
-                              value={item.custom}
-                              maxLength={60}
-                              autoFocus
-                              aria-label="Other item name"
-                              aria-invalid={Boolean(submitted && item.custom.trim().length < 2)}
-                              onChange={(event) => setItems((items) => items.map((entry) => (entry.key === item.key ? { ...entry, custom: event.target.value } : entry)))}
-                            />
-                          ) : (
-                            <span className="rent-item-name">{catalogItem.label || catalogItem.name}{catalogItem.sub && <small>{catalogItem.sub}</small>}</span>
-                          )}
-                          <button
-                            type="button"
-                            className="rent-item-remove"
-                            onClick={() => setItems((items) => items.filter((entry) => entry.key !== item.key))}
-                            aria-label={`Remove ${item.custom || item.name}`}
-                          >
-                            <X size={13} />
-                          </button>
-                        </div>
-                        <div className="rent-qty">
-                          <button type="button" onClick={() => setQuantity(item.key, item.quantity - 1)} aria-label={`Fewer ${item.custom || item.name}`}><Minus size={12} /></button>
-                          <input
-                            type="number"
-                            min="1"
-                            inputMode="numeric"
-                            value={item.quantity}
-                            onChange={(event) => setQuantity(item.key, event.target.value)}
-                            aria-label={`${item.custom || item.name} quantity`}
-                          />
-                          <i>{unit}</i>
-                          <button type="button" onClick={() => setQuantity(item.key, item.quantity + 1)} aria-label={`More ${item.custom || item.name}`}><Plus size={12} /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {show("items") || <small className="rent-hint">{selectedCount ? `${selectedCount} item${selectedCount === 1 ? "" : "s"} selected — add more from the list above.` : "Pick from the list. Choose “Other” if your item isn’t listed."}</small>}
-            </fieldset>
+            <RentItemsSection items={form.items} onItems={setItems} submitted={submitted} error={errors.items} />
 
-            <fieldset className="rent-section">
-              <legend><span>2</span> When &amp; where?</legend>
-              <div className="auth-field-grid">
-                <div className="auth-field">
-                  <label className={`auth-input ${invalid("eventDate") ? "has-error" : ""}`}>
-                    <CalendarDays size={17} />
-                    <span className="sr-only">Event date</span>
-                    <input type="date" min={localTodayIso()} value={form.eventDate} onChange={(event) => update("eventDate", event.target.value)} aria-invalid={invalid("eventDate")} />
-                  </label>
-                  {show("eventDate")}
-                </div>
-                <div className="auth-field">
-                  <label className={`auth-input auth-select ${invalid("days") ? "has-error" : ""}`}>
-                    <Clock3 size={17} />
-                    <span className="sr-only">Number of days</span>
-                    <select value={form.days} onChange={(event) => update("days", event.target.value)} aria-invalid={invalid("days")}>
-                      {Array.from({ length: 14 }, (_, index) => String(index + 1)).map((value) => (
-                        <option key={value} value={value}>{value} day{value === "1" ? "" : "s"}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={15} className="auth-select-caret" />
-                  </label>
-                  {show("days")}
-                </div>
-                <div className="auth-field">
-                  <label className={`auth-input auth-select ${invalid("area") ? "has-error" : ""}`}>
-                    <MapPin size={17} />
-                    <span className="sr-only">Area</span>
-                    <select value={form.area} onChange={(event) => update("area", event.target.value)} aria-invalid={invalid("area")} className={form.area ? "" : "is-placeholder"}>
-                      <option value="" disabled>Area</option>
-                      <AreaOptions current={form.area} />
-                    </select>
-                    <ChevronDown size={15} className="auth-select-caret" />
-                  </label>
-                  {show("area")}
-                </div>
-                <div className="auth-field">
-                  <label className={`auth-input ${invalid("place") ? "has-error" : ""}`}>
-                    <Flag size={17} />
-                    <span className="sr-only">Venue or landmark</span>
-                    <input placeholder={form.area === "Other area" ? "Town / village" : "Venue or landmark"} value={form.place} onChange={(event) => update("place", event.target.value)} aria-invalid={invalid("place")} maxLength={80} />
-                  </label>
-                  {show("place")}
-                </div>
-              </div>
-            </fieldset>
+            <RentWhenWhereFields form={form} update={update} invalid={invalid} show={show} />
 
             <fieldset className="rent-section">
               <legend><span>3</span> Your details</legend>
@@ -1398,6 +1417,128 @@ function CustomerInvoice({ session, invoiceId, onClose }) {
 
 const greetFirst = (name) => String(name || "").toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (match, gap, letter) => gap + letter.toUpperCase());
 
+// Rent now inside the customer account: same steps as the public form, but name and phone come from the account.
+function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel }) {
+  const blank = () => ({ items: [], eventDate: "", days: "1", area: customer?.area || "", place: customer?.place || "", notes: "" });
+  const [form, setForm] = useState(blank);
+  const [submitted, setSubmitted] = useState(false);
+  const [serverErrors, setServerErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [ask, confirmDialog] = useConfirm();
+
+  const { firstName: _first, lastName: _last, phone: _phone, agree: _agree, ...clientErrors } = validateRentRequest({ ...form, firstName: "x", lastName: "x", phone: "0700000000", agree: true });
+  const errors = { ...clientErrors, ...Object.fromEntries(Object.entries(serverErrors).filter(([, message]) => message)) };
+  const show = (key) => (submitted && errors[key] ? <small className="auth-field-error"><CircleAlert size={12} /> {errors[key]}</small> : null);
+  const invalid = (key) => Boolean(submitted && errors[key]);
+  const update = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setServerErrors((current) => ({ ...current, [key]: undefined }));
+  };
+  function setItems(change) {
+    setForm((current) => ({ ...current, items: change(current.items) }));
+    setServerErrors((current) => ({ ...current, items: undefined }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setSubmitted(true);
+    setSubmitError("");
+    if (Object.keys(clientErrors).length) {
+      event.currentTarget.querySelector("[aria-invalid='true'], .rent-picker select")?.focus();
+      return;
+    }
+    const itemCount = form.items.length;
+    const ok = await ask({
+      title: "Send this rental request?",
+      message: `${itemCount} item${itemCount === 1 ? "" : "s"} for ${formatEventDate(form.eventDate)} (${form.days} day${form.days === "1" ? "" : "s"}) at ${form.place ? `${form.place}, ${form.area}` : form.area}. We will call you to confirm availability and price.`,
+      confirmLabel: "Send request",
+    });
+    if (!ok) return;
+    setSubmitting(true);
+    try {
+      const data = await api("/my/rental-requests", {
+        method: "POST",
+        token: session.token,
+        body: {
+          items: form.items.map(({ name, custom, quantity }) => ({ name, quantity, ...(name === "Other" ? { custom: custom.trim() } : {}) })),
+          eventDate: form.eventDate,
+          days: Number(form.days),
+          area: form.area,
+          place: form.place,
+          notes: form.notes,
+        },
+      });
+      setResult(data);
+      onDone?.();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      if (error.fields) setServerErrors(error.fields);
+      setSubmitError(error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (result) {
+    const { order, sms } = result;
+    return (
+      <section className="panel cust-card cust-rent-done">
+        <div className="auth-success-badge"><PackageCheck size={28} /></div>
+        <h2>Request {order.id} received</h2>
+        <p>Our team will call you shortly to confirm availability and price.</p>
+        <dl className="auth-summary">
+          <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatEventDate(order.eventDate)} · {order.days} day{order.days === 1 ? "" : "s"}</dd></div>
+          <div><dt><MapPin size={14} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
+          <div className="rent-summary-items">
+            <dt><Package size={14} /> Items</dt>
+            <dd>{order.items.map((item) => <span key={item.custom || item.name}>{itemDisplay(item)} × {item.quantity}</span>)}</dd>
+          </div>
+        </dl>
+        {sms.status === "sent" && <p className="cust-pay-hint"><MessageSquareText size={13} /> We sent the request details by SMS to {sms.phone}.</p>}
+        <div className="cust-rent-actions">
+          <button type="button" className="button button-primary" onClick={onViewOrders}>View my orders <ArrowRight size={15} /></button>
+          <button type="button" className="button button-secondary" onClick={() => { setResult(null); setForm(blank()); setSubmitted(false); }}><Plus size={15} /> Rent something else</button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <form className="cust-rent-form" onSubmit={handleSubmit} noValidate>
+      <div className="cust-rent-main">
+        <section className="panel cust-card rent-form auth-form">
+          <RentItemsSection items={form.items} onItems={setItems} submitted={submitted} error={errors.items} />
+        </section>
+        <section className="panel cust-card rent-form auth-form">
+          <RentWhenWhereFields form={form} update={update} invalid={invalid} show={show} />
+          <label className="auth-field">
+            <span className="sr-only">Notes</span>
+            <textarea className="rent-notes" rows="2" maxLength={300} placeholder="Notes (optional) — e.g. type of event, colours, delivery time" value={form.notes} onChange={(event) => update("notes", event.target.value)} />
+          </label>
+        </section>
+      </div>
+      <aside className="panel cust-card cust-rent-side">
+        <div className="cust-card-head"><span className="panel-kicker">YOUR REQUEST</span><h2>Summary</h2></div>
+        <ul className="cust-rent-summary">
+          <li><Package size={14} /><span>{form.items.length ? form.items.map((item) => `${item.custom || itemDisplay(item)} × ${item.quantity}`).join(", ") : "No items yet"}</span></li>
+          <li><CalendarDays size={14} /><span>{form.eventDate ? `${formatEventDate(form.eventDate)} · ${form.days} day${form.days === "1" ? "" : "s"}` : "Choose the event date"}</span></li>
+          <li><MapPin size={14} /><span>{form.area ? (form.place ? `${form.place}, ${form.area}` : form.area) : "Choose your area"}</span></li>
+          <li><UserRound size={14} /><span>{customer ? `${customer.firstName} ${customer.lastName} · ${customer.phone}` : session.name}</span></li>
+        </ul>
+        <p className="cust-pay-hint"><Info size={13} /> Prices are confirmed by our team. We’ll call you and send an SMS once your booking is confirmed.</p>
+        {submitError && <p className="auth-error" role="alert"><CircleAlert size={14} /> {submitError}</p>}
+        <button className="button button-primary cust-rent-send" type="submit" disabled={submitting}>
+          {submitting ? <><LoaderCircle size={16} className="auth-spin" /> Sending…</> : <>Send request <Send size={15} /></>}
+        </button>
+        <button type="button" className="button button-secondary cust-rent-send" onClick={onCancel}>Cancel</button>
+      </aside>
+      {confirmDialog}
+    </form>
+  );
+}
+
 // Customer account: sidebar, home summary, orders, payments, invoices and how to pay.
 const CUSTOMER_PAGES = [
   ["Home", LayoutDashboard],
@@ -1405,9 +1546,10 @@ const CUSTOMER_PAGES = [
   ["Payments & receipts", Receipt],
   ["Invoices", FileText],
   ["How to pay", Wallet],
+  ["Rent now", ShoppingBag],
 ];
 
-function CustomerHome({ session, onLogout, onRentMore }) {
+function CustomerHome({ session, onLogout }) {
   const [state, setState] = useState({ loading: true, error: "", customer: null, orders: [], payments: [], invoices: [], business: null });
   const [page, setPage] = useState("Home");
   const [mobileNav, setMobileNav] = useState(false);
@@ -1459,6 +1601,7 @@ function CustomerHome({ session, onLogout, onRentMore }) {
     "Payments & receipts": "Payments we have received from you. View or print any receipt.",
     Invoices: "Invoices for your bookings. View, print or download them.",
     "How to pay": "Pay with any of these methods and quote your order or invoice number.",
+    "Rent now": "Tell us what you need. We’ll confirm availability and price, then call you.",
   };
 
   const loadingOrError = state.loading ? (
@@ -1590,7 +1733,8 @@ orders.length === 0 ? (
   );
 
   let content;
-  if (loadingOrError) content = loadingOrError;
+  if (page === "Rent now") content = <CustomerRentPage session={session} customer={state.customer} onDone={load} onViewOrders={() => go("My orders")} onCancel={() => go("Home")} />;
+  else if (loadingOrError) content = loadingOrError;
   else if (page === "Home") {
     content = (
       <>
@@ -1614,7 +1758,7 @@ orders.length === 0 ? (
                 </div>
               </div>
             ) : (
-              <div className="cust-empty slim"><Tent size={20} /><strong>No upcoming events</strong><button type="button" className="auth-link" onClick={() => onRentMore(state.customer)}>Rent now</button></div>
+              <div className="cust-empty slim"><Tent size={20} /><strong>No upcoming events</strong><button type="button" className="auth-link" onClick={() => go("Rent now")}>Rent now</button></div>
             )}
           </article>
           <article className="panel cust-card">
@@ -1678,7 +1822,6 @@ orders.length === 0 ? (
             </button>
           ))}
         </nav>
-        <button type="button" className="cust-side-rent" onClick={() => onRentMore(state.customer)}><Plus size={15} /> Rent now</button>
         <div className="sidebar-bottom">
           <div className="help-panel">
             <div className="help-icon"><Headset size={17} /></div>
@@ -1719,9 +1862,11 @@ orders.length === 0 ? (
               <h1>{page === "Home" ? `${greeting}, ${firstName}` : page}</h1>
               <p>{PAGE_TEXT[page]}</p>
             </div>
-            <div className="welcome-actions">
-              <button type="button" className="button button-primary" onClick={() => onRentMore(state.customer)}><Plus size={17} /> Rent now</button>
-            </div>
+            {page !== "Rent now" && (
+              <div className="welcome-actions">
+                <button type="button" className="button button-primary" onClick={() => go("Rent now")}><Plus size={17} /> Rent now</button>
+              </div>
+            )}
           </section>
           {content}
           <footer className="page-footer">
@@ -1914,7 +2059,6 @@ function LoginScreen({ onLogin, onRentNow }) {
 function App() {
   const [session, setSession] = useState(readSession);
   const [authView, setAuthView] = useState("login");
-  const [rentPrefill, setRentPrefill] = useState(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -1949,40 +2093,21 @@ function App() {
     clearSession();
     setSession(null);
     setAuthView("login");
-    setRentPrefill(null);
   }
 
   function signIn(nextSession) {
     writeSession(nextSession, true);
     setSession(nextSession);
     setAuthView("login");
-    setRentPrefill(null);
   }
 
-  if (authView === "rent" && (!session || session.role === "customer")) {
-    return (
-      <RentNowScreen
-        prefill={rentPrefill}
-        backLabel={session ? "Back to my requests" : "Back to sign in"}
-        onBack={() => {
-          setAuthView("login");
-          setRentPrefill(null);
-        }}
-        onSignedIn={signIn}
-      />
-    );
+  if (authView === "rent" && !session) {
+    return <RentNowScreen onBack={() => setAuthView("login")} onSignedIn={signIn} />;
   }
   if (!session) return <LoginScreen onLogin={setSession} onRentNow={() => setAuthView("rent")} />;
   if (session.role === "customer") {
     return (
-      <CustomerHome
-        session={session}
-        onLogout={logout}
-        onRentMore={(customer) => {
-          setRentPrefill(customer ? { ...customer, phone: customer.phone } : null);
-          setAuthView("rent");
-        }}
-      />
+      <CustomerHome session={session} onLogout={logout} />
     );
   }
   return <Workspace session={session} onLogout={logout} />;

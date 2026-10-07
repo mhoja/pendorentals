@@ -138,3 +138,50 @@ export async function createRentalRequest(request, response) {
         session,
     });
 }
+
+// POST /api/my/rental-requests — a signed-in customer requests a rental from inside their account.
+export async function createMyRentalRequest(request, response) {
+    const { rows: [customerRow] } = await query('select * from customers where id = $1', [request.user.id]);
+    if (!customerRow) throw new HttpError(404, 'Customer account not found.');
+    const { errors, value } = validateRequest({
+        ...(request.body || {}),
+        firstName: customerRow.first_name,
+        lastName: customerRow.last_name,
+        phone: customerRow.phone,
+    });
+    if (!value.area || !(await isKnownArea(value.area))) errors.area = 'Choose your area.';
+    if (Object.keys(errors).length) throw new HttpError(400, 'Please check the highlighted fields.', { fields: errors });
+
+    const orderCode = await transaction(async (db) => {
+        const code = await nextCode(db, 'order_number_seq', 'ORD-', 4);
+        const { rows: [order] } = await db.query(
+            `insert into orders (code, customer_id, event_date, days, area, place, notes, source)
+             values ($1, $2, $3, $4, $5, $6, $7, 'rent_now') returning id`,
+            [code, customerRow.id, value.eventDate, value.days, value.area, value.place || null, value.notes || null],
+        );
+        for (const [position, item] of value.items.entries()) {
+            await db.query(
+                'insert into order_items (order_id, name, custom, quantity, position) values ($1, $2, $3, $4, $5)',
+                [order.id, item.name, item.custom, item.quantity, position],
+            );
+        }
+        return code;
+    });
+
+    const settings = await getSettings();
+    const place = value.place ? `${value.place}, ${value.area}` : value.area;
+    const order = await loadOrder(orderCode);
+    const sms = await sendTemplate(settings, 'requestReceived', value.phone, (lang) => ({
+        firstName: greetName(value.firstName),
+        order: orderCode,
+        itemList: itemsSummary(value.items),
+        date: smsDate(value.eventDate, lang),
+        days: smsDays(value.days, lang),
+        place,
+        login: lang === 'sw' ? `\nFuatilia: ${publicUrl} kwa namba yako ya simu.` : `\nTrack it at ${publicUrl} with your phone number.`,
+        phone: settings.phone,
+    }), { kind: 'rental_request', orderId: order.dbId });
+
+    const { dbId, customer: _customer, ...shown } = order;
+    response.status(201).json({ order: shown, sms: { status: sms.status, phone: prettyPhone(customerRow.phone) } });
+}
