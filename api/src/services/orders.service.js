@@ -159,3 +159,37 @@ export function validateSchedule(body, { partial = false } = {}) {
     }
     return value;
 }
+
+// Plain-text item lines for SMS. `prices` adds rate, days, line totals, delivery, discount and the total.
+// Lines are dropped (with "+N more") so the block stays within `budget` characters.
+const smsNumber = (value) => Number(value || 0).toLocaleString('en-US');
+export function smsItems(order, { prices = true, budget = 320 } = {}) {
+    const days = order.days || 1;
+    const lines = order.items.map((item) => {
+        const name = item.custom || item.name;
+        if (!prices) return `- ${name} x${item.quantity}`;
+        if (item.rate === null || item.rate === undefined) return `- ${name} x${item.quantity} (price to confirm)`;
+        return `- ${name} x${item.quantity} @${smsNumber(item.rate)}${days > 1 ? ` x${days}d` : ''} = ${smsNumber(item.lineTotal)}`;
+    });
+    const tail = [];
+    if (prices) {
+        const extras = [
+            order.deliveryFee ? `Delivery ${smsNumber(order.deliveryFee)}` : '',
+            order.discount ? `Discount -${smsNumber(order.discount)}` : '',
+        ].filter(Boolean);
+        if (extras.length) tail.push(extras.join(', '));
+        tail.push(order.total === null ? 'Total: to be confirmed' : `Total ${smsNumber(order.total)}`);
+    }
+    const head = prices ? 'Items (TSh):' : 'Items:';
+    const shown = [];
+    for (const [index, line] of lines.entries()) {
+        const rest = lines.length - index - 1;
+        const candidate = [head, ...shown, line, ...(rest ? [`+${rest} more item${rest === 1 ? '' : 's'}`] : []), ...tail].join('\n');
+        if (candidate.length > budget && shown.length) {
+            const hidden = lines.length - shown.length;
+            return [head, ...shown, `+${hidden} more item${hidden === 1 ? '' : 's'}`, ...tail].join('\n');
+        }
+        shown.push(line);
+    }
+    return [head, ...shown, ...tail].join('\n');
+}

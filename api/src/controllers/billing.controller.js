@@ -1,6 +1,6 @@
 import { query, transaction } from '../config/db.js';
-import { HttpError, addDays, cleanText, formatDate, formatTSh, isIsoDate, isWhole, prettyPhone, todayIso } from '../utils/helpers.js';
-import { loadOrder, nextCode } from '../services/orders.service.js';
+import { HttpError, addDays, cleanText, formatDate, formatTSh, greetName, isIsoDate, isWhole, prettyPhone, todayIso } from '../utils/helpers.js';
+import { loadOrder, nextCode, smsItems } from '../services/orders.service.js';
 import { enabledPaymentMethods, fillTemplate, getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
 import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
@@ -102,7 +102,9 @@ export async function sendInvoice(request, response) {
     const amountText = invoice.balance > 0
         ? `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${howToPay ? ` Pay via ${howToPay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`
         : 'Fully paid - asante!';
-    const message = `Hi ${person.first_name}, ${settings.businessName} invoice ${invoice.code}${invoice.orderCode ? ` for ${invoice.orderCode}` : ''}: total ${formatTSh(invoice.amount)}, paid ${formatTSh(invoice.paid)}. ${amountText} Help: ${settings.phone}`;
+    const invoiceOrder = invoice.orderCode ? await loadOrder(invoice.orderCode) : null;
+    const itemsBlock = invoiceOrder ? `\n${smsItems(invoiceOrder, { budget: 260 })}\n` : ' ';
+    const message = `Hi ${greetName(person.first_name)}, ${settings.businessName} invoice ${invoice.code}${invoice.orderCode ? ` for ${invoice.orderCode}` : ''}.${itemsBlock}Invoice total ${formatTSh(invoice.amount)}, paid ${formatTSh(invoice.paid)}. ${amountText} Help: ${settings.phone}`;
     const sms = await sendSms(person.phone, message, { kind: 'invoice', orderId: null });
     response.json({ sms: { status: sms.status, error: sms.error }, message });
 }
@@ -193,14 +195,18 @@ export async function recordPayment(request, response) {
 
     let sms = null;
     if (body.notifyCustomer !== false) {
-        const order = orderId ? (await query('select code from orders where id = $1', [orderId])).rows[0] : null;
-        const balance = order ? (await loadOrder(order.code)).balance : null;
+        const code = orderId ? (await query('select code from orders where id = $1', [orderId])).rows[0]?.code : null;
+        const paidOrder = code ? await loadOrder(code) : null;
         const message = fillTemplate(settings.smsTemplates.paymentReceived, {
-            firstName: row.first_name,
+            firstName: greetName(row.first_name),
             amount: formatTSh(amount),
-            order: order?.code || payment.invoice,
+            order: code || payment.invoice,
             receipt: payment.receipt,
-            balance: balance === null ? '—' : formatTSh(balance),
+            balance: paidOrder?.balance === null || !paidOrder ? '-' : formatTSh(paidOrder.balance),
+            paid: paidOrder ? formatTSh(paidOrder.paid) : formatTSh(amount),
+            items: paidOrder ? smsItems(paidOrder, { budget: 280 }) : '',
+            itemList: paidOrder ? smsItems(paidOrder, { prices: false, budget: 200 }) : '',
+            total: paidOrder?.total === null || !paidOrder ? 'to be confirmed' : formatTSh(paidOrder.total),
         });
         sms = await sendSms(row.phone, message, { kind: 'payment', orderId });
     }

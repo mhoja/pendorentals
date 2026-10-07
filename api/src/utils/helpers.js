@@ -23,6 +23,8 @@ export const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 // Customer names are stored in capitals however they are typed, e.g. "neema joseph" -> "NEEMA JOSEPH".
 export const personName = (value) => cleanText(value, 40).toUpperCase();
+// Names are stored in capitals; greet people normally in messages, e.g. "AMINA" -> "Amina".
+export const greetName = (value) => String(value || '').toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (match, gap, letter) => gap + letter.toUpperCase());
 export const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && !Number.isNaN(Date.parse(value));
 export const isWhole = (value, min = 0, max = 1e12) => Number.isInteger(value) && value >= min && value <= max;
 

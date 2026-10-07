@@ -1,6 +1,6 @@
 import { query, transaction } from '../config/db.js';
 import { createSession, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, formatDate, isIsoDate, isPhone, normalizePhone, personName, prettyPhone, todayIso } from '../utils/helpers.js';
+import { HttpError, cleanText, formatDate, greetName, isIsoDate, isPhone, normalizePhone, personName, prettyPhone, todayIso } from '../utils/helpers.js';
 import { loadOrder, nextCode } from '../services/orders.service.js';
 import { getSettings } from '../services/settings.service.js';
 import { OTHER_AREA, isKnownArea } from '../services/areas.service.js';
@@ -13,9 +13,10 @@ export const RENTAL_CATALOG = [
     'PA system', 'Microphone', 'LED screen', 'Camera', 'Light box', 'Utensils (cooking vessels)',
 ];
 
+// One line per requested item with its quantity (prices are confirmed later).
 function itemsSummary(items) {
-    const parts = items.map((item) => `${item.custom || item.name.replace(' (cooking vessels)', '')} x${item.quantity}`);
-    return parts.length > 4 ? `${parts.slice(0, 4).join(', ')} +${parts.length - 4} more` : parts.join(', ');
+    const lines = items.map((item) => `- ${item.custom || item.name.replace(' (cooking vessels)', '')} x${item.quantity}`);
+    return lines.length > 8 ? [...lines.slice(0, 8), `+${lines.length - 8} more`].join('\n') : lines.join('\n');
 }
 
 function validateRequest(body) {
@@ -116,7 +117,7 @@ export async function createRentalRequest(request, response) {
     const login = temporaryPassword
         ? `Track it at ${publicUrl} - Username: ${value.phone}, Password: ${temporaryPassword}.`
         : `Track it at ${publicUrl} with your phone number.`;
-    const message = `Hi ${value.firstName}, thank you for choosing ${settings.businessName}! We received your request ${orderCode}: ${itemsSummary(value.items)}. Event: ${formatDate(value.eventDate)} (${value.days} day${value.days === 1 ? '' : 's'}) at ${place}. We will call you to confirm the price. ${login} Help: ${settings.phone}`;
+    const message = `Hi ${greetName(value.firstName)}, thank you for choosing ${settings.businessName}! We received your request ${orderCode}:\n${itemsSummary(value.items)}\nEvent: ${formatDate(value.eventDate)} (${value.days} day${value.days === 1 ? '' : 's'}) at ${place}. We will call you to confirm the price.\n${login} Help: ${settings.phone}`;
     const order = await loadOrder(orderCode);
     const sms = await sendSms(value.phone, message, { kind: 'rental_request', orderId: order.dbId });
 

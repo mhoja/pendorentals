@@ -4661,7 +4661,7 @@ function MessagingPage({ session, settingsResource }) {
           </>
         ) : (
           <div className="ws-templates">
-            <p className="team-muted">Use placeholders: {"{firstName} {order} {date} {total} {place} {amount} {receipt} {balance} {phone}"}. Turn each message on or off in Settings → Notifications.</p>
+            <p className="team-muted">Use placeholders: {"{firstName} {order} {date} {items} {itemList} {total} {paid} {balance} {place} {amount} {receipt} {phone}"}. {"{items}"} lists every item with quantity, price per day, days and line total, then delivery, discount and the total; {"{itemList}"} lists items and quantities only. Turn each message on or off in Settings → Notifications.</p>
             {Object.entries(TEMPLATE_INFO).map(([key, [title, help]]) => (
               <label className="set-field" key={key}>
                 <span>{title} <em>{help}</em></span>

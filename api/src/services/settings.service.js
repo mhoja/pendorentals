@@ -73,10 +73,10 @@ export const DEFAULT_SETTINGS = {
         { id: 'card', name: 'Card', type: 'card', provider: '', number: '', accountName: '', enabled: false },
     ],
     smsTemplates: {
-        bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed. Total: {total}. Help: {phone}',
-        outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}. Help: {phone}',
+        bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed.\n{items}\nHelp: {phone}',
+        outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}.\n{itemList}\nPlease check them on arrival. Help: {phone}',
         completed: 'Thank you {firstName} for renting with Pendo Rentals! We hope your event was a great one. {phone}',
-        paymentReceived: 'Hi {firstName}, we received {amount} for {order}. Receipt {receipt}. Balance: {balance}. Asante! Pendo Rentals',
+        paymentReceived: 'Hi {firstName}, we received {amount} for {order}. Receipt {receipt}.\n{items}\nPaid {paid}. Balance {balance}. Asante! Pendo Rentals',
     },
 };
 
@@ -102,8 +102,22 @@ export async function getSettings(db = { query }) {
         ...DEFAULT_SETTINGS,
         ...stored,
         paymentMethods: Array.isArray(stored.paymentMethods) ? stored.paymentMethods : legacyPaymentMethods(stored),
-        smsTemplates: { ...DEFAULT_SETTINGS.smsTemplates, ...(stored.smsTemplates || {}) },
+        smsTemplates: upgradeTemplates(stored.smsTemplates),
     };
+}
+
+// Saved templates that were never edited still match an old default; give them the itemised version.
+const OLD_DEFAULT_TEMPLATES = {
+    bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed. Total: {total}. Help: {phone}',
+    outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}. Help: {phone}',
+    paymentReceived: 'Hi {firstName}, we received {amount} for {order}. Receipt {receipt}. Balance: {balance}. Asante! Pendo Rentals',
+};
+function upgradeTemplates(saved = {}) {
+    const templates = { ...DEFAULT_SETTINGS.smsTemplates, ...saved };
+    for (const [key, old] of Object.entries(OLD_DEFAULT_TEMPLATES)) {
+        if (templates[key] === old) templates[key] = DEFAULT_SETTINGS.smsTemplates[key];
+    }
+    return templates;
 }
 
 export const enabledPaymentMethods = (settings) => (settings.paymentMethods || []).filter((method) => method.enabled);

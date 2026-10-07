@@ -121,8 +121,18 @@ export async function resendLogged(row) {
     return result;
 }
 
+// Characters outside the GSM alphabet make an SMS Unicode (70 characters per part instead of 160).
+export const smsText = (text) => String(text)
+    .replace(/[×✕]/g, 'x')
+    .replace(/[–—]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, '...')
+    .replace(/[ \t]+\n/g, '\n');
+
 // Sends and records every SMS in sms_log. Never throws.
-export async function sendSms(phone, message, { kind = 'manual', orderId = null } = {}) {
+export async function sendSms(phone, rawMessage, { kind = 'manual', orderId = null } = {}) {
+    const message = smsText(rawMessage);
     const result = await deliver(phone, message);
     try {
         await query(

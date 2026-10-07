@@ -1,7 +1,7 @@
 import { query, transaction } from '../config/db.js';
 import { MANAGERS, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, formatDate, formatTSh, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
-import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
+import { HttpError, cleanText, formatDate, formatTSh, greetName, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
+import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, smsItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
 import { fillTemplate, getSettings } from '../services/settings.service.js';
 import { sendSms } from '../services/sms.service.js';
 
@@ -121,8 +121,8 @@ export async function createOrder(request, response) {
     if (body.notifyCustomer !== false) {
         const settings = await getSettings();
         const login = temporaryPassword ? ` Track it at ${publicUrl} - Username: ${customer.phone}, Password: ${temporaryPassword}.` : '';
-        const totalText = order.total !== null ? ` Total: ${formatTSh(order.total)}.` : ' We will confirm the price shortly.';
-        sms = await sendSms(customer.phone, `Hi ${customer.first_name}, ${settings.businessName} has created your booking ${code} for ${formatDate(order.eventDate)} (${order.days} day${order.days === 1 ? '' : 's'}).${totalText}${login} Help: ${settings.phone}`, { kind: 'order_created', orderId: order.dbId });
+        const priceNote = order.total === null ? '\nWe will confirm the price shortly.' : '';
+        sms = await sendSms(customer.phone, `Hi ${greetName(customer.first_name)}, ${settings.businessName} has created your booking ${code} for ${formatDate(order.eventDate)} (${order.days} day${order.days === 1 ? '' : 's'}).\n${smsItems(order, { budget: login ? 260 : 360 })}${priceNote}${login ? `\n${login.trim()}` : ''}\nHelp: ${settings.phone}`, { kind: 'order_created', orderId: order.dbId });
     }
     response.status(201).json({ order, sms: sms && { status: sms.status }, temporaryPassword: temporaryPassword && sms?.status !== 'sent' ? temporaryPassword : undefined });
 }
@@ -166,12 +166,16 @@ export async function updateOrder(request, response) {
         const enabled = { Confirmed: settings.customerConfirm, 'Out for delivery': settings.customerDelivery, Completed: settings.customerThanks }[value.status];
         if (templateKey && enabled) {
             const message = fillTemplate(settings.smsTemplates[templateKey], {
-                firstName: order.customer.firstName,
+                firstName: greetName(order.customer.firstName),
                 order: order.id,
                 date: formatDate(order.eventDate),
                 total: order.total === null ? 'to be confirmed' : formatTSh(order.total),
                 place: order.place ? `${order.place}, ${order.area}` : order.area || 'your venue',
                 phone: settings.phone,
+                items: smsItems(order),
+                itemList: smsItems(order, { prices: false }),
+                paid: formatTSh(order.paid),
+                balance: order.balance === null ? 'to be confirmed' : formatTSh(order.balance),
             });
             sms = await sendSms(order.customerPhone, message, { kind: 'order_status', orderId: order.dbId });
         }
