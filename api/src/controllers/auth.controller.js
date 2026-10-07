@@ -55,7 +55,7 @@ export async function changePassword(request, response) {
 }
 
 // POST /api/auth/forgot-password — sets a new password and sends it to the account's phone by SMS.
-// The answer is the same whether or not the number has an account, so it can't be used to find accounts.
+// The number must belong to an account before anything is sent.
 // The password only changes once the SMS has gone out, so nobody is locked out by a failed SMS.
 export async function forgotPassword(request, response) {
     const phone = normalizePhone(request.body?.phone);
@@ -64,23 +64,22 @@ export async function forgotPassword(request, response) {
     if (!smsConfigured() || !(await getGatewayState()).connected) {
         throw new HttpError(503, `We can’t send SMS right now. Call ${settings.businessName} on ${settings.phone} to reset your password.`);
     }
-    const done = { ok: true, message: `If ${prettyPhone(phone)} has an account, a new password has been sent to it by SMS.` };
 
     const { rows: [staff] } = await query("select id, first_name, 'staff' as kind from staff where phone = $1 and status <> 'Inactive'", [phone]);
     const { rows: [customer] } = staff ? { rows: [] } : await query("select id, first_name, 'customer' as kind from customers where phone = $1 and password_hash is not null", [phone]);
     const account = staff || customer;
     if (!account) {
-        response.json(done);
-        return;
+        throw new HttpError(404, `No account uses ${prettyPhone(phone)}. Check the number, or call ${settings.phone}.`, { fields: { phone: 'No account uses this number.' } });
     }
     // One reset SMS per number every 5 minutes.
     const { rows: [recent] } = await query(
-        "select 1 from sms_log where phone = $1 and kind = 'password_reset' and status = 'sent' and created_at > now() - interval '5 minutes' limit 1",
+        `select ceil(extract(epoch from (created_at + interval '5 minutes' - now())) / 60)::int as wait
+           from sms_log where phone = $1 and kind = 'password_reset' and status = 'sent' and created_at > now() - interval '5 minutes'
+          order by id desc limit 1`,
         [phone],
     );
     if (recent) {
-        response.json(done);
-        return;
+        throw new HttpError(429, `A new password was sent to ${prettyPhone(phone)} a moment ago. Check your SMS, or try again in ${recent.wait} minute${recent.wait === 1 ? '' : 's'}.`);
     }
 
     const password = newTemporaryPassword();
@@ -95,5 +94,5 @@ export async function forgotPassword(request, response) {
     await query(`update ${table} set password_hash = $1 where id = $2`, [hashPassword(password), account.id]);
     // Sign out everywhere; the new password is needed to get back in.
     await query('delete from sessions where kind = $1 and subject_id = $2', [account.kind, account.id]);
-    response.json(done);
+    response.json({ ok: true, message: `A new password has been sent by SMS to ${prettyPhone(phone)}.` });
 }
