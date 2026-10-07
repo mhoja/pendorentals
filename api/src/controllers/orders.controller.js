@@ -2,7 +2,7 @@ import { query, transaction } from '../config/db.js';
 import { hashPassword, newTemporaryPassword } from '../services/auth.service.js';
 import { can } from '../services/permissions.service.js';
 import { HttpError, cleanText, formatTSh, greetName, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
-import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, smsDate, smsDays, smsItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
+import { DELIVERY_STATUSES, ORDER_STATUSES, REAL_ORDER_SQL, loadOrder, loadOrders, nextCode, replaceOrderItems, smsDate, smsDays, smsItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
 import { getSettings, sendTemplate } from '../services/settings.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
@@ -74,8 +74,17 @@ async function resolveCustomer(db, body) {
 export async function listOrders(request, response) {
     const conditions = [];
     const params = [];
+    // ?requests=pending|declined lists customer requests (Order requests page); otherwise only real orders.
+    const requests = ['pending', 'declined'].includes(request.query.requests) ? request.query.requests : null;
+    if (requests) {
+        if (!can(request.user, 'orders.requests')) throw new HttpError(403, 'Your role can’t see order requests.');
+        params.push(requests);
+        conditions.push(`o.request_state = $${params.length}`);
+    } else {
+        conditions.push(REAL_ORDER_SQL);
+    }
     // Without "See all orders", staff only see delivery orders (and ones they drive).
-    if (!can(request.user, 'orders.view')) {
+    if (!requests && !can(request.user, 'orders.view')) {
         params.push(request.user.id);
         conditions.push(`(o.driver_id = $${params.length} or o.delivery_required)`);
     }
@@ -142,11 +151,14 @@ export async function updateOrder(request, response) {
     const body = request.body || {};
     // Each part of an order change needs its own permission.
     const user = request.user;
+    const before = await loadOrder(request.params.code);
+    // People who handle requests may confirm or decline a pending request without the general status permissions.
+    const handlingRequest = before.requestState === 'pending' && can(user, 'orders.requests');
     const editingDetails = Object.keys(body).some((key) => !['status', 'deliveryStatus', 'notifyCustomer'].includes(key));
     if (editingDetails && !can(user, 'orders.edit')) throw new HttpError(403, 'Your role can’t edit order details.');
     if (body.status !== undefined) {
         const deliveryStep = ['Out for delivery', 'Completed'].includes(body.status);
-        const allowed = body.status === 'Cancelled'
+        const allowed = handlingRequest ? true : body.status === 'Cancelled'
             ? can(user, 'orders.cancel')
             : can(user, 'orders.status') || (deliveryStep && can(user, 'orders.delivery'));
         if (!allowed) throw new HttpError(403, body.status === 'Cancelled' ? 'Your role can’t cancel orders.' : `Your role can’t mark orders ${String(body.status).toLowerCase()}.`);
@@ -154,8 +166,12 @@ export async function updateOrder(request, response) {
     if (body.deliveryStatus !== undefined && !['orders.edit', 'orders.status', 'orders.delivery'].some((key) => can(user, key))) {
         throw new HttpError(403, 'Your role can’t update deliveries.');
     }
-    const before = await loadOrder(request.params.code);
     const value = validateOrderBody(body, { partial: true });
+    // A pending customer request becomes a real order once it moves past "New request", or is declined when cancelled.
+    if (before.requestState === 'pending' && value.status && value.status !== 'New request') {
+        if (!can(user, 'orders.requests')) throw new HttpError(403, 'Your role can’t confirm or decline order requests.');
+        value.request_state = value.status === 'Cancelled' ? 'declined' : 'accepted';
+    }
     const items = body.items !== undefined ? await validateOrderItems(body.items) : null;
     const statusAfter = value.status || before.status;
     if (value.status || items) requirePrices(statusAfter, items || before.items);

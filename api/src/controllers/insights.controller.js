@@ -1,6 +1,6 @@
 import { query } from '../config/db.js';
 import { HttpError, addDays, isIsoDate, prettyPhone, todayIso } from '../utils/helpers.js';
-import { ACTIVE_STATUSES, ORDER_STATUSES, loadOrders } from '../services/orders.service.js';
+import { ACTIVE_STATUSES, ORDER_STATUSES, REAL_ORDER_SQL, loadOrders } from '../services/orders.service.js';
 import { can } from '../services/permissions.service.js';
 import { PAYMENT_SELECT, shapePayment } from '../services/billing.service.js';
 
@@ -46,10 +46,11 @@ export async function getDashboard(request, response) {
         query(UNITS_OUT_SQL, [ACTIVE_STATUSES, today]),
         query(`select paid_on, sum(amount) as total from payments where status = 'Paid' and paid_on between $1 and $2 group by paid_on`, [from, today]),
         query(`select coalesce(sum(amount), 0) as total from payments where status = 'Paid' and paid_on between $1 and $2`, [previousFrom, previousTo]),
-        query(`select count(*) filter (where status = 'New request') as new_requests,
+        query(`select count(*) filter (where status = 'New request' and ${REAL_ORDER_SQL}) as new_requests,
+                      count(*) filter (where o.request_state = 'pending') as pending_requests,
                       count(*) filter (where status = any($1)) as active,
-                      count(*) filter (where status not in ('Completed', 'Cancelled') and event_date >= $2) as upcoming
-                 from orders`, [ACTIVE_STATUSES, today]),
+                      count(*) filter (where status not in ('Completed', 'Cancelled') and event_date >= $2 and ${REAL_ORDER_SQL}) as upcoming
+                 from orders o`, [ACTIVE_STATUSES, today]),
         query(`select i.id, i.name, i.category, i.rate, i.status, i.sku, coalesce(sum(oi.quantity), 0) as ordered
                  from inventory_items i left join order_items oi on oi.inventory_item_id = i.id
                 group by i.id order by ordered desc, i.name limit 3`),
@@ -59,7 +60,7 @@ export async function getDashboard(request, response) {
     const revenue = days.map((day) => ({ date: day, total: revenueRows.rows.find((row) => row.paid_on === day)?.total || 0 }));
     const revenueTotal = revenue.reduce((sum, day) => sum + day.total, 0);
     const out = unitsOut.rows.reduce((sum, row) => sum + row.units, 0);
-    const openOrders = await loadOrders("o.status not in ('Completed', 'Cancelled')");
+    const openOrders = await loadOrders(`o.status not in ('Completed', 'Cancelled') and ${REAL_ORDER_SQL}`);
     const upcoming = openOrders
         .filter((order) => order.eventDate >= today)
         .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
@@ -80,7 +81,7 @@ export async function getDashboard(request, response) {
         .filter((order) => ACTIVE_STATUSES.includes(order.status) && lastDay(order) <= today)
         .sort((a, b) => lastDay(a).localeCompare(lastDay(b)))
         .map(brief);
-    const { rows: statusRows } = await query('select status, count(*)::int as count from orders group by status');
+    const { rows: statusRows } = await query(`select status, count(*)::int as count from orders o where ${REAL_ORDER_SQL} group by status`);
     const pipeline = ORDER_STATUSES.map((status) => ({ status, count: statusRows.find((row) => row.status === status)?.count || 0 }));
     const eventsToday = openOrders.filter((order) => order.eventDate <= today && lastDay(order) >= today && order.status !== 'New request').length;
 
@@ -109,7 +110,7 @@ export async function getDashboard(request, response) {
             query(`${PAYMENT_SELECT} order by p.paid_on desc, p.id desc limit 5`),
         ]);
         // Every order except cancelled ones, so completed orders that still owe money count too.
-        const owing = (await loadOrders("o.status <> 'Cancelled'")).filter((order) => order.balance > 0);
+        const owing = (await loadOrders(`o.status <> 'Cancelled' and ${REAL_ORDER_SQL}`)).filter((order) => order.balance > 0);
         finance = {
             month, lastMonth,
             outstanding: owing.reduce((sum, order) => sum + order.balance, 0),
@@ -204,7 +205,7 @@ export async function getReport(request, response) {
         return;
     }
     if (id === 'sales') {
-        const orders = await loadOrders();
+        const orders = await loadOrders(REAL_ORDER_SQL);
         const { rows: categories } = await query('select id, category from inventory_items');
         response.json({ rows: orders.map((order) => {
             const firstLinked = order.items.find((item) => item.inventoryItemId);
@@ -251,7 +252,8 @@ export async function getReport(request, response) {
     }
     if (id === 'customers') {
         const { rows } = await query(
-            `select c.*, count(o.id) filter (where o.status <> 'Cancelled') as orders, max(o.event_date) as last_order,
+            `select c.*, count(o.id) filter (where o.status <> 'Cancelled' and ${REAL_ORDER_SQL}) as orders,
+                    max(o.event_date) filter (where ${REAL_ORDER_SQL}) as last_order,
                     coalesce((select sum(p.amount) from payments p where p.customer_id = c.id and p.status = 'Paid'), 0) as spent
                from customers c left join orders o on o.customer_id = c.id group by c.id order by c.first_name`,
         );
@@ -264,7 +266,7 @@ export async function getReport(request, response) {
         return;
     }
     if (id === 'deliveries') {
-        const orders = await loadOrders('o.delivery_required');
+        const orders = await loadOrders(`o.delivery_required and ${REAL_ORDER_SQL}`);
         response.json({ rows: orders.map((order) => ({
             id: order.id, date: order.eventDate, customer: order.customerName, area: order.area || '—',
             driver: order.driver?.name || 'Unassigned', fee: order.deliveryFee, status: order.deliveryStatus,

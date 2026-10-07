@@ -7,6 +7,8 @@ export const MAX_ORDER_DAYS = 365;
 export const ORDER_STATUSES = ['New request', 'Confirmed', 'Ready for pickup', 'Out for delivery', 'Completed', 'Cancelled'];
 export const DELIVERY_STATUSES = ['Not needed', 'Scheduled', 'In transit', 'Delivered', 'Failed'];
 export const ACTIVE_STATUSES = ['Confirmed', 'Ready for pickup', 'Out for delivery'];
+// Customer requests count as orders only once staff confirm them (request_state 'accepted').
+export const REAL_ORDER_SQL = "coalesce(o.request_state, 'accepted') = 'accepted'";
 
 export async function nextCode(db, sequence, prefix, pad) {
     const { rows } = await db.query(`select nextval('${sequence}') as n`);
@@ -39,6 +41,7 @@ function shapeOrder(row, items, payments, invoice) {
         place: row.place,
         notes: row.notes,
         source: row.source,
+        requestState: row.request_state,
         deliveryRequired: row.delivery_required,
         deliveryFee: row.delivery_fee,
         deliveryStatus: row.delivery_status,

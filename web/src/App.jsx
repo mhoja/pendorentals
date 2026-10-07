@@ -33,6 +33,8 @@ import {
   Wallet,
   ShoppingBag,
   Unplug,
+  Inbox,
+  CheckCheck,
   UserCog,
   Wrench,
   Send,
@@ -105,6 +107,7 @@ import {
 const navigation = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "Inventory", icon: Package, count: "248" },
+  { label: "Order requests", icon: Inbox },
   { label: "Orders", icon: CalendarDays, count: "8" },
   { label: "Customers", icon: Users },
   { label: "Invoices", icon: Receipt },
@@ -1688,7 +1691,9 @@ orders.length === 0 ? (
           ) : (
             <div className="cust-orders">
               {orders.map((order) => {
-                const info = orderStatusInfo[order.status] || { tone: "blue", text: "" };
+                const declined = order.requestState === "declined";
+                const label = declined ? "Declined" : order.requestState === "pending" ? "Awaiting confirmation" : order.status;
+                const info = declined ? { tone: "red", text: "We could not take this request. Call us if you have questions." } : orderStatusInfo[order.status] || { tone: "blue", text: "" };
                 return (
                   <article className="cust-order" key={order.id}>
                     <header>
@@ -1696,7 +1701,7 @@ orders.length === 0 ? (
                         <strong>{order.id}</strong>
                         <small>Requested {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</small>
                       </div>
-                      <span className={`status-pill ${info.tone}`}><i />{order.status}</span>
+                      <span className={`status-pill ${info.tone}`}><i />{label}</span>
                     </header>
                     <div className="cust-order-items">
                       {order.items.map((item) => (
@@ -2202,6 +2207,7 @@ const PAGE_PERMISSIONS = {
   Dashboard: ["overview.view"],
   Inventory: ["inventory.view", "inventory.manage"],
   Orders: ["orders.view", "orders.deliveries"],
+  "Order requests": ["orders.requests"],
   Customers: ["customers.view"],
   Invoices: ["invoices.view"],
   Finance: ["finance.view"],
@@ -2214,6 +2220,7 @@ const canOpenPage = (session, page) => !PAGE_PERMISSIONS[page] || PAGE_PERMISSIO
 const PAGE_COPY = {
   Inventory: "Keep your tents, chairs and equipment ready for the next event.",
   Orders: "Price requests, confirm bookings and track every rental.",
+  "Order requests": "Rental requests from customers. They become orders only once you confirm them.",
   Customers: "Everyone who rents from Pendo, with their history and spend.",
   Invoices: "Bill customers and track what has been paid.",
   Finance: "Revenue, tithe, expenses and profit from real payments.",
@@ -2250,6 +2257,14 @@ function WorkspaceShell({ session, onLogout }) {
   const [startCreate, setStartCreate] = useState(null);
   const settingsRes = useResource("/settings");
   const pulse = useResource("/dashboard");
+  const alerts = useResource("/notifications");
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const reloadAlerts = alerts.reload;
+  // New requests can arrive at any time, so the bell checks every 45 seconds.
+  useEffect(() => {
+    const timer = setInterval(() => reloadAlerts(), 45000);
+    return () => clearInterval(timer);
+  }, [reloadAlerts]);
 
   const [inventoryItems, setInventoryItems] = useState([]);
   const [inventoryCategories, setInventoryCategories] = useState([]);
@@ -2301,6 +2316,7 @@ function WorkspaceShell({ session, onLogout }) {
   const navCount = (label) => {
     if (label === "Inventory") return inventoryStatus === "ready" ? String(inventoryItems.length) : null;
     if (label === "Orders") return newRequests ? String(newRequests) : null;
+    if (label === "Order requests") return alerts.data?.pendingRequests ? String(alerts.data.pendingRequests) : null;
     return null;
   };
 
@@ -2308,7 +2324,7 @@ function WorkspaceShell({ session, onLogout }) {
     <button key={label} className={`nav-link ${activePage === label ? "active" : ""}`} onClick={() => changePage(label)}>
       <Icon size={17} strokeWidth={1.8} />
       <span>{label}</span>
-      {navCount(label) && <span className={`nav-count ${label === "Orders" ? "count-highlight" : ""}`}>{navCount(label)}</span>}
+      {navCount(label) && <span className={`nav-count ${label === "Orders" || label === "Order requests" ? "count-highlight" : ""}`}>{navCount(label)}</span>}
     </button>
   );
 
@@ -2331,7 +2347,8 @@ function WorkspaceShell({ session, onLogout }) {
         canEdit={canEditInventory}
       />
     );
-  } else if (activePage === "Orders") content = <OrdersPage query={query} settings={settings} startCreate={startCreate} onCreateHandled={() => setStartCreate(null)} />;
+  } else if (activePage === "Order requests") content = <OrderRequestsPage query={query} onChanged={() => { alerts.reload(); pulse.reload(); }} />;
+  else if (activePage === "Orders") content = <OrdersPage query={query} settings={settings} startCreate={startCreate} onCreateHandled={() => setStartCreate(null)} />;
   else if (activePage === "Customers") content = <CustomersPage query={query} onNewOrder={(customer) => openNewOrder(customer)} addOpen={customerAddOpen} setAddOpen={setCustomerAddOpen} />;
   else if (activePage === "Invoices") content = <InvoicesPage query={query} settings={settings} addOpen={invoiceAddOpen} setAddOpen={setInvoiceAddOpen} />;
   else if (activePage === "Finance") content = <FinancePage query={query} session={session} />;
@@ -2385,10 +2402,12 @@ function WorkspaceShell({ session, onLogout }) {
               <Search size={16} />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={activePage === "Dashboard" ? "Search on any list page…" : `Search ${activePage.toLowerCase()}…`} />
             </label>
-            <button className="icon-button notification-button" aria-label="Notifications" onClick={() => (newRequests && canSee("Orders") ? changePage("Orders") : setModal("notifications"))}>
-              <Bell size={18} />
-              {newRequests > 0 && <i />}
-            </button>
+            <NotificationBell
+              resource={alerts}
+              open={alertsOpen}
+              setOpen={setAlertsOpen}
+              onOpenItem={(item) => { if (item.kind === "order_request" && canSee("Order requests")) changePage("Order requests"); }}
+            />
             <div className="top-divider" />
             <button className="top-profile" onClick={() => setModal("profile")}>
               <div className="profile-avatar small-avatar">{initials}</div>
@@ -3776,6 +3795,209 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
     </>
   );
 }
+
+// Bell at the top right: unread count, a list of alerts, and mark as read (one or all).
+function NotificationBell({ resource, open, setOpen, onOpenItem }) {
+  const { call } = useApi();
+  const wrapRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const data = resource.data;
+  const unread = data?.unread || 0;
+  const items = data?.notifications || [];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => { if (!wrapRef.current?.contains(event.target)) setOpen(false); };
+    const escape = (event) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); };
+  }, [open, setOpen]);
+
+  async function markRead(path) {
+    setBusy(true);
+    try {
+      const next = await call(path, { method: "POST" });
+      resource.setData(next);
+    } catch {
+      resource.reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="notif-wrap" ref={wrapRef}>
+      <button className="icon-button notification-button" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} aria-expanded={open} onClick={() => { setOpen(!open); if (!open) resource.reload(); }}>
+        <Bell size={18} />
+        {unread > 0 && <b className="notif-count">{unread > 99 ? "99+" : unread}</b>}
+      </button>
+      {open && (
+        <section className="notif-panel" role="dialog" aria-label="Notifications">
+          <header>
+            <strong>Notifications</strong>
+            {unread > 0 && <button type="button" className="text-action" onClick={() => markRead("/notifications/read-all")} disabled={busy}><CheckCheck size={14} /> Mark all as read</button>}
+          </header>
+          {items.length === 0 ? (
+            <div className="notif-empty"><Bell size={20} /><strong>You’re all caught up</strong><small>New customer order requests will show here.</small></div>
+          ) : (
+            <ul>
+              {items.map((item) => (
+                <li key={item.id} className={item.read ? "" : "unread"}>
+                  <button type="button" className="notif-item" onClick={() => { if (!item.read) markRead(`/notifications/${item.id}/read`); setOpen(false); onOpenItem(item); }}>
+                    <span className="notif-icon"><Inbox size={15} /></span>
+                    <span className="notif-copy">
+                      <strong>{item.title}</strong>
+                      {item.body && <small>{item.body}</small>}
+                      <em>{timeAgo(item.createdAt)}</em>
+                    </span>
+                  </button>
+                  {!item.read && <button type="button" className="notif-read" onClick={() => markRead(`/notifications/${item.id}/read`)} disabled={busy} title="Mark as read" aria-label={`Mark ${item.title} as read`}><Check size={14} /></button>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+// Customer requests (Rent Now) wait here until someone confirms them; confirming moves them into Orders.
+function OrderRequestsPage({ query, onChanged }) {
+  const { call, session } = useApi();
+  const [tab, setTab] = useState("pending");
+  const requests = useResource(`/orders?requests=${tab}`);
+  const inventory = useResource("/inventory");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [toast, setToast] = useToast();
+  const perm = (key) => hasPerm(session, key);
+
+  const list = requests.data?.orders || [];
+  const words = `${query} ${search}`.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = list.filter((order) => words.every((word) => `${order.id} ${order.customer.name} ${order.customer.phone} ${orderItemsText(order.items)} ${order.area || ""} ${order.place || ""}`.toLowerCase().includes(word)));
+  const today = localTodayIso();
+  const soon = addDaysIso(today, 7);
+  const unpriced = rows.filter((order) => !order.priced).length;
+  const urgent = rows.filter((order) => order.eventDate <= soon).length;
+
+  function settle(order, message) {
+    requests.setData((current) => ({ ...current, orders: current.orders.filter((entry) => entry.id !== order.id) }));
+    setToast(message);
+    onChanged?.();
+  }
+
+  async function decide(order, status) {
+    try {
+      const data = await call(`/orders/${order.id}`, { method: "PATCH", body: { status } });
+      const sms = data.sms ? (data.sms.status === "sent" ? " · SMS sent" : " · SMS not sent") : "";
+      settle(data.order, status === "Cancelled" ? `${order.id} declined` : `${order.id} confirmed and moved to Orders${sms}`);
+    } catch (error) {
+      setToast(error.message);
+    }
+  }
+
+  const columns = [
+    { key: "id", label: "REQUEST", render: (row) => <div className="ws-two-line"><strong>{row.id}</strong><small title={new Date(row.createdAt).toLocaleString("en-GB")}>{timeAgo(row.createdAt)}</small></div> },
+    { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer.name}</strong><small><a href={`tel:${row.customer.rawPhone}`}>{row.customer.phone}</a></small></div> },
+    { key: "items", label: "ITEMS", render: (row) => <span className="ws-items-cell" title={orderItemsText(row.items)}>{orderItemsText(row.items)}</span> },
+    { key: "eventDate", label: "EVENT", render: (row) => <div className="ws-two-line"><strong>{orderDates(row)}{row.days > 1 ? ` · ${row.days} days` : ""}</strong><small>{row.place ? `${row.place}, ${row.area}` : row.area || "—"}</small></div> },
+    { key: "notes", label: "NOTES", render: (row) => <span className="ws-items-cell" title={row.notes || ""}>{row.notes || <span className="team-muted">—</span>}</span> },
+    { key: "total", label: "PRICE", render: (row) => (row.total === null ? <span className="ws-quote">Needs prices</span> : <strong className="inv-qty">{formatShillings(row.total)}</strong>) },
+  ];
+
+  return (
+    <>
+      <section className="inv-stats">
+        {[
+          [Inbox, tab === "pending" ? "Waiting for confirmation" : "Declined", rows.length, tab === "pending" ? "customer requests" : "requests not taken", "blue"],
+          [Banknote, "Need prices", unpriced, "set a rate on every item to confirm", "orange"],
+          [CalendarDays, "Events within 7 days", urgent, "call these customers first", "mint"],
+        ].map(([Icon, label, value, hint, tone]) => (
+          <article key={label} className="inv-stat"><span className={`inv-stat-icon ${tone}`}><Icon size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{hint}</em></div></article>
+        ))}
+      </section>
+      <section className="panel inv-panel">
+        <div className="inv-toolbar">
+          <div className="inv-tabs" role="tablist" aria-label="Request state">
+            {[["pending", "Pending"], ["declined", "Declined"]].map(([value, label]) => (
+              <button key={value} role="tab" aria-selected={tab === value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{label}{tab === value && <span>{list.length}</span>}</button>
+            ))}
+          </div>
+          <div className="inv-toolbar-actions">
+            <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search requests" aria-label="Search requests" /></label>
+          </div>
+        </div>
+        <LoadState
+          status={requests.status}
+          error={requests.error}
+          onRetry={requests.reload}
+          empty={requests.status === "ready" && list.length === 0 ? (tab === "pending" ? "No requests waiting" : "No declined requests") : ""}
+          emptyIcon={Inbox}
+          emptyText={tab === "pending" ? "When a customer uses Rent Now, the request appears here for you to price and confirm." : "Requests you decline are kept here."}
+        />
+        {list.length > 0 && (
+          <DataTable
+            columns={columns}
+            rows={rows}
+            itemLabel="requests"
+            totalCount={list.length}
+            rowKey="id"
+            renderActions={(order) => {
+              if (tab !== "pending") return [{ label: "View request", onClick: () => setEditing(order) }];
+              const actions = [{ label: perm("orders.edit") ? (order.priced ? "Review & edit" : "Set prices") : "View request", onClick: () => setEditing(order) }];
+              if (order.priced) {
+                actions.push({
+                  label: "Confirm order",
+                  confirm: { title: `Confirm ${order.id}?`, message: `${order.customer.name} · ${orderItemsText(order.items)} · ${formatShillings(order.total)}. It moves to Orders and the customer may get a confirmation SMS.`, confirmLabel: "Yes, confirm order" },
+                  onClick: () => decide(order, "Confirmed"),
+                });
+              }
+              actions.push({
+                label: "Decline request",
+                danger: true,
+                confirm: { title: `Decline ${order.id}?`, message: `${order.customer.name}’s request for ${orderDates(order)} will not become an order. Call the customer to let them know.`, confirmLabel: "Yes, decline", danger: true },
+                onClick: () => decide(order, "Cancelled"),
+              });
+              return actions;
+            }}
+          />
+        )}
+      </section>
+      {tab === "pending" && list.some((order) => !order.priced) && <p className="set-notice ws-banner"><Info size={14} /> A request can be confirmed once every item has a rate. Open it with “Set prices”, add the rates, then change the status to Confirmed and save.</p>}
+
+      {editing && (
+        <OrderEditor
+          order={editing}
+          inventory={inventory.data?.items || []}
+          drivers={[]}
+          onClose={() => setEditing(null)}
+          onSaved={(data) => {
+            setEditing(null);
+            if (data.order.requestState === "pending") {
+              requests.setData((current) => ({ ...current, orders: current.orders.map((entry) => (entry.id === data.order.id ? data.order : entry)) }));
+              setToast(`${data.order.id} saved — still waiting for confirmation`);
+            } else {
+              settle(data.order, data.order.status === "Cancelled" ? `${data.order.id} declined` : `${data.order.id} confirmed and moved to Orders${data.sms ? (data.sms.status === "sent" ? " · SMS sent" : " · SMS not sent") : ""}`);
+            }
+          }}
+        />
+      )}
+      {toast}
+    </>
+  );
+}
+
+const timeAgo = (iso) => {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return days < 7 ? `${days} day${days === 1 ? "" : "s"} ago` : shortDate(iso);
+};
 
 // Tanzanian mobile numbers: the +255 prefix is fixed and staff type the 9 digits after it.
 function phoneLocalPart(phone) {
@@ -5330,7 +5552,8 @@ function OverviewPage({ onNavigate }) {
   const whenLabel = (iso) => (iso < today ? "Late" : iso === today ? "Today" : "Tomorrow");
   const lateReturns = d.returns.filter((order) => order.endDate < today).length;
   const attention = [
-    { count: d.orders.unpriced, text: "new request", textMany: "new requests", detail: "waiting for a price", page: "Orders", tone: "blue", icon: Sparkles },
+    ...(canOpen("Order requests") ? [{ count: Number(d.orders.pending_requests) || 0, text: "customer order request", textMany: "customer order requests", detail: "waiting for confirmation", page: "Order requests", tone: "blue", icon: Inbox }] : []),
+    { count: d.orders.unpriced, text: "order without prices", textMany: "orders without prices", detail: "set rates to confirm", page: "Orders", tone: "blue", icon: Sparkles },
     { count: lateReturns, text: "return overdue", textMany: "returns overdue", detail: "items not back yet", page: "Orders", tone: "red", icon: Clock3 },
     { count: d.deliveries.filter((order) => !order.driver).length, text: "delivery without a driver", textMany: "deliveries without a driver", detail: "today or tomorrow", page: "Orders", tone: "amber", icon: Truck },
     ...(fin ? [
@@ -7942,7 +8165,7 @@ function SettingsPage({ onLogout, session, settingsResource }) {
                   </button>
                 ))}
               </div>
-              {toggleRow("alertNewBooking", "New bookings", "When a customer books or an order is created", CalendarCheck)}
+              {toggleRow("alertNewBooking", "New order requests", "SMS to everyone who handles order requests when a customer sends one", CalendarCheck)}
               {toggleRow("alertPayment", "Payments received", "M-Pesa, cash and bank payments", Wallet)}
               {toggleRow("alertLowStock", "Low stock", "When an item drops below 20% availability", Package)}
               {toggleRow("alertDailySummary", "Daily summary", "One message each evening with the day’s totals", ChartNoAxesCombined)}

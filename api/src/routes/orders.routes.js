@@ -5,9 +5,9 @@ import { listOrders, getOrder, createOrder, updateOrder } from '../controllers/o
 
 const router = Router();
 
-router.get('/orders', authenticate, requirePermission('orders.view', 'orders.deliveries'), handle(listOrders));
-router.get('/orders/:code', authenticate, requirePermission('orders.view', 'orders.deliveries'), handle(getOrder));
+router.get('/orders', authenticate, requirePermission('orders.view', 'orders.deliveries', 'orders.requests'), handle(listOrders));
+router.get('/orders/:code', authenticate, requirePermission('orders.view', 'orders.deliveries', 'orders.requests'), handle(getOrder));
 router.post('/orders', authenticate, requirePermission('orders.create'), handle(createOrder));
-router.patch('/orders/:code', authenticate, requirePermission('orders.edit', 'orders.status', 'orders.delivery', 'orders.cancel'), handle(updateOrder));
+router.patch('/orders/:code', authenticate, requirePermission('orders.edit', 'orders.status', 'orders.delivery', 'orders.cancel', 'orders.requests'), handle(updateOrder));
 
 export default router;

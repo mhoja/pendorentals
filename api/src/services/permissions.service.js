@@ -8,6 +8,7 @@ export const PERMISSION_GROUPS = [
     ] },
     { group: 'Orders', items: [
         ['orders.view', 'See all orders'],
+        ['orders.requests', 'Handle customer order requests (see Order requests; get an SMS and a notification for each new one)'],
         ['orders.deliveries', 'See delivery orders only (when “See all orders” is off)'],
         ['orders.create', 'Create orders'],
         ['orders.edit', 'Edit orders (items, prices, dates, discount, delivery fee, driver)'],

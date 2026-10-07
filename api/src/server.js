@@ -20,6 +20,7 @@ import teamRoutes from './routes/team.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import messageRoutes from './routes/messages.routes.js';
 import insightRoutes from './routes/insights.routes.js';
+import notificationRoutes from './routes/notifications.routes.js';
 
 const app = express();
 const port = Number(process.env.PORT) || 5001;
@@ -29,7 +30,7 @@ app.use(express.json({ limit: '100kb' }));
 
 for (const routes of [
     publicRoutes, authRoutes, portalRoutes, inventoryRoutes, categoryRoutes, areaRoutes, orderRoutes, customerRoutes,
-    billingRoutes, expenseRoutes, teamRoutes, roleRoutes, settingsRoutes, messageRoutes, insightRoutes,
+    billingRoutes, expenseRoutes, teamRoutes, roleRoutes, settingsRoutes, messageRoutes, insightRoutes, notificationRoutes,
 ]) {
     app.use('/api', routes);
 }

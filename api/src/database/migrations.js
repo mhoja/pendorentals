@@ -294,6 +294,33 @@ const migrations = [
             alter table orders add constraint orders_days_check check (days between 1 and 365);
         `,
     },
+    {
+        id: 10,
+        name: 'order requests and staff notifications',
+        sql: `
+            -- Customer requests wait in "Order requests" until staff confirm them: pending → accepted (a real order) or declined.
+            -- Orders created by staff have no request state.
+            alter table orders add column request_state text check (request_state in ('pending', 'accepted', 'declined'));
+            update orders set request_state = case when status = 'New request' then 'pending' else 'accepted' end where source = 'rent_now';
+            create index orders_request_state_idx on orders (request_state) where request_state is not null;
+
+            -- Alerts for the bell at the top of the workspace; each staff member marks them read separately.
+            create table notifications (
+                id serial primary key,
+                kind text not null,
+                title text not null,
+                body text,
+                order_id integer references orders (id) on delete cascade,
+                created_at timestamptz not null default now()
+            );
+            create table notification_reads (
+                notification_id integer not null references notifications (id) on delete cascade,
+                staff_id integer not null references staff (id) on delete cascade,
+                read_at timestamptz not null default now(),
+                primary key (notification_id, staff_id)
+            );
+        `,
+    },
 ];
 
 export async function migrate() {

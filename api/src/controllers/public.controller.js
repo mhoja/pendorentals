@@ -4,6 +4,7 @@ import { HttpError, cleanText, greetName, isIsoDate, isPhone, normalizePhone, pe
 import { MAX_ORDER_DAYS, loadOrder, nextCode, smsDate, smsDays } from '../services/orders.service.js';
 import { getSettings, sendTemplate } from '../services/settings.service.js';
 import { OTHER_AREA, isKnownArea } from '../services/areas.service.js';
+import { notifyOrderRequest } from '../services/notifications.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
 
@@ -97,8 +98,8 @@ export async function createRentalRequest(request, response) {
         }
         const code = await nextCode(db, 'order_number_seq', 'ORD-', 4);
         const { rows: [order] } = await db.query(
-            `insert into orders (code, customer_id, event_date, days, area, place, notes, source)
-             values ($1, $2, $3, $4, $5, $6, $7, 'rent_now') returning id`,
+            `insert into orders (code, customer_id, event_date, days, area, place, notes, source, request_state)
+             values ($1, $2, $3, $4, $5, $6, $7, 'rent_now', 'pending') returning id`,
             [code, customerRow.id, value.eventDate, value.days, value.area, value.place || null, value.notes || null],
         );
         for (const [position, item] of value.items.entries()) {
@@ -126,6 +127,7 @@ export async function createRentalRequest(request, response) {
             : (temporaryPassword ? `\nTrack it at ${publicUrl} - Username: ${value.phone}, Password: ${temporaryPassword}.` : `\nTrack it at ${publicUrl} with your phone number.`),
         phone: settings.phone,
     }), { kind: 'rental_request', orderId: order.dbId });
+    await notifyOrderRequest(order).catch((error) => console.error('Could not notify staff', error.message));
 
     response.status(201).json({
         order: { ...order, sms: sms.status },
@@ -155,8 +157,8 @@ export async function createMyRentalRequest(request, response) {
     const orderCode = await transaction(async (db) => {
         const code = await nextCode(db, 'order_number_seq', 'ORD-', 4);
         const { rows: [order] } = await db.query(
-            `insert into orders (code, customer_id, event_date, days, area, place, notes, source)
-             values ($1, $2, $3, $4, $5, $6, $7, 'rent_now') returning id`,
+            `insert into orders (code, customer_id, event_date, days, area, place, notes, source, request_state)
+             values ($1, $2, $3, $4, $5, $6, $7, 'rent_now', 'pending') returning id`,
             [code, customerRow.id, value.eventDate, value.days, value.area, value.place || null, value.notes || null],
         );
         for (const [position, item] of value.items.entries()) {
@@ -181,6 +183,7 @@ export async function createMyRentalRequest(request, response) {
         login: lang === 'sw' ? `\nFuatilia: ${publicUrl} kwa namba yako ya simu.` : `\nTrack it at ${publicUrl} with your phone number.`,
         phone: settings.phone,
     }), { kind: 'rental_request', orderId: order.dbId });
+    await notifyOrderRequest(order).catch((error) => console.error('Could not notify staff', error.message));
 
     const { dbId, customer: _customer, ...shown } = order;
     response.status(201).json({ order: shown, sms: { status: sms.status, phone: prettyPhone(customerRow.phone) } });
