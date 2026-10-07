@@ -1751,8 +1751,8 @@ function App() {
     if (!session) return;
     api("/me", { token: session.token })
       .then((me) => {
-        if (me.staffRole !== session.staffRole || me.name !== session.name || me.id !== session.id) {
-          const next = { ...session, staffRole: me.staffRole, name: me.name, id: me.id };
+        if (me.staffRole !== session.staffRole || me.name !== session.name || me.id !== session.id || JSON.stringify(me.permissions || []) !== JSON.stringify(session.permissions || [])) {
+          const next = { ...session, staffRole: me.staffRole, name: me.name, id: me.id, permissions: me.permissions };
           let remembered = false;
           try {
             remembered = Boolean(localStorage.getItem(SESSION_KEY));
@@ -1825,12 +1825,21 @@ function applyBusinessInfo(settings) {
   });
 }
 
-const PAGE_ACCESS = {
-  Admin: null,
-  "Store manager": null,
-  "Inventory staff": ["Overview", "Inventory", "Orders", "Settings"],
-  "Delivery staff": ["Overview", "Orders", "Settings"],
+// Permissions come from the server (Users & Roles → permissions). Admin always has all of them.
+const hasPerm = (session, key) => session?.role === "staff" && (session.staffRole === "Admin" || (session.permissions || []).includes(key));
+// A page shows in the menu when the role has any of these permissions. Settings is always open (own account).
+const PAGE_PERMISSIONS = {
+  Overview: ["overview.view"],
+  Inventory: ["inventory.view", "inventory.manage"],
+  Orders: ["orders.view", "orders.deliveries"],
+  Customers: ["customers.view"],
+  Invoices: ["invoices.view"],
+  Finance: ["finance.view"],
+  "SMS & Notifications": ["sms.view", "sms.templates"],
+  Reports: ["reports.view"],
+  "Users & Roles": ["team.view", "roles.manage"],
 };
+const canOpenPage = (session, page) => !PAGE_PERMISSIONS[page] || PAGE_PERMISSIONS[page].some((key) => hasPerm(session, key));
 
 const PAGE_COPY = {
   Inventory: "Keep your tents, chairs and equipment ready for the next event.",
@@ -1898,9 +1907,8 @@ function WorkspaceShell({ session, onLogout }) {
     applyBusinessInfo(settingsRes.data?.settings);
   }, [settingsRes.data]);
 
-  const allowedPages = PAGE_ACCESS[session.staffRole];
-  const canSee = (label) => !allowedPages || allowedPages.includes(label);
-  const canEditInventory = ["Admin", "Store manager", "Inventory staff"].includes(session.staffRole);
+  const canSee = (label) => canOpenPage(session, label);
+  const canEditInventory = hasPerm(session, "inventory.manage");
   const initials = session.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const firstName = session.name.split(" ")[0];
   const hour = new Date().getHours();
@@ -2031,13 +2039,13 @@ function WorkspaceShell({ session, onLogout }) {
               {activePage === "Inventory" && canEditInventory && (
                 <button className="button button-primary" onClick={() => setInventoryAddOpen(true)}><Plus size={17} /> Add items</button>
               )}
-              {activePage === "Invoices" && isManager(session) && (
+              {activePage === "Invoices" && hasPerm(session, "invoices.manage") && (
                 <button className="button button-primary" onClick={() => setInvoiceAddOpen(true)}><Plus size={17} /> Create invoice</button>
               )}
-              {activePage === "Customers" && isManager(session) && (
+              {activePage === "Customers" && hasPerm(session, "customers.manage") && (
                 <button className="button button-primary" onClick={() => setCustomerAddOpen(true)}><Plus size={17} /> Add customer</button>
               )}
-              {activePage === "Orders" && isManager(session) && (
+              {activePage === "Orders" && hasPerm(session, "orders.create") && (
                 <button className="button button-primary" onClick={() => openNewOrder(null)}><Plus size={17} /> New order</button>
               )}
             </div>
@@ -2670,8 +2678,6 @@ function useResource(path) {
   return { ...state, reload: load, setData };
 }
 
-const MANAGER_ROLES = ["Admin", "Store manager"];
-const isManager = (session) => MANAGER_ROLES.includes(session?.staffRole);
 const ORDER_STATUSES = ["New request", "Confirmed", "Ready for pickup", "Out for delivery", "Completed", "Cancelled"];
 const orderTone = (status) => ({ "New request": "blue", Confirmed: "green", "Ready for pickup": "amber", "Out for delivery": "blue", Completed: "green", Cancelled: "red" }[status] || "blue");
 const invoiceTone = (status) => ({ Paid: "green", "Partially paid": "amber", Unpaid: "blue", Overdue: "red", Cancelled: "red" }[status] || "blue");
@@ -2988,7 +2994,9 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
   const subtotal = lines.reduce((sum, line) => sum + (line || 0), 0);
   const delivery = form.deliveryRequired ? Number(form.deliveryFee) || 0 : 0;
   const total = priced ? Math.max(0, subtotal + delivery - (Number(form.discount) || 0)) : null;
-  const managerView = isManager(session);
+  const canChangeStatus = hasPerm(session, "orders.status");
+  // Without "Edit orders" an existing order opens read-only.
+  const readOnly = !creating && !hasPerm(session, "orders.edit");
 
   async function save(event) {
     event.preventDefault();
@@ -3058,6 +3066,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
     <WsModal title={creating ? "New order" : `Order ${order.id}`} kicker={creating ? "ORDERS" : `${order.customer.name} · ${order.customer.phone}`} onClose={onClose} wide busy={busy} className="ws-order-modal">
       <form className="ws-order-form" onSubmit={save} noValidate>
         <div className="ws-order-main">
+          <fieldset className="ws-fieldset" disabled={readOnly}>
           {creating && (
             <section className="ws-order-card">
               <header className="ws-order-card-head">
@@ -3141,12 +3150,14 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
           </section>
 
           <label className="set-field ws-order-notes"><span>Notes <em>Optional</em></span><input value={form.notes} maxLength={500} placeholder="Setup time, colours, special requests…" onChange={(event) => set("notes", event.target.value)} /></label>
+          </fieldset>
         </div>
 
         <aside className="ws-order-side">
+          <fieldset className="ws-fieldset" disabled={readOnly}>
           <label className="set-field">
             <span>Status</span>
-            <select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!managerView} aria-invalid={Boolean(fieldErrors.status)}>
+            <select value={form.status} onChange={(event) => set("status", event.target.value)} disabled={!canChangeStatus || readOnly} aria-invalid={Boolean(fieldErrors.status)}>
               {ORDER_STATUSES.map((status) => <option key={status} value={status}>{status}{!priced && PRICED_STATUSES.includes(status) ? " — needs prices" : ""}</option>)}
             </select>
             {fieldErrors.status ? <FieldError message={fieldErrors.status} /> : !priced && PRICED_STATUSES.includes(form.status) && <small className="ws-price-hint"><CircleAlert size={12} /> Add a rate to every item to {form.status === "Confirmed" ? "confirm" : "process"} this order.</small>}
@@ -3179,8 +3190,11 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
 
           <label className="auth-check ws-check"><input type="checkbox" checked={form.notify} onChange={(event) => set("notify", event.target.checked)} /><span>{creating ? "SMS the booking details to the customer" : "SMS the customer when the status changes"}</span></label>
           {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+          </fieldset>
           <div className="ws-side-actions">
-            <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {creating ? "Create order" : "Save order"}</>}</button>
+            {readOnly
+              ? <p className="team-muted ws-readonly-note"><Lock size={13} /> View only — your role can’t edit orders.</p>
+              : <button type="submit" className="button button-primary" disabled={busy}>{busy ? <><LoaderCircle size={15} className="auth-spin" /> Saving…</> : <><Save size={15} /> {creating ? "Create order" : "Save order"}</>}</button>}
             <button type="button" className="button button-secondary" onClick={onClose} disabled={busy}>Cancel</button>
           </div>
         </aside>
@@ -3202,7 +3216,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
   const [receipt, setReceipt] = useState(null);
   const [credentials, setCredentials] = useState(null);
   const [toast, setToast] = useToast();
-  const managerView = isManager(session);
+  const perm = (key) => hasPerm(session, key);
 
   useEffect(() => {
     if (startCreate) {
@@ -3299,7 +3313,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
             <ExportMenu title="Orders" columns={exportColumns} rows={exportRows} />
           </div>
         </div>
-        <LoadState status={orders.status} error={orders.error} onRetry={orders.reload} empty={orders.status === "ready" && list.length === 0 ? "No orders yet" : ""} emptyIcon={CalendarDays} emptyText="Orders from Rent Now and orders your team creates appear here." action={managerView && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Create the first order</button>} />
+        <LoadState status={orders.status} error={orders.error} onRetry={orders.reload} empty={orders.status === "ready" && list.length === 0 ? "No orders yet" : ""} emptyIcon={CalendarDays} emptyText="Orders from Rent Now and orders your team creates appear here." action={perm("orders.create") && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Create the first order</button>} />
         {list.length > 0 && (
           <>
             <DataTable
@@ -3309,21 +3323,21 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
               totalCount={list.length}
               rowKey="id"
               renderActions={(order) => {
-                const actions = [{ label: managerView ? "View & edit" : "View order", onClick: () => setEditing(order) }];
+                const actions = [{ label: perm("orders.edit") ? "View & edit" : "View order", onClick: () => setEditing(order) }];
                 const nextStatus = { "New request": "Confirmed", Confirmed: "Ready for pickup", "Ready for pickup": "Out for delivery", "Out for delivery": "Completed" }[order.status];
                 if (nextStatus && !order.priced) {
-                  if (managerView) actions.push({ label: "Set prices to confirm", onClick: () => setEditing(order) });
-                } else if (nextStatus && (managerView || ["Out for delivery", "Completed"].includes(nextStatus))) {
+                  if (perm("orders.edit")) actions.push({ label: "Set prices to confirm", onClick: () => setEditing(order) });
+                } else if (nextStatus && (perm("orders.status") || (perm("orders.delivery") && ["Out for delivery", "Completed"].includes(nextStatus)))) {
                   actions.push({
                     label: `Mark ${nextStatus.toLowerCase()}`,
                     confirm: { title: `Mark ${order.id} as ${nextStatus.toLowerCase()}?`, message: `${order.customer.name} · ${orderItemsText(order.items)}${nextStatus === "Confirmed" ? ` · ${formatShillings(order.total)}` : ""}. The customer may get an SMS about this change.`, confirmLabel: `Yes, mark ${nextStatus.toLowerCase()}` },
                     onClick: () => setOrderStatus(order, nextStatus),
                   });
                 }
-                if (managerView && order.status !== "Cancelled") {
-                  if (!order.invoice && order.priced) actions.push({ label: "Create invoice", confirm: { title: `Create an invoice for ${order.id}?`, message: `${order.customer.name} will be invoiced ${formatShillings(order.total)}.`, confirmLabel: "Yes, create invoice" }, onClick: () => createInvoice(order) });
-                  if (order.priced && order.balance > 0) actions.push({ label: "Record payment", onClick: () => setPaying(order) });
-                  actions.push({ label: "Cancel order", danger: true, confirm: { title: `Cancel ${order.id}?`, message: `${order.customer.name}’s booking for ${orderDates(order)} will be cancelled.`, confirmLabel: "Yes, cancel order" }, onClick: () => setOrderStatus(order, "Cancelled") });
+                if (order.status !== "Cancelled") {
+                  if (perm("invoices.manage") && !order.invoice && order.priced) actions.push({ label: "Create invoice", confirm: { title: `Create an invoice for ${order.id}?`, message: `${order.customer.name} will be invoiced ${formatShillings(order.total)}.`, confirmLabel: "Yes, create invoice" }, onClick: () => createInvoice(order) });
+                  if (perm("payments.record") && order.priced && order.balance > 0) actions.push({ label: "Record payment", onClick: () => setPaying(order) });
+                  if (perm("orders.cancel")) actions.push({ label: "Cancel order", danger: true, confirm: { title: `Cancel ${order.id}?`, message: `${order.customer.name}’s booking for ${orderDates(order)} will be cancelled.`, confirmLabel: "Yes, cancel order" }, onClick: () => setOrderStatus(order, "Cancelled") });
                 }
                 return actions;
               }}
@@ -3498,6 +3512,8 @@ const smsKindLabel = (kind) => ({
 
 // Customer profile: details, account totals and full history from GET /api/customers/:id.
 function CustomerProfile({ customerId, onClose, onEdit, onMessage, onNewOrder, onLogin, onRemoveLogin, reloadKey }) {
+  const { session } = useApi();
+  const perm = (key) => hasPerm(session, key);
   const profile = useResource(`/customers/${customerId}?v=${reloadKey}`);
   const [tab, setTab] = useState("Orders");
   const [receipt, setReceipt] = useState(null);
@@ -3528,11 +3544,11 @@ function CustomerProfile({ customerId, onClose, onEdit, onMessage, onNewOrder, o
               </ul>
             </div>
             <div className="cust-profile-actions">
-              <button type="button" className="button button-primary" onClick={() => onNewOrder(customer)}><Plus size={14} /> New order</button>
-              <button type="button" className="button button-secondary" onClick={() => onMessage(customer)}><MessageSquareText size={14} /> Send SMS</button>
-              <button type="button" className="button button-secondary" onClick={() => onEdit(customer)}><PencilLine size={14} /> Edit</button>
-              <button type="button" className="button button-secondary" onClick={() => onLogin(customer)}><KeyRound size={14} /> {customer.hasLogin ? "New password" : "Create login"}</button>
-              {customer.hasLogin && <button type="button" className="button button-secondary cust-danger" onClick={() => onRemoveLogin(customer)}><Lock size={14} /> Remove access</button>}
+              {perm("orders.create") && <button type="button" className="button button-primary" onClick={() => onNewOrder(customer)}><Plus size={14} /> New order</button>}
+              {perm("sms.send") && <button type="button" className="button button-secondary" onClick={() => onMessage(customer)}><MessageSquareText size={14} /> Send SMS</button>}
+              {perm("customers.manage") && <button type="button" className="button button-secondary" onClick={() => onEdit(customer)}><PencilLine size={14} /> Edit</button>}
+              {perm("customers.login") && <button type="button" className="button button-secondary" onClick={() => onLogin(customer)}><KeyRound size={14} /> {customer.hasLogin ? "New password" : "Create login"}</button>}
+              {perm("customers.login") && customer.hasLogin && <button type="button" className="button button-secondary cust-danger" onClick={() => onRemoveLogin(customer)}><Lock size={14} /> Remove access</button>}
             </div>
           </section>
 
@@ -3732,12 +3748,12 @@ function CustomersPage({ query, onNewOrder, addOpen, setAddOpen }) {
               rowKey="id"
               renderActions={(row) => [
                 { label: "View profile", onClick: () => setViewing(row.id) },
-                { label: "New order", onClick: () => onNewOrder(row) },
-                { label: "Send SMS", onClick: () => setMessaging(row) },
-                { label: "Edit customer", onClick: () => setEditing(row) },
-                { label: row.hasLogin ? "Send new password" : "Create app login", onClick: () => sendLogin(row) },
-                ...(row.hasLogin ? [{ label: "Remove app access", danger: true, onClick: () => removeLogin(row) }] : []),
-                ...(session.staffRole === "Admin" && row.orders === 0 && row.spent === 0 ? [{ label: "Delete customer", danger: true, onClick: () => setDeleting(row) }] : []),
+                ...(hasPerm(session, "orders.create") ? [{ label: "New order", onClick: () => onNewOrder(row) }] : []),
+                ...(hasPerm(session, "sms.send") ? [{ label: "Send SMS", onClick: () => setMessaging(row) }] : []),
+                ...(hasPerm(session, "customers.manage") ? [{ label: "Edit customer", onClick: () => setEditing(row) }] : []),
+                ...(hasPerm(session, "customers.login") ? [{ label: row.hasLogin ? "Send new password" : "Create app login", onClick: () => sendLogin(row) }] : []),
+                ...(hasPerm(session, "customers.login") && row.hasLogin ? [{ label: "Remove app access", danger: true, onClick: () => removeLogin(row) }] : []),
+                ...(hasPerm(session, "customers.delete") && row.orders === 0 && row.spent === 0 ? [{ label: "Delete customer", danger: true, onClick: () => setDeleting(row) }] : []),
               ]}
             />
           </>
@@ -4076,7 +4092,8 @@ async function downloadInvoicePdf(detail, settings = {}) {
 
 // Invoice viewer with print, PDF, SMS, payment, edit and cancel.
 function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
-  const { call } = useApi();
+  const { call, session } = useApi();
+  const manage = hasPerm(session, "invoices.manage");
   const [version, setVersion] = useState(0);
   const detail = useResource(`/invoices/${invoiceId}?v=${version}`);
   const settingsRes = useResource("/settings");
@@ -4148,10 +4165,10 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
             <div className="inv-view-actions">
               <button type="button" className="button button-secondary" onClick={() => printInvoice(data, settings)}><Printer size={14} /> Print</button>
               <button type="button" className="button button-secondary" onClick={() => act("pdf", () => downloadInvoicePdf(data, settings))} disabled={busy === "pdf"}><Download size={14} /> PDF</button>
-              {invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
-              {invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={() => { setForm({ dueOn: String(invoice.dueOn).slice(0, 10), notes: invoice.notes }); setEditing((value) => !value); }}><PencilLine size={14} /> Edit</button>}
-              {onRecordPayment && invoice.balance > 0 && invoice.status !== "Cancelled" && <button type="button" className="button button-primary" onClick={() => onRecordPayment(invoice, refresh)}><Banknote size={14} /> Record payment</button>}
-              {invoice.status !== "Cancelled" && invoice.paid === 0 && <button type="button" className="button button-secondary cust-danger" onClick={cancelInvoice} disabled={busy === "cancel"}><X size={14} /> Cancel</button>}
+              {manage && invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
+              {manage && invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={() => { setForm({ dueOn: String(invoice.dueOn).slice(0, 10), notes: invoice.notes }); setEditing((value) => !value); }}><PencilLine size={14} /> Edit</button>}
+              {onRecordPayment && hasPerm(session, "payments.record") && invoice.balance > 0 && invoice.status !== "Cancelled" && <button type="button" className="button button-primary" onClick={() => onRecordPayment(invoice, refresh)}><Banknote size={14} /> Record payment</button>}
+              {manage && invoice.status !== "Cancelled" && invoice.paid === 0 && <button type="button" className="button button-secondary cust-danger" onClick={cancelInvoice} disabled={busy === "cancel"}><X size={14} /> Cancel</button>}
             </div>
           </div>
           {editing && (
@@ -4236,7 +4253,8 @@ function InvoiceCreateModal({ onClose, onSaved }) {
 }
 
 function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
-  const { call } = useApi();
+  const { call, session } = useApi();
+  const perm = (key) => hasPerm(session, key);
   const invoices = useResource("/invoices");
   const [status, setStatus] = useState("All");
   const [search, setSearch] = useState("");
@@ -4337,14 +4355,14 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
                 { label: "View invoice", onClick: () => setViewing(row.id) },
                 { label: "Print", onClick: () => withDetail(row, (data) => printInvoice(data, settings)) },
                 { label: "Download PDF", onClick: () => withDetail(row, (data) => downloadInvoicePdf(data, settings)) },
-                ...(row.status !== "Cancelled" ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
+                ...(perm("invoices.manage") && row.status !== "Cancelled" ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
                   try {
                     const result = await call(`/invoices/${row.id}/send`, { method: "POST" });
                     setToast(result.sms.status === "sent" ? `${row.code} sent to ${row.phone}` : `SMS not sent (${result.sms.status === "not_configured" ? "SMS not set up" : result.sms.error || "failed"})`);
                   } catch (error) { setToast(error.message); }
                 } }] : []),
-                ...(row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
-                ...(row.status !== "Cancelled" && row.paid === 0 ? [{ label: "Cancel invoice", danger: true, confirm: { title: `Cancel invoice ${row.code}?`, message: `${row.customer} will no longer owe ${formatShillings(row.amount)} on this invoice.`, confirmLabel: "Yes, cancel invoice" }, onClick: async () => {
+                ...(perm("payments.record") && row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
+                ...(perm("invoices.manage") && row.status !== "Cancelled" && row.paid === 0 ? [{ label: "Cancel invoice", danger: true, confirm: { title: `Cancel invoice ${row.code}?`, message: `${row.customer} will no longer owe ${formatShillings(row.amount)} on this invoice.`, confirmLabel: "Yes, cancel invoice" }, onClick: async () => {
                   try {
                     const data = await call(`/invoices/${row.id}`, { method: "PATCH", body: { cancel: true } });
                     invoices.setData((current) => ({ ...current, invoices: current.invoices.map((entry) => (entry.id === row.id ? data.invoice : entry)) }));
@@ -4426,8 +4444,9 @@ function FinancePage({ query, session }) {
   const from = range.from || "2000-01-01";
   const to = range.to || today;
   const summary = useResource(`/finance/summary?from=${from}&to=${to}`);
+  const perm = (key) => hasPerm(session, key);
   const expenses = useResource("/expenses");
-  const payments = useResource("/payments");
+  const payments = useResource(perm("payments.view") ? "/payments" : null);
   const [tab, setTab] = useState("Expenses");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
@@ -4472,7 +4491,7 @@ function FinancePage({ query, session }) {
       <section className="panel inv-panel">
         <div className="inv-toolbar">
           <div className="inv-tabs" role="tablist">
-            {[["Expenses", expenseRows.length], ["Payments", paymentRows.length], ["Breakdown", null]].map(([option, n]) => (
+            {[["Expenses", expenseRows.length], ...(perm("payments.view") ? [["Payments", paymentRows.length]] : []), ["Breakdown", null]].map(([option, n]) => (
               <button key={option} role="tab" aria-selected={tab === option} className={tab === option ? "active" : ""} onClick={() => setTab(option)}>{option}{n !== null && <span>{n}</span>}</button>
             ))}
           </div>
@@ -4480,7 +4499,7 @@ function FinancePage({ query, session }) {
             {tab !== "Breakdown" && <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${tab.toLowerCase()}`} aria-label={`Search ${tab}`} /></label>}
             {tab === "Expenses" && <ExportMenu title="Expenses" columns={["Date", "Category", "Description", "Vendor", "Paid with", "Amount", "Status"]} rows={expenseRows.map((expense) => [expense.date, expense.category, expense.description, expense.vendor, expense.method, formatShillings(expense.amount), expense.status])} />}
             {tab === "Payments" && <ExportMenu title="Payments" columns={["Receipt", "Date", "Customer", "Order", "Method", "Reference", "Amount", "Tithe", "Giving", "Status"]} rows={paymentRows.map((payment) => [payment.receipt, payment.date, payment.customer, payment.reference, payment.method, payment.transactionRef, formatShillings(payment.amount), formatShillings(payment.tithe), formatShillings(payment.giving || 0), payment.status])} />}
-            {tab === "Expenses" && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add expense</button>}
+            {tab === "Expenses" && perm("expenses.manage") && <button className="button button-primary inv-add-button" onClick={() => setEditing("new")}><Plus size={16} /> Add expense</button>}
           </div>
         </div>
         {tab === "Expenses" && (
@@ -4500,9 +4519,9 @@ function FinancePage({ query, session }) {
                 itemLabel="expenses"
                 rowKey="id"
                 renderActions={(row) => [
-                  { label: "Edit expense", onClick: () => setEditing(row) },
-                  ...(row.status === "Pending" ? [{ label: "Approve", confirm: { title: "Approve this expense?", message: `${row.description} · ${formatShillings(row.amount)} will count against profit.`, confirmLabel: "Yes, approve" }, onClick: async () => { try { const data = await call(`/expenses/${row.id}`, { method: "PATCH", body: { status: "Approved" } }); expenses.setData((current) => ({ ...current, expenses: current.expenses.map((entry) => (entry.id === row.id ? data.expense : entry)) })); summary.reload(); setToast("Expense approved"); } catch (error) { setToast(error.message); } } }] : []),
-                  { label: "Delete expense", danger: true, onClick: () => setDeleting(row) },
+                  ...(perm("expenses.manage") ? [{ label: "Edit expense", onClick: () => setEditing(row) }] : []),
+                  ...(perm("expenses.approve") && row.status === "Pending" ? [{ label: "Approve", confirm: { title: "Approve this expense?", message: `${row.description} · ${formatShillings(row.amount)} will count against profit.`, confirmLabel: "Yes, approve" }, onClick: async () => { try { const data = await call(`/expenses/${row.id}`, { method: "PATCH", body: { status: "Approved" } }); expenses.setData((current) => ({ ...current, expenses: current.expenses.map((entry) => (entry.id === row.id ? data.expense : entry)) })); summary.reload(); setToast("Expense approved"); } catch (error) { setToast(error.message); } } }] : []),
+                  ...(perm("expenses.manage") ? [{ label: "Delete expense", danger: true, onClick: () => setDeleting(row) }] : []),
                 ]}
               />
             )}
@@ -4526,7 +4545,7 @@ function FinancePage({ query, session }) {
                 renderActions={(row) => [
                   { label: "View receipt", onClick: () => setReceipt(row) },
                   { label: "Print receipt", onClick: () => printReceipts([row]) },
-                  ...(session.staffRole === "Admin" && row.status === "Paid" ? [{ label: "Mark refunded", danger: true, confirm: { title: `Mark ${row.receipt} as refunded?`, message: `${formatShillings(row.amount)} from ${row.customer} will be removed from revenue.`, confirmLabel: "Yes, mark refunded" }, onClick: async () => { try { await call(`/payments/${row.id}`, { method: "PATCH", body: { status: "Refunded" } }); payments.reload(); summary.reload(); setToast(`${row.receipt} marked refunded`); } catch (error) { setToast(error.message); } } }] : []),
+                  ...(perm("payments.refund") && row.status === "Paid" ? [{ label: "Mark refunded", danger: true, confirm: { title: `Mark ${row.receipt} as refunded?`, message: `${formatShillings(row.amount)} from ${row.customer} will be removed from revenue.`, confirmLabel: "Yes, mark refunded" }, onClick: async () => { try { await call(`/payments/${row.id}`, { method: "PATCH", body: { status: "Refunded" } }); payments.reload(); summary.reload(); setToast(`${row.receipt} marked refunded`); } catch (error) { setToast(error.message); } } }] : []),
                 ]}
               />
             )}
@@ -4610,8 +4629,8 @@ function SmsMessageCell({ text }) {
 
 function MessagingPage({ session, settingsResource }) {
   const { call } = useApi();
-  const messages = useResource("/messages");
-  const [tab, setTab] = useState("History");
+  const messages = useResource(hasPerm(session, "sms.view") ? "/messages" : null);
+  const [tab, setTab] = useState(hasPerm(session, "sms.view") ? "History" : "Templates");
   const [composing, setComposing] = useState(false);
   const [templates, setTemplates] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -4622,7 +4641,10 @@ function MessagingPage({ session, settingsResource }) {
   const saved = settingsResource.data?.settings || {};
   const currentTemplates = templates || { en: saved.smsTemplates || {}, sw: saved.smsTemplatesSw || {}, language: saved.smsLanguage || "en" };
   const editTemplate = (lang, key, value) => setTemplates({ ...currentTemplates, [lang]: { ...currentTemplates[lang], [key]: value } });
-  const admin = session.staffRole === "Admin";
+  const canView = hasPerm(session, "sms.view");
+  const canSend = hasPerm(session, "sms.send");
+  const canDelete = hasPerm(session, "sms.delete");
+  const canTemplates = hasPerm(session, "sms.templates");
   const [ask, confirmDialog] = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
@@ -4713,11 +4735,11 @@ function MessagingPage({ session, settingsResource }) {
       <section className="panel inv-panel">
         <div className="inv-toolbar">
           <div className="inv-tabs" role="tablist">
-            {["History", "Templates"].map((option) => <button key={option} role="tab" aria-selected={tab === option} className={tab === option ? "active" : ""} onClick={() => setTab(option)}>{option}</button>)}
+            {[...(canView ? ["History"] : []), "Templates"].map((option) => <button key={option} role="tab" aria-selected={tab === option} className={tab === option ? "active" : ""} onClick={() => setTab(option)}>{option}</button>)}
           </div>
           <div className="inv-toolbar-actions">
-            <button className="button button-secondary" onClick={messages.reload} disabled={busy}><RotateCcw size={14} /> Refresh</button>
-            <button className="button button-primary inv-add-button" onClick={() => setComposing(true)}><Send size={15} /> Send SMS</button>
+            {canView && <button className="button button-secondary" onClick={messages.reload} disabled={busy}><RotateCcw size={14} /> Refresh</button>}
+            {canSend && <button className="button button-primary inv-add-button" onClick={() => setComposing(true)}><Send size={15} /> Send SMS</button>}
           </div>
         </div>
         {tab === "History" ? (
@@ -4736,15 +4758,15 @@ function MessagingPage({ session, settingsResource }) {
                 {visibleSelected.length > 0 ? (
                   <>
                     <strong>{plural(visibleSelected.length)} selected</strong>
-                    <button type="button" className="button button-secondary" onClick={() => retryIds(visibleSelected)} disabled={busy}><Send size={13} /> Retry selected</button>
-                    {admin && <button type="button" className="button button-secondary sms-danger" onClick={() => deleteIds(visibleSelected)} disabled={busy}><Trash2 size={13} /> Delete selected</button>}
+                    {canSend && <button type="button" className="button button-secondary" onClick={() => retryIds(visibleSelected)} disabled={busy}><Send size={13} /> Retry selected</button>}
+                    {canDelete && <button type="button" className="button button-secondary sms-danger" onClick={() => deleteIds(visibleSelected)} disabled={busy}><Trash2 size={13} /> Delete selected</button>}
                     <button type="button" className="text-action" onClick={() => setSelected([])}>Clear selection</button>
                   </>
                 ) : (
                   <>
                     <span>{rows.length === list.length ? `${plural(list.length)} in history` : `${plural(rows.length)} match your filters`} · tick rows to act on them</span>
-                    {notSentShown.length > 0 && <button type="button" className="button button-secondary" onClick={() => retryIds(notSentShown.map((row) => row.id).slice(0, 200))} disabled={busy}><Send size={13} /> Retry not sent ({notSentShown.length})</button>}
-                    {admin && rows.length > 0 && <button type="button" className="button button-secondary sms-danger" onClick={deleteShown} disabled={busy}><Trash2 size={13} /> {filtersOn ? `Delete shown (${rows.length})` : "Delete all"}</button>}
+                    {canSend && notSentShown.length > 0 && <button type="button" className="button button-secondary" onClick={() => retryIds(notSentShown.map((row) => row.id).slice(0, 200))} disabled={busy}><Send size={13} /> Retry not sent ({notSentShown.length})</button>}
+                    {canDelete && rows.length > 0 && <button type="button" className="button button-secondary sms-danger" onClick={deleteShown} disabled={busy}><Trash2 size={13} /> {filtersOn ? `Delete shown (${rows.length})` : "Delete all"}</button>}
                   </>
                 )}
                 {busy && <LoaderCircle size={15} className="auth-spin" />}
@@ -4766,12 +4788,12 @@ function MessagingPage({ session, settingsResource }) {
                 totalCount={list.length}
                 rowKey="id"
                 renderActions={(row) => [
-                  { label: row.status === "sent" ? "Send again" : "Retry", confirm: { title: `${row.status === "sent" ? "Send this SMS again" : "Retry this SMS"} to ${row.recipient}?`, message: `“${row.message.slice(0, 120)}${row.message.length > 120 ? "…" : ""}” goes to ${row.phone}.`, confirmLabel: row.status === "sent" ? "Yes, send again" : "Yes, retry" }, onClick: () => act(async () => {
+                  ...(canSend ? [{ label: row.status === "sent" ? "Send again" : "Retry", confirm: { title: `${row.status === "sent" ? "Send this SMS again" : "Retry this SMS"} to ${row.recipient}?`, message: `“${row.message.slice(0, 120)}${row.message.length > 120 ? "…" : ""}” goes to ${row.phone}.`, confirmLabel: row.status === "sent" ? "Yes, send again" : "Yes, retry" }, onClick: () => act(async () => {
                     const data = await call(`/messages/${row.id}/retry`, { method: "POST" });
                     return data.sms.status === "sent" ? `SMS sent to ${row.phone}` : `Still not sent (${data.sms.status === "not_configured" ? "SMS not set up" : data.sms.error || "failed"})`;
-                  }) },
+                  }) }] : []),
                   { label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) },
-                  ...(admin ? [{ label: "Delete from history", danger: true, confirm: { title: "Delete this message from history?", message: `To ${row.recipient}, ${new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. This can’t be undone.`, confirmLabel: "Yes, delete" }, onClick: () => act(async () => {
+                  ...(canDelete ? [{ label: "Delete from history", danger: true, confirm: { title: "Delete this message from history?", message: `To ${row.recipient}, ${new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. This can’t be undone.`, confirmLabel: "Yes, delete" }, onClick: () => act(async () => {
                     await call(`/messages/${row.id}`, { method: "DELETE" });
                     return "Message deleted";
                   }) }] : []),
@@ -4785,7 +4807,7 @@ function MessagingPage({ session, settingsResource }) {
             <div className="sms-lang" role="radiogroup" aria-label="SMS language">
               <strong>Send customer SMS in</strong>
               {SMS_LANGUAGES.map(([value, label, hint]) => (
-                <button key={value} type="button" role="radio" aria-checked={currentTemplates.language === value} className={currentTemplates.language === value ? "active" : ""} disabled={!admin} onClick={() => setTemplates({ ...currentTemplates, language: value })}>
+                <button key={value} type="button" role="radio" aria-checked={currentTemplates.language === value} className={currentTemplates.language === value ? "active" : ""} disabled={!canTemplates} onClick={() => setTemplates({ ...currentTemplates, language: value })}>
                   <span>{label}</span><small>{hint}</small>
                 </button>
               ))}
@@ -4799,16 +4821,16 @@ function MessagingPage({ session, settingsResource }) {
                     return (
                       <label className={`set-field ${used ? "" : "sms-unused"}`} key={lang}>
                         <span>{label}{!used && <em>not sent</em>}</span>
-                        <textarea className="ws-textarea" rows="4" maxLength={480} value={currentTemplates[lang]?.[key] || ""} readOnly={!admin} onChange={(event) => editTemplate(lang, key, event.target.value)} />
+                        <textarea className="ws-textarea" rows="4" maxLength={480} value={currentTemplates[lang]?.[key] || ""} readOnly={!canTemplates} onChange={(event) => editTemplate(lang, key, event.target.value)} />
                       </label>
                     );
                   })}
                 </div>
               </div>
             ))}
-            {admin ? (
+            {canTemplates ? (
               <div className="modal-actions"><button className="button button-primary" onClick={saveTemplates} disabled={saving || !templates}>{saving ? "Saving…" : <><Save size={15} /> Save templates</>}</button></div>
-            ) : <p className="team-muted">Only an Admin can change templates.</p>}
+            ) : <p className="team-muted">Your role can view templates but not change them.</p>}
           </div>
         )}
       </section>
@@ -4849,8 +4871,7 @@ function OverviewPage({ onNavigate }) {
   const best = Math.max(...d.revenue.days.map((day) => day.total));
   const labelEvery = d.revenue.days.length > 10 ? 5 : 1;
   const change = d.revenue.change;
-  const allowed = PAGE_ACCESS[session.staffRole];
-  const canOpen = (page) => !allowed || allowed.includes(page);
+  const canOpen = (page) => canOpenPage(session, page);
   const fin = d.finance;
   const windows = monthWindows();
   const lastShort = windows.lastMonth.slice(0, 3);
@@ -4970,7 +4991,7 @@ function OverviewPage({ onNavigate }) {
           </div>
           <div className="chart-footer">
             <span><i className="legend-dot" /> Payments received</span>
-            {isManager(session) && <button onClick={() => onNavigate("Finance")}>View finance <ArrowRight size={14} /></button>}
+            {canOpenPage(session, "Finance") && <button onClick={() => onNavigate("Finance")}>View finance <ArrowRight size={14} /></button>}
           </div>
         </article>
         <article className="panel availability-panel">
@@ -6284,11 +6305,105 @@ function InviteMemberModal({ onClose, onInvite, existingPhones }) {
   );
 }
 
+// Tick-box permissions for one staff role, saved to /api/roles. Admin always has everything.
+function RolePermissionsEditor({ role, session, onSaved }) {
+  const { call } = useApi();
+  const roles = useResource("/roles");
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [ask, confirmDialog] = useConfirm();
+  const entry = roles.data?.roles.find((item) => item.role === role.name);
+  const editable = hasPerm(session, "roles.manage") && entry && !entry.locked;
+  const current = draft ?? entry?.permissions ?? [];
+  const dirty = draft !== null && JSON.stringify([...draft].sort()) !== JSON.stringify([...(entry?.permissions || [])].sort());
+  useEffect(() => { setDraft(null); setError(""); }, [role.name]);
+
+  const toggle = (key) => setDraft(current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  const setGroup = (keys, on) => setDraft(on ? [...new Set([...current, ...keys])] : current.filter((item) => !keys.includes(item)));
+
+  async function save(permissions, message) {
+    setBusy(true);
+    setError("");
+    try {
+      await call(`/roles/${encodeURIComponent(role.name)}`, { method: "PUT", body: { permissions } });
+      await roles.reload();
+      setDraft(null);
+      onSaved(message);
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveChanges() {
+    const before = new Set(entry.permissions);
+    const added = current.filter((key) => !before.has(key)).length;
+    const removed = entry.permissions.filter((key) => !current.includes(key)).length;
+    if (!(await ask({ title: `Save ${role.name} permissions?`, message: `${added} added, ${removed} removed. Everyone with this role gets the change the next time the app loads.`, confirmLabel: "Yes, save" }))) return;
+    save(current, `${role.name} permissions saved`);
+  }
+
+  async function resetDefaults() {
+    if (!(await ask({ title: `Reset ${role.name} to the default permissions?`, message: "Any changes you made to this role are replaced by the original set.", confirmLabel: "Yes, reset" }))) return;
+    save(entry.defaults, `${role.name} reset to default permissions`);
+  }
+
+  if (!roles.data) return <div className="team-permissions"><LoadState status={roles.status} error={roles.error} onRetry={roles.reload} /></div>;
+  return (
+    <div className="team-permissions role-editor" role="tabpanel" aria-label={`${role.name} permissions`}>
+      <div className="team-permissions-head">
+        <span className={`team-role-pill ${role.tone}`}><ShieldCheck size={11} /> {role.name}</span>
+        <p>{entry?.locked ? "Admin always has every permission, so it can’t be changed." : role.desc}</p>
+        <span className="role-count">{current.length} of {roles.data.groups.reduce((sum, group) => sum + group.items.length, 0)} permissions</span>
+      </div>
+      <div className="role-groups">
+        {roles.data.groups.map((group) => {
+          const keys = group.items.map((item) => item.key);
+          const on = keys.filter((key) => current.includes(key)).length;
+          return (
+            <section key={group.group} className="role-group">
+              <header>
+                <strong>{group.group}</strong>
+                <small>{on}/{keys.length}</small>
+                {editable && (
+                  <span className="role-group-tools">
+                    <button type="button" onClick={() => setGroup(keys, true)} disabled={on === keys.length}>All</button>
+                    <button type="button" onClick={() => setGroup(keys, false)} disabled={on === 0}>None</button>
+                  </span>
+                )}
+              </header>
+              {group.items.map((item) => (
+                <label key={item.key} className={`role-perm ${current.includes(item.key) ? "on" : ""}`}>
+                  <input type="checkbox" checked={current.includes(item.key)} disabled={!editable || busy} onChange={() => toggle(item.key)} />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+      {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+      {editable ? (
+        <div className="role-actions">
+          <button type="button" className="text-action" onClick={resetDefaults} disabled={busy}><RotateCcw size={13} /> Reset to defaults</button>
+          <span>
+            <button type="button" className="button button-secondary" onClick={() => setDraft(null)} disabled={!dirty || busy}>Discard</button>
+            <button type="button" className="button button-primary" onClick={saveChanges} disabled={!dirty || busy}><Save size={14} /> {busy ? "Saving…" : "Save permissions"}</button>
+          </span>
+        </div>
+      ) : !entry?.locked && <p className="team-muted role-note">Only someone with “Change what each role can do” can edit permissions.</p>}
+      {confirmDialog}
+    </div>
+  );
+}
+
 function UsersPage({ query, session }) {
   const { call } = useApi();
   const teamRes = useResource("/team");
   const [credentials, setCredentials] = useState(null);
-  const admin = session.staffRole === "Admin";
+  const admin = hasPerm(session, "team.manage");
   const team = (teamRes.data?.team || []).map((member, index) => ({
     ...member,
     initials: `${member.firstName[0] || ""}${member.lastName[0] || ""}`.toUpperCase(),
@@ -6329,6 +6444,8 @@ function UsersPage({ query, session }) {
     }
   }
   const activeRole = TEAM_ROLES.find((role) => role.name === selectedRole);
+  const rolesRes = useResource("/roles");
+  const roleCounts = Object.fromEntries((rolesRes.data?.roles || []).map((entry) => [entry.role, entry.permissions.length]));
   const filtersActive = search || roleFilter !== "All roles" || statusFilter !== "All statuses";
 
   return (
@@ -6405,7 +6522,7 @@ function UsersPage({ query, session }) {
           rowKey="id"
           renderActions={(row) => {
             if (row.id === session.id) return [{ label: "This is you", onClick: () => {} }];
-            if (!admin) return [{ label: "Only an Admin can change team members", onClick: () => {} }];
+            if (!admin) return [{ label: "Your role can’t change team members", onClick: () => {} }];
             const first = row.firstName;
             return [
               ...STAFF_ROLES.filter((role) => role.name !== row.role).map((role) => ({
@@ -6454,7 +6571,7 @@ function UsersPage({ query, session }) {
                   <span className="team-role-icon"><ShieldCheck size={16} /></span>
                   <span className="team-role-copy">
                     <strong>{role.name}</strong>
-                    <small>{members.length} {noun}{members.length === 1 ? "" : "s"} · {role.access.length} areas</small>
+                    <small>{members.length} {noun}{members.length === 1 ? "" : "s"} · {role.customer ? `${role.access.length} areas` : `${roleCounts[role.name] ?? "…"} permissions`}</small>
                   </span>
                   <span className="team-role-avatars" aria-hidden="true">
                     {(role.customer ? [] : members).slice(0, 3).map((member) => <i key={member.id} className={member.color}>{member.initials}</i>)}
@@ -6463,6 +6580,9 @@ function UsersPage({ query, session }) {
               );
             })}
           </div>
+          {!activeRole.customer ? (
+            <RolePermissionsEditor role={activeRole} session={session} onSaved={(message) => setToast(message)} />
+          ) : (
           <div className="team-permissions" role="tabpanel" aria-label={`${activeRole.name} permissions`}>
             <div className="team-permissions-head">
               <span className={`team-role-pill ${activeRole.tone}`}><ShieldCheck size={11} /> {activeRole.name}</span>
@@ -6480,6 +6600,7 @@ function UsersPage({ query, session }) {
               })}
             </ul>
           </div>
+          )}
         </div>
       </section>
 
@@ -6706,7 +6827,7 @@ function AreaManager({ session }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useToast();
   const [ask, confirmDialog] = useConfirm();
-  const canManage = isManager(session);
+  const canManage = hasPerm(session, "areas.manage");
 
   const load = useCallback(() => {
     setStatus("loading");
@@ -6796,7 +6917,7 @@ function AreaManager({ session }) {
           <span className="set-row-copy"><strong>{OTHER_AREA}</strong><small>Always available — the customer types the place</small></span>
         </div>
       </div>
-      {!canManage && <p className="team-muted">Only an Admin or Store manager can change areas.</p>}
+      {!canManage && <p className="team-muted">Your role can’t change service areas.</p>}
       {confirmDialog}
       {toast}
     </SettingsCard>
@@ -6809,7 +6930,7 @@ function CategoryManager({ session }) {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [toast, setToast] = useToast();
-  const canManage = isManager(session);
+  const canManage = hasPerm(session, "inventory.categories");
   const categories = resource.data?.categories || [];
 
   return (
@@ -6844,7 +6965,7 @@ function CategoryManager({ session }) {
           );
         })}
       </div>
-      {!canManage && <p className="team-muted">Only an Admin or Store manager can change categories.</p>}
+      {!canManage && <p className="team-muted">Your role can’t change inventory categories.</p>}
       {editing && (
         <CategoryModal
           category={editing === "new" ? null : editing}
@@ -6956,7 +7077,7 @@ function PaymentMethodsEditor({ methods, onChange, error }) {
 
 function SettingsPage({ onLogout, session, settingsResource }) {
   const { call } = useApi();
-  const admin = session.staffRole === "Admin";
+  const admin = hasPerm(session, "settings.manage");
   const [active, setActive] = useState("profile");
   const [saved, setSaved] = useState(() => {
     const [firstName, ...rest] = session.name.split(" ");
@@ -7534,7 +7655,7 @@ function SettingsPage({ onLogout, session, settingsResource }) {
           </SettingsCard>
         )}
 
-        {!admin && <p className="set-notice"><Info size={14} /> Only an Admin can change workspace settings. You can change your own password under Account & security.</p>}
+        {!admin && <p className="set-notice"><Info size={14} /> Your role can’t change workspace settings. You can change your own password under Account & security.</p>}
         {admin && (dirty || showErrors) && (
           <div className="set-savebar" role="region" aria-label="Unsaved changes">
             <span>

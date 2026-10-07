@@ -1,5 +1,6 @@
 import { query } from '../config/db.js';
 import { hashToken } from '../services/auth.service.js';
+import { can, permissionsFor } from '../services/permissions.service.js';
 import { HttpError, handle } from '../utils/helpers.js';
 
 // Attaches request.user = { kind, id, role?, name, phone } or responds 401.
@@ -24,7 +25,7 @@ export const authenticate = handle(async (request, response, next) => {
     }
     request.tokenHash = tokenHash;
     request.user = session.kind === 'staff'
-        ? { kind: 'staff', id: session.subject_id, role: session.role, name: `${session.s_first} ${session.s_last}`, phone: session.s_phone }
+        ? { kind: 'staff', id: session.subject_id, role: session.role, name: `${session.s_first} ${session.s_last}`, phone: session.s_phone, permissions: await permissionsFor(session.role) }
         : { kind: 'customer', id: session.subject_id, name: `${session.c_first} ${session.c_last}`, phone: session.c_phone };
     next();
 });
@@ -33,6 +34,15 @@ export const requireStaff = (...roles) => (request, _response, next) => {
     if (request.user?.kind !== 'staff') return next(new HttpError(403, 'You do not have access to this.'));
     if (roles.length && !roles.includes(request.user.role)) {
         return next(new HttpError(403, `Only ${roles.join(' or ')} can do this.`));
+    }
+    return next();
+};
+
+// Staff with any one of the given permissions may continue.
+export const requirePermission = (...keys) => (request, _response, next) => {
+    if (request.user?.kind !== 'staff') return next(new HttpError(403, 'You do not have access to this.'));
+    if (keys.length && !keys.some((key) => can(request.user, key))) {
+        return next(new HttpError(403, 'Your role does not have permission to do this. Ask an Admin.'));
     }
     return next();
 };

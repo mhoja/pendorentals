@@ -11,6 +11,7 @@ import portalRoutes from './routes/portal.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 import categoryRoutes from './routes/categories.routes.js';
 import areaRoutes from './routes/areas.routes.js';
+import roleRoutes from './routes/roles.routes.js';
 import orderRoutes from './routes/orders.routes.js';
 import customerRoutes from './routes/customers.routes.js';
 import billingRoutes from './routes/billing.routes.js';
@@ -28,7 +29,7 @@ app.use(express.json({ limit: '100kb' }));
 
 for (const routes of [
     publicRoutes, authRoutes, portalRoutes, inventoryRoutes, categoryRoutes, areaRoutes, orderRoutes, customerRoutes,
-    billingRoutes, expenseRoutes, teamRoutes, settingsRoutes, messageRoutes, insightRoutes,
+    billingRoutes, expenseRoutes, teamRoutes, roleRoutes, settingsRoutes, messageRoutes, insightRoutes,
 ]) {
     app.use('/api', routes);
 }

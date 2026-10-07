@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireStaff } from '../middleware/auth.middleware.js';
-import { MANAGERS } from '../services/auth.service.js';
+import { authenticate, requirePermission } from '../middleware/auth.middleware.js';
 import { handle } from '../utils/helpers.js';
 import {
     listServiceAreas,
@@ -12,8 +11,8 @@ import {
 const router = Router();
 
 router.get('/areas', handle(listServiceAreas));
-router.post('/areas', authenticate, requireStaff(...MANAGERS), handle(createServiceArea));
-router.patch('/areas/:id', authenticate, requireStaff(...MANAGERS), handle(updateServiceArea));
-router.delete('/areas/:id', authenticate, requireStaff(...MANAGERS), handle(deleteServiceArea));
+router.post('/areas', authenticate, requirePermission('areas.manage'), handle(createServiceArea));
+router.patch('/areas/:id', authenticate, requirePermission('areas.manage'), handle(updateServiceArea));
+router.delete('/areas/:id', authenticate, requirePermission('areas.manage'), handle(deleteServiceArea));
 
 export default router;

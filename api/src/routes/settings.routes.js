@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { authenticate, requireStaff } from '../middleware/auth.middleware.js';
+import { authenticate, requirePermission } from '../middleware/auth.middleware.js';
 import { handle } from '../utils/helpers.js';
 import { getWorkspaceSettings, updateWorkspaceSettings } from '../controllers/settings.controller.js';
 
 const router = Router();
 
-router.get('/settings', authenticate, requireStaff(), handle(getWorkspaceSettings));
-router.put('/settings', authenticate, requireStaff('Admin'), handle(updateWorkspaceSettings));
+router.get('/settings', authenticate, requirePermission(), handle(getWorkspaceSettings));
+router.put('/settings', authenticate, requirePermission('settings.manage', 'sms.templates'), handle(updateWorkspaceSettings));
 
 export default router;

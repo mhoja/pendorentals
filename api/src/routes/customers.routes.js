@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireStaff } from '../middleware/auth.middleware.js';
-import { MANAGERS } from '../services/auth.service.js';
+import { authenticate, requirePermission } from '../middleware/auth.middleware.js';
 import { handle } from '../utils/helpers.js';
 import {
     listCustomers,
@@ -14,12 +13,12 @@ import {
 
 const router = Router();
 
-router.get('/customers', authenticate, requireStaff(...MANAGERS), handle(listCustomers));
-router.get('/customers/:id', authenticate, requireStaff(...MANAGERS), handle(getCustomer));
-router.post('/customers', authenticate, requireStaff(...MANAGERS), handle(createCustomer));
-router.patch('/customers/:id', authenticate, requireStaff(...MANAGERS), handle(updateCustomer));
-router.delete('/customers/:id', authenticate, requireStaff('Admin'), handle(deleteCustomer));
-router.post('/customers/:id/login', authenticate, requireStaff(...MANAGERS), handle(resetCustomerLogin));
-router.delete('/customers/:id/login', authenticate, requireStaff(...MANAGERS), handle(removeCustomerLogin));
+router.get('/customers', authenticate, requirePermission('customers.view'), handle(listCustomers));
+router.get('/customers/:id', authenticate, requirePermission('customers.view'), handle(getCustomer));
+router.post('/customers', authenticate, requirePermission('customers.manage'), handle(createCustomer));
+router.patch('/customers/:id', authenticate, requirePermission('customers.manage'), handle(updateCustomer));
+router.delete('/customers/:id', authenticate, requirePermission('customers.delete'), handle(deleteCustomer));
+router.post('/customers/:id/login', authenticate, requirePermission('customers.login'), handle(resetCustomerLogin));
+router.delete('/customers/:id/login', authenticate, requirePermission('customers.login'), handle(removeCustomerLogin));
 
 export default router;

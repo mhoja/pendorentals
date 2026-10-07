@@ -273,6 +273,18 @@ const migrations = [
                 add column last_attempt_at timestamptz;
         `,
     },
+    {
+        id: 8,
+        name: 'role permissions',
+        sql: `
+            -- Permissions chosen for each staff role; roles without a row use the built-in defaults.
+            create table role_permissions (
+                role text primary key,
+                permissions text[] not null default '{}',
+                updated_at timestamptz not null default now()
+            );
+        `,
+    },
 ];
 
 export async function migrate() {

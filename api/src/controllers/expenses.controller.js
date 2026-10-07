@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { can } from '../services/permissions.service.js';
 import { HttpError, cleanText, isIsoDate, isWhole } from '../utils/helpers.js';
 
 export const EXPENSE_CATEGORIES = ['Equipment maintenance', 'Delivery & transport', 'Supplies', 'Marketing', 'Rent & utilities', 'Salaries & wages', 'Other'];
@@ -42,6 +43,8 @@ export async function listExpenses(_request, response) {
 // POST /api/expenses
 export async function createExpense(request, response) {
     const value = { ...validate(request.body || {}, { partial: false }), created_by: request.user.id };
+    // Without "Approve expenses", new expenses wait for someone who can approve them.
+    if (!can(request.user, 'expenses.approve')) value.status = 'Pending';
     const keys = Object.keys(value);
     const { rows: [inserted] } = await query(
         `insert into expenses (${keys.join(', ')}) values (${keys.map((_, index) => `$${index + 1}`).join(', ')}) returning id`,
@@ -54,7 +57,11 @@ export async function createExpense(request, response) {
 // PATCH /api/expenses/:id
 export async function updateExpense(request, response) {
     const id = Number(request.params.id);
-    const value = validate(request.body || {}, { partial: true });
+    const body = request.body || {};
+    // Approving needs "Approve expenses"; changing anything else needs "Add, edit and delete expenses".
+    if (body.status !== undefined && !can(request.user, 'expenses.approve')) throw new HttpError(403, 'Your role can’t approve expenses.');
+    if (Object.keys(body).some((key) => key !== 'status') && !can(request.user, 'expenses.manage')) throw new HttpError(403, 'Your role can’t edit expenses.');
+    const value = validate(body, { partial: true });
     const keys = Object.keys(value);
     if (!keys.length) throw new HttpError(400, 'Nothing to update.');
     const { rowCount } = await query(`update expenses set ${keys.map((key, index) => `${key} = $${index + 2}`).join(', ')} where id = $1`, [id, ...keys.map((key) => value[key])]);

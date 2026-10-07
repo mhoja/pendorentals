@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireStaff } from '../middleware/auth.middleware.js';
-import { MANAGERS } from '../services/auth.service.js';
+import { authenticate, requirePermission } from '../middleware/auth.middleware.js';
 import { handle } from '../utils/helpers.js';
 import {
     listInventoryCategories,
@@ -11,9 +10,9 @@ import {
 
 const router = Router();
 
-router.get('/inventory-categories', authenticate, requireStaff(), handle(listInventoryCategories));
-router.post('/inventory-categories', authenticate, requireStaff(...MANAGERS), handle(createInventoryCategory));
-router.patch('/inventory-categories/:id', authenticate, requireStaff(...MANAGERS), handle(updateInventoryCategory));
-router.delete('/inventory-categories/:id', authenticate, requireStaff(...MANAGERS), handle(deleteInventoryCategory));
+router.get('/inventory-categories', authenticate, requirePermission(), handle(listInventoryCategories));
+router.post('/inventory-categories', authenticate, requirePermission('inventory.categories'), handle(createInventoryCategory));
+router.patch('/inventory-categories/:id', authenticate, requirePermission('inventory.categories'), handle(updateInventoryCategory));
+router.delete('/inventory-categories/:id', authenticate, requirePermission('inventory.categories'), handle(deleteInventoryCategory));
 
 export default router;

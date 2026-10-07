@@ -1,5 +1,6 @@
 import { query, transaction } from '../config/db.js';
-import { MANAGERS, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
+import { hashPassword, newTemporaryPassword } from '../services/auth.service.js';
+import { can } from '../services/permissions.service.js';
 import { HttpError, cleanText, formatTSh, greetName, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
 import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, smsDate, smsDays, smsItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
 import { getSettings, sendTemplate } from '../services/settings.service.js';
@@ -73,7 +74,8 @@ async function resolveCustomer(db, body) {
 export async function listOrders(request, response) {
     const conditions = [];
     const params = [];
-    if (request.user.role === 'Delivery staff') {
+    // Without "See all orders", staff only see delivery orders (and ones they drive).
+    if (!can(request.user, 'orders.view')) {
         params.push(request.user.id);
         conditions.push(`(o.driver_id = $${params.length} or o.delivery_required)`);
     }
@@ -138,13 +140,19 @@ export async function createOrder(request, response) {
 // PATCH /api/orders/:code
 export async function updateOrder(request, response) {
     const body = request.body || {};
-    const isManager = MANAGERS.includes(request.user.role);
-    const allowed = isManager ? null : ['deliveryStatus', 'status'];
-    if (allowed && Object.keys(body).some((key) => !allowed.includes(key) && key !== 'notifyCustomer')) {
-        throw new HttpError(403, 'You can only update delivery and order status.');
+    // Each part of an order change needs its own permission.
+    const user = request.user;
+    const editingDetails = Object.keys(body).some((key) => !['status', 'deliveryStatus', 'notifyCustomer'].includes(key));
+    if (editingDetails && !can(user, 'orders.edit')) throw new HttpError(403, 'Your role can’t edit order details.');
+    if (body.status !== undefined) {
+        const deliveryStep = ['Out for delivery', 'Completed'].includes(body.status);
+        const allowed = body.status === 'Cancelled'
+            ? can(user, 'orders.cancel')
+            : can(user, 'orders.status') || (deliveryStep && can(user, 'orders.delivery'));
+        if (!allowed) throw new HttpError(403, body.status === 'Cancelled' ? 'Your role can’t cancel orders.' : `Your role can’t mark orders ${String(body.status).toLowerCase()}.`);
     }
-    if (!isManager && body.status && !['Out for delivery', 'Completed'].includes(body.status)) {
-        throw new HttpError(403, 'You can only mark orders as out for delivery or completed.');
+    if (body.deliveryStatus !== undefined && !['orders.edit', 'orders.status', 'orders.delivery'].some((key) => can(user, key))) {
+        throw new HttpError(403, 'Your role can’t update deliveries.');
     }
     const before = await loadOrder(request.params.code);
     const value = validateOrderBody(body, { partial: true });

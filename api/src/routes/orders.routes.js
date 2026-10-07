@@ -1,14 +1,13 @@
 import { Router } from 'express';
-import { authenticate, requireStaff } from '../middleware/auth.middleware.js';
-import { MANAGERS } from '../services/auth.service.js';
+import { authenticate, requirePermission } from '../middleware/auth.middleware.js';
 import { handle } from '../utils/helpers.js';
 import { listOrders, getOrder, createOrder, updateOrder } from '../controllers/orders.controller.js';
 
 const router = Router();
 
-router.get('/orders', authenticate, requireStaff(), handle(listOrders));
-router.get('/orders/:code', authenticate, requireStaff(), handle(getOrder));
-router.post('/orders', authenticate, requireStaff(...MANAGERS), handle(createOrder));
-router.patch('/orders/:code', authenticate, requireStaff(), handle(updateOrder));
+router.get('/orders', authenticate, requirePermission('orders.view', 'orders.deliveries'), handle(listOrders));
+router.get('/orders/:code', authenticate, requirePermission('orders.view', 'orders.deliveries'), handle(getOrder));
+router.post('/orders', authenticate, requirePermission('orders.create'), handle(createOrder));
+router.patch('/orders/:code', authenticate, requirePermission('orders.edit', 'orders.status', 'orders.delivery', 'orders.cancel'), handle(updateOrder));
 
 export default router;

@@ -1,6 +1,7 @@
 import { query } from '../config/db.js';
 import { createSession, destroySession, hashPassword, verifyPassword } from '../services/auth.service.js';
 import { HttpError, normalizePhone } from '../utils/helpers.js';
+import { permissionsFor } from '../services/permissions.service.js';
 
 // POST /api/auth/login
 export async function login(request, response) {
@@ -12,7 +13,7 @@ export async function login(request, response) {
     if (staff && verifyPassword(password, staff.password_hash)) {
         if (staff.status === 'Inactive') throw new HttpError(403, 'This account has been deactivated. Contact your admin.');
         await query(`update staff set last_active_at = now(), status = case when status = 'Invited' then 'Active' else status end where id = $1`, [staff.id]);
-        response.json(await createSession({ query }, 'staff', staff));
+        response.json({ ...(await createSession({ query }, 'staff', staff)), permissions: await permissionsFor(staff.role) });
         return;
     }
     const { rows: [customer] } = await query('select * from customers where phone = $1', [phone]);
@@ -25,8 +26,8 @@ export async function login(request, response) {
 
 // GET /api/me
 export async function getCurrentUser(request, response) {
-    const { kind, role, phone, name, id } = request.user;
-    response.json({ role: kind === 'staff' ? 'staff' : 'customer', staffRole: role, phone, name, id });
+    const { kind, role, phone, name, id, permissions } = request.user;
+    response.json({ role: kind === 'staff' ? 'staff' : 'customer', staffRole: role, phone, name, id, permissions });
 }
 
 // POST /api/auth/logout

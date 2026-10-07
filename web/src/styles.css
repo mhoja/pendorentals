@@ -11363,3 +11363,173 @@ button.ov-task:disabled {
 .cust-invoice-error {
     margin: 18px;
 }
+
+/* Order form fields grouped so they can be locked for view-only roles */
+.ws-fieldset {
+    display: contents;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.ws-readonly-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 12px;
+}
+
+/* Users & Roles: permissions editor */
+.role-editor {
+    display: grid;
+    gap: 12px;
+}
+
+.role-editor .team-permissions-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.role-editor .team-permissions-head p {
+    flex: 1 1 260px;
+    margin: 0;
+}
+
+.role-count {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #eef5ff;
+    color: #1764dd;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.role-groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.role-group {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid #e6edf6;
+    border-radius: 12px;
+    background: #fbfcfe;
+}
+
+.role-group header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+.role-group header strong {
+    color: #172a45;
+    font-size: 12.5px;
+}
+
+.role-group header small {
+    color: #8592a6;
+    font-size: 11px;
+}
+
+.role-group-tools {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.role-group-tools button {
+    padding: 2px 8px;
+    border: 1px solid #dbe4f0;
+    border-radius: 6px;
+    background: #fff;
+    color: #1764dd !important;
+    font: 700 10.5px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.role-group-tools button:disabled {
+    color: #b3bdca !important;
+    cursor: default;
+}
+
+.role-perm {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 7px;
+    color: #66748a;
+    font-size: 12px;
+    line-height: 1.35;
+    cursor: pointer;
+}
+
+.role-perm:hover {
+    background: #f1f6fe;
+}
+
+.role-perm input {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    margin-top: 1px;
+    accent-color: #1764dd;
+}
+
+.role-perm.on span {
+    color: #172a45;
+    font-weight: 600;
+}
+
+.role-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #edf1f6;
+}
+
+.role-actions>span {
+    display: flex;
+    gap: 6px;
+}
+
+.role-actions .button {
+    height: 36px;
+    gap: 6px;
+    padding: 0 14px;
+    font: 700 12.5px 'DM Sans', sans-serif;
+}
+
+.role-note {
+    margin: 0;
+    font-size: 12px;
+}
+
+@media (max-width: 900px) {
+    .role-groups {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Role cards keep their own height next to the tall permissions editor */
+.team-roles-body {
+    align-items: start;
+}
+
+.team-role-list {
+    align-self: start;
+    align-content: start;
+    grid-auto-rows: max-content;
+}

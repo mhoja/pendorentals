@@ -1,7 +1,7 @@
 import { query } from '../config/db.js';
 import { HttpError, addDays, isIsoDate, prettyPhone, todayIso } from '../utils/helpers.js';
 import { ACTIVE_STATUSES, ORDER_STATUSES, loadOrders } from '../services/orders.service.js';
-import { MANAGERS } from '../services/auth.service.js';
+import { can } from '../services/permissions.service.js';
 import { PAYMENT_SELECT, shapePayment } from '../services/billing.service.js';
 
 // Units of each inventory item out on active orders today.
@@ -86,7 +86,7 @@ export async function getDashboard(request, response) {
 
     // Money figures are only for managers, like the Finance page.
     let finance = null;
-    if (MANAGERS.includes(request.user.role)) {
+    if (can(request.user, 'overview.money')) {
         const monthStart = `${today.slice(0, 7)}-01`;
         const lastMonthEnd = addDays(monthStart, -1);
         const lastMonthStart = `${lastMonthEnd.slice(0, 7)}-01`;
