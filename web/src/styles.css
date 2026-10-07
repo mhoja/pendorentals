@@ -10656,3 +10656,22 @@ button.inv-open:hover .report-id {
     color: #10305e;
     font: 800 16px 'Manrope', sans-serif;
 }
+
+/* Orders: paid and due columns */
+.ord-paid,
+.ord-paid * {
+    color: #1f8a5b !important;
+}
+
+.ord-settled {
+    color: #1f8a5b;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.inv-toolbar-actions .report-columns-wrap>.button {
+    height: 38px;
+    gap: 6px;
+    padding: 0 12px;
+    font: 700 12.5px 'DM Sans', sans-serif;
+}

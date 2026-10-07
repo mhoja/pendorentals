@@ -3156,6 +3156,23 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
     }
   }
 
+  const money = (value) => (value === null || value === undefined ? "—" : formatShillings(value));
+  // Columns staff can show or hide with the Columns button (remembered on this device).
+  const { columns: orderColumns, chooser: orderColumnChooser } = useColumnChooser("pendo-orders-columns", [
+    { key: "id", label: "ORDER", render: (row) => <div className="inv-item-cell"><span><strong>{row.id}</strong><small className="ws-source">{row.source === "rent_now" ? "Rent Now" : "Staff"}</small></span></div> },
+    { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer.name}</strong><small>{row.customer.phone}</small></div> },
+    { key: "items", label: "ITEMS", render: (row) => <span className="ws-items-cell" title={orderItemsText(row.items)}>{orderItemsText(row.items)}</span> },
+    { key: "eventDate", label: "EVENT", render: (row) => <div className="ws-two-line"><strong>{orderDates(row)}</strong><small>{row.place || row.area || "—"}</small></div> },
+    { key: "days", label: "DAYS", hidden: true, render: (row) => <span className="team-muted">{row.days}</span> },
+    { key: "total", label: "TOTAL", render: (row) => (row.total === null ? <span className="ws-quote">Quote pending</span> : <strong className="inv-qty">{formatShillings(row.total)}</strong>) },
+    { key: "rental", label: "RENTAL", hidden: true, render: (row) => <span className="team-muted">{money(row.itemsTotal)}</span> },
+    { key: "deliveryFee", label: "DELIVERY FEE", hidden: true, render: (row) => <span className="team-muted">{row.deliveryFee ? formatShillings(row.deliveryFee) : "—"}</span> },
+    { key: "paid", label: "PAID", render: (row) => (row.paid ? <strong className="ord-paid">{formatShillings(row.paid)}</strong> : <span className="team-muted">—</span>) },
+    { key: "due", label: "DUE", render: (row) => (row.total === null ? <span className="team-muted">—</span> : row.status === "Cancelled" ? <span className="team-muted">Cancelled</span> : row.balance ? <strong className="cust-due">{formatShillings(row.balance)}</strong> : <span className="ord-settled">Paid in full</span>) },
+    { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={orderTone(row.status)}>{row.status}</StatusPill>{row.deliveryRequired && <small>Delivery: {row.deliveryStatus}</small>}</div> },
+    { key: "driver", label: "DRIVER", hidden: true, render: (row) => <span className="team-muted">{row.driver?.name || "—"}</span> },
+    { key: "createdAt", label: "CREATED", hidden: true, render: (row) => <span className="team-muted">{shortDate(row.createdAt)}</span> },
+  ]);
   const exportColumns = ["Order", "Customer", "Phone", "Items", "Event", "Days", "Area", "Total", "Paid", "Balance", "Status"];
   const exportRows = rows.map((order) => [order.id, order.customer.name, order.customer.phone, orderItemsText(order.items), order.eventDate, order.days, order.place ? `${order.place}, ${order.area}` : order.area || "", order.total === null ? "Quote pending" : formatShillings(order.total), formatShillings(order.paid), order.balance === null ? "" : formatShillings(order.balance), order.status]);
 
@@ -3184,6 +3201,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
             <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search orders" aria-label="Search orders" /></label>
             <DateRangeFilter range={eventRange} label="Event" />
             <ClearFiltersButton active={ordersFiltered} onClear={clearOrderFilters} />
+            {orderColumnChooser}
             <ExportMenu title="Orders" columns={exportColumns} rows={exportRows} />
           </div>
         </div>
@@ -3191,14 +3209,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
         {list.length > 0 && (
           <>
             <DataTable
-              columns={[
-                { key: "id", label: "ORDER", render: (row) => <div className="inv-item-cell"><span><strong>{row.id}</strong><small className="ws-source">{row.source === "rent_now" ? "Rent Now" : "Staff"}</small></span></div> },
-                { key: "customer", label: "CUSTOMER", render: (row) => <div className="ws-two-line"><strong>{row.customer.name}</strong><small>{row.customer.phone}</small></div> },
-                { key: "items", label: "ITEMS", render: (row) => <span className="ws-items-cell" title={orderItemsText(row.items)}>{orderItemsText(row.items)}</span> },
-                { key: "eventDate", label: "EVENT", render: (row) => <div className="ws-two-line"><strong>{orderDates(row)}</strong><small>{row.place || row.area || "—"}</small></div> },
-                { key: "total", label: "TOTAL", render: (row) => (row.total === null ? <span className="ws-quote">Quote pending</span> : <div className="ws-two-line"><strong>{formatShillings(row.total)}</strong><small>{row.balance ? `${formatShillings(row.balance)} due` : "Paid in full"}</small></div>) },
-                { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={orderTone(row.status)}>{row.status}</StatusPill>{row.deliveryRequired && <small>Delivery: {row.deliveryStatus}</small>}</div> },
-              ]}
+              columns={orderColumns}
               rows={rows}
               itemLabel="orders"
               totalCount={list.length}
@@ -4755,6 +4766,69 @@ function PageSummary({ items, className = "" }) {
   );
 }
 
+// Tick-box column chooser shared by data tables and reports. Columns with `hidden: true`
+// start hidden ("Extra"). The choice is remembered on this device under `storeKey`.
+function useColumnChooser(storeKey, allColumns) {
+  const defaults = allColumns.filter((column) => !column.hidden).map((column) => column.key);
+  const [shownKeys, setShownKeys] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(storeKey) || "null");
+      const known = Array.isArray(stored) ? stored.filter((key) => allColumns.some((column) => column.key === key)) : [];
+      return known.length ? known : defaults;
+    } catch {
+      return defaults;
+    }
+  });
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+  function choose(keys) {
+    setShownKeys(keys);
+    try { localStorage.setItem(storeKey, JSON.stringify(keys)); } catch { /* storage unavailable */ }
+  }
+  function toggle(key) {
+    if (shownKeys.includes(key)) {
+      if (shownKeys.length > 1) choose(shownKeys.filter((entry) => entry !== key));
+    } else {
+      choose(allColumns.map((column) => column.key).filter((entry) => entry === key || shownKeys.includes(entry)));
+    }
+  }
+  const columns = allColumns.filter((column) => shownKeys.includes(column.key));
+  const chooser = (
+    <div className="report-columns-wrap" ref={wrapRef}>
+      <button type="button" className="button button-secondary" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="true">
+        <Table2 size={15} /> Columns <span className="report-columns-count">{columns.length}/{allColumns.length}</span> <ChevronDown size={13} />
+      </button>
+      {open && (
+        <div className="report-columns-menu" role="group" aria-label="Choose columns">
+          <header><strong>Show columns</strong><small>Tick to add, untick to hide</small></header>
+          <div className="report-columns-list">
+            {allColumns.map((column) => (
+              <label key={column.key} className="report-column-option">
+                <input type="checkbox" checked={shownKeys.includes(column.key)} onChange={() => toggle(column.key)} disabled={shownKeys.length === 1 && shownKeys.includes(column.key)} />
+                <span>{column.label.charAt(0) + column.label.slice(1).toLowerCase()}</span>
+                {column.hidden && <em>Extra</em>}
+              </label>
+            ))}
+          </div>
+          <footer>
+            <button type="button" onClick={() => choose(allColumns.map((column) => column.key))}>Show all</button>
+            <button type="button" onClick={() => choose(defaults)}>Reset</button>
+          </footer>
+        </div>
+      )}
+    </div>
+  );
+  return { columns, chooser };
+}
+
 const PAGE_SIZES = [10, 25, 50, 100];
 
 // Page numbers to show, with "…" gaps: 1 … 4 5 6 … 12
@@ -5133,49 +5207,17 @@ function ReportDetail({ report, onBack, onSwitch }) {
   const [exporting, setExporting] = useState("");
   const [exportError, setExportError] = useState("");
   const [receipt, setReceipt] = useState(null);
-  const [columnsOpen, setColumnsOpen] = useState(false);
   const [moreCards, setMoreCards] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const columnStore = `pendo-report-columns-${report.id}`;
-  const defaultColumns = report.columns.filter((column) => !column.hidden).map((column) => column.key);
-  // Chosen columns are remembered on this device for each report.
-  const [shownKeys, setShownKeys] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(columnStore) || "null");
-      const known = Array.isArray(stored) ? stored.filter((key) => report.columns.some((column) => column.key === key)) : [];
-      return known.length ? known : defaultColumns;
-    } catch {
-      return defaultColumns;
-    }
-  });
-  const columns = report.columns.filter((column) => shownKeys.includes(column.key));
+  const { columns, chooser: columnChooser } = useColumnChooser(`pendo-report-columns-${report.id}`, report.columns);
   const plainMoney = (column) => report.currencyInHeader && column.type === "money";
   const heading = (column) => (plainMoney(column) ? `${column.label} (TSh)` : column.label);
   const cellText = (value, column) => (plainMoney(column)
     ? Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : formatReportValue(value, column.type));
-  function chooseColumns(keys) {
-    setShownKeys(keys);
-    try { localStorage.setItem(columnStore, JSON.stringify(keys)); } catch { /* storage unavailable */ }
-  }
-  const toggleColumn = (key) => {
-    if (shownKeys.includes(key)) {
-      if (shownKeys.length > 1) chooseColumns(shownKeys.filter((entry) => entry !== key));
-    } else {
-      chooseColumns(report.columns.map((column) => column.key).filter((entry) => entry === key || shownKeys.includes(entry)));
-    }
-  };
   const Icon = report.icon;
 
-  useEffect(() => {
-    if (!columnsOpen) return undefined;
-    const close = (event) => {
-      if (!event.target.closest(".report-columns-wrap")) setColumnsOpen(false);
-    };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [columnsOpen]);
 
   useEffect(() => {
     if (!exportOpen) return undefined;
@@ -5316,29 +5358,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
               </button>
             ))}
           </div>
-          <div className="report-columns-wrap">
-            <button className="button button-secondary" onClick={() => setColumnsOpen((open) => !open)} aria-expanded={columnsOpen} aria-haspopup="true">
-              <Table2 size={15} /> Columns <span className="report-columns-count">{columns.length}/{report.columns.length}</span> <ChevronDown size={13} />
-            </button>
-            {columnsOpen && (
-              <div className="report-columns-menu" role="group" aria-label="Choose columns">
-                <header><strong>Show columns</strong><small>Tick to add, untick to hide</small></header>
-                <div className="report-columns-list">
-                  {report.columns.map((column) => (
-                    <label key={column.key} className="report-column-option">
-                      <input type="checkbox" checked={shownKeys.includes(column.key)} onChange={() => toggleColumn(column.key)} disabled={shownKeys.length === 1 && shownKeys.includes(column.key)} />
-                      <span>{column.label.charAt(0) + column.label.slice(1).toLowerCase()}</span>
-                      {column.hidden && <em>Extra</em>}
-                    </label>
-                  ))}
-                </div>
-                <footer>
-                  <button type="button" onClick={() => chooseColumns(report.columns.map((column) => column.key))}>Show all</button>
-                  <button type="button" onClick={() => chooseColumns(defaultColumns)}>Reset</button>
-                </footer>
-              </div>
-            )}
-          </div>
+          {columnChooser}
           {report.receipts && (
             <button
               className="button button-secondary"
