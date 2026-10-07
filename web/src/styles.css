@@ -10458,3 +10458,25 @@ button.inv-open:hover .report-id {
     width: 28px;
     height: 28px;
 }
+
+/* Finance & receipts: larger filter text and placeholders */
+.report-filters-finance .report-search input,
+.report-filters-finance .report-filter-field select,
+.report-filters-finance .report-filter-field input {
+    font-size: 11px;
+}
+
+.report-filters-finance .report-search input::placeholder,
+.report-filters-finance .report-filter-field input::placeholder {
+    font-size: 11px;
+}
+
+.report-filters-finance .report-filter-search,
+.report-filters-finance .report-filter-field select,
+.report-filters-finance .report-filter-field input {
+    height: 34px;
+}
+
+.report-filters-finance .report-filter-field {
+    font-size: 9.5px;
+}

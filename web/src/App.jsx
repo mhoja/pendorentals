@@ -5261,7 +5261,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
         </div>
       </section>
 
-      <section className="report-filter-panel panel" aria-label="Report filters">
+      <section className={`report-filter-panel panel report-filters-${report.id}`} aria-label="Report filters">
         <div className="report-filter-row">
           <label className="report-search report-filter-search">
             <Search size={14} />
