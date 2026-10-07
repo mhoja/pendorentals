@@ -10429,29 +10429,29 @@ button.inv-open:hover .report-id {
     padding-top: 13px;
     padding-bottom: 13px;
     color: #4b5d77;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .report-table-finance .table-primary {
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .report-table-finance .report-id {
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .data-table.report-table-finance .status-pill {
-    font-size: 10.5px;
+    font-size: 9.5px;
 }
 
 .report-table-finance tfoot td {
     height: 44px;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .report-table-finance .report-receipt-button {
     height: 28px;
-    font-size: 11px;
+    font-size: 10px;
 }
 
 .report-table-finance .report-icon-button {

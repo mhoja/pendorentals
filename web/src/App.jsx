@@ -279,10 +279,10 @@ const reportDefinitions = [
       { key: "transactionRef", label: "TRANSACTION REF", hidden: true },
       { key: "cashier", label: "RECEIVED BY" },
       { key: "status", label: "STATUS", type: "status" },
+      { key: "amount", label: "AMOUNT", type: "money", total: true },
       { key: "tithe", label: "TITHE", type: "money", total: true },
       { key: "giving", label: "GIVING", type: "money", total: true },
       { key: "net", label: "NET", type: "money", total: true, hidden: true },
-      { key: "amount", label: "AMOUNT", type: "money", total: true },
     ],
     groupBy: [
       { key: "method", label: "Collections by payment method" },
