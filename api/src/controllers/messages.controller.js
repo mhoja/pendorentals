@@ -1,6 +1,6 @@
 import { query } from '../config/db.js';
 import { HttpError, cleanText, isIsoDate, isPhone, normalizePhone, prettyPhone } from '../utils/helpers.js';
-import { resendLogged, sendSms, smsConfigured, smsProvider } from '../services/sms.service.js';
+import { getGatewayState, resendLogged, sendSms, smsConfigured, smsProvider } from '../services/sms.service.js';
 
 // GET /api/messages
 export async function listMessages(_request, response) {
@@ -35,6 +35,7 @@ export async function listMessages(_request, response) {
         })),
         stats: counts,
         smsConfigured: smsConfigured(),
+        smsConnected: (await getGatewayState()).connected,
         smsProvider: smsProvider(),
     });
 }
@@ -49,7 +50,12 @@ export async function sendMessage(request, response) {
     response.status(201).json({ sms: { status: result.status, error: result.error } });
 }
 
-const STATUSES = ['sent', 'failed', 'not_configured'];
+const STATUSES = ['sent', 'failed', 'not_configured', 'disconnected'];
+// Retrying while the gateway is switched off would only mark the messages "disconnected" again.
+async function requireConnected() {
+    if (!(await getGatewayState()).connected) throw new HttpError(409, 'The SMS gateway is disconnected. Connect it in Settings → Integrations first.');
+}
+
 const validIds = (raw) => (Array.isArray(raw) ? raw.map(Number).filter((id) => Number.isInteger(id) && id > 0) : []);
 
 // POST /api/messages/:id/retry — send the same SMS again; the history row is updated.
@@ -57,12 +63,14 @@ export async function retryMessage(request, response) {
     const id = Number(request.params.id);
     const { rows: [row] } = Number.isInteger(id) ? await query('select * from sms_log where id = $1', [id]) : { rows: [] };
     if (!row) throw new HttpError(404, 'Message not found.');
+    await requireConnected();
     const result = await resendLogged(row);
     response.json({ sms: { id, status: result.status, error: result.error } });
 }
 
 // POST /api/messages/retry — retry several (ids), or every message that wasn't sent ({ failed: true }).
 export async function retryMessages(request, response) {
+    await requireConnected();
     const body = request.body || {};
     const ids = validIds(body.ids);
     const { rows } = body.failed === true

@@ -32,6 +32,7 @@ import {
   Receipt,
   Wallet,
   ShoppingBag,
+  Unplug,
   UserCog,
   Wrench,
   Send,
@@ -3068,6 +3069,8 @@ function paymentMethodDetail(method) {
   if (method.number) return `${method.number}${owner}`;
   return method.type === "other" ? "Ask us for details" : "At our office";
 }
+// Why an SMS did not go out, for toasts.
+const smsNotSentReason = (sms) => (sms?.status === "not_configured" ? "SMS not set up" : sms?.status === "disconnected" ? "SMS gateway is disconnected" : sms?.error || "failed");
 const shortDate = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const orderItemsText = (items) => items.map((item) => `${item.custom || itemLabel(item.name)} ×${item.quantity}`).join(", ");
 const orderDates = (order) => {
@@ -4173,7 +4176,7 @@ function CustomersPage({ query, onNewOrder, addOpen, setAddOpen }) {
           onRemoveLogin={removeLogin}
         />
       )}
-      {messaging && <SmsModal to={messaging} onClose={() => setMessaging(null)} onSent={(sms) => { setMessaging(null); setProfileVersion((value) => value + 1); setToast(sms.status === "sent" ? "SMS sent" : `SMS not sent (${sms.status === "not_configured" ? "SMS not set up" : sms.error || "failed"})`); }} />}
+      {messaging && <SmsModal to={messaging} onClose={() => setMessaging(null)} onSent={(sms) => { setMessaging(null); setProfileVersion((value) => value + 1); setToast(sms.status === "sent" ? "SMS sent" : `SMS not sent (${smsNotSentReason(sms)})`); }} />}
       {deleting && (
         <InventoryConfirmDelete
           item={{ name: deleting.name, quantity: 0, sku: deleting.phone }}
@@ -4565,7 +4568,7 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
   const sendSms = () => act("sms", async () => {
     if (!(await ask({ title: `SMS ${invoice.code} to ${invoice.customer}?`, message: `${invoice.phone} gets the invoice total, amount paid${invoice.balance > 0 ? `, the balance of ${formatShillings(invoice.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }))) return;
     const result = await call(`/invoices/${invoice.id}/send`, { method: "POST" });
-    setToast(result.sms.status === "sent" ? `Invoice sent to ${invoice.phone}` : `SMS not sent (${result.sms.status === "not_configured" ? "SMS not set up" : result.sms.error || "failed"})`);
+    setToast(result.sms.status === "sent" ? `Invoice sent to ${invoice.phone}` : `SMS not sent (${smsNotSentReason(result.sms)})`);
   });
 
   const saveEdit = (event) => {
@@ -4795,7 +4798,7 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
                 ...(perm("invoices.manage") && row.status !== "Cancelled" ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
                   try {
                     const result = await call(`/invoices/${row.id}/send`, { method: "POST" });
-                    setToast(result.sms.status === "sent" ? `${row.code} sent to ${row.phone}` : `SMS not sent (${result.sms.status === "not_configured" ? "SMS not set up" : result.sms.error || "failed"})`);
+                    setToast(result.sms.status === "sent" ? `${row.code} sent to ${row.phone}` : `SMS not sent (${smsNotSentReason(result.sms)})`);
                   } catch (error) { setToast(error.message); }
                 } }] : []),
                 ...(perm("payments.record") && row.balance > 0 && row.status !== "Cancelled" ? [{ label: "Record payment", onClick: () => setPaying(row) }] : []),
@@ -5088,7 +5091,7 @@ function MessagingPage({ session, settingsResource }) {
   const sentRange = useDateRange();
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
-  const STATUS_OPTIONS = { "All statuses": null, Sent: "sent", Failed: "failed", "Not configured": "not_configured" };
+  const STATUS_OPTIONS = { "All statuses": null, Sent: "sent", Failed: "failed", Disconnected: "disconnected", "Not configured": "not_configured" };
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const rows = list.filter((row) => sentRange.matches(row.createdAt)
     && (!STATUS_OPTIONS[statusFilter] || row.status === STATUS_OPTIONS[statusFilter])
@@ -5156,6 +5159,9 @@ function MessagingPage({ session, settingsResource }) {
 
   return (
     <>
+      {messages.data && messages.data.smsConfigured && messages.data.smsConnected === false && (
+        <p className="set-notice ws-banner"><CircleAlert size={14} /> The SMS gateway is disconnected, so no SMS is being sent. Messages are recorded below as “Disconnected”. {hasPerm(session, "settings.manage") ? "Connect it in Settings → Integrations." : "Ask an admin to connect it in Settings → Integrations."}</p>
+      )}
       {messages.data && !messages.data.smsConfigured && (
         <p className="set-notice ws-banner"><CircleAlert size={14} /> SMS sending is not set up on the server yet. Messages are recorded below as “not configured”. Add the eHub keys (EHUB_API_KEY, EHUB_API_SECRET, EHUB_SENDER_ID) and redeploy.</p>
       )}
@@ -5218,7 +5224,7 @@ function MessagingPage({ session, settingsResource }) {
                   { key: "recipient", label: "TO", render: (row) => <div className="ws-two-line"><strong>{row.recipient}</strong><small>{row.phone}</small></div> },
                   { key: "message", label: "MESSAGE", render: (row) => <SmsMessageCell text={row.message} /> },
                   { key: "kind", label: "TYPE", render: (row) => <span className="team-muted">{row.kind.replace(/_/g, " ")}{row.orderCode ? ` · ${row.orderCode}` : ""}</span> },
-                  { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" ? "amber" : "red"}>{row.status === "sent" ? "Sent" : row.status === "not_configured" ? "Not configured" : "Failed"}</StatusPill>{row.attempts > 1 && <small title={row.lastAttemptAt ? `Last try ${new Date(row.lastAttemptAt).toLocaleString("en-GB")}` : undefined}>{row.attempts} attempts</small>}{row.status === "failed" && row.error && <small className="sms-error" title={row.error}>{row.error}</small>}</div> },
+                  { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" || row.status === "disconnected" ? "amber" : "red"}>{{ sent: "Sent", not_configured: "Not configured", disconnected: "Disconnected" }[row.status] || "Failed"}</StatusPill>{row.attempts > 1 && <small title={row.lastAttemptAt ? `Last try ${new Date(row.lastAttemptAt).toLocaleString("en-GB")}` : undefined}>{row.attempts} attempts</small>}{row.status === "failed" && row.error && <small className="sms-error" title={row.error}>{row.error}</small>}</div> },
                 ]}
                 rows={rows}
                 itemLabel="messages"
@@ -5227,7 +5233,7 @@ function MessagingPage({ session, settingsResource }) {
                 renderActions={(row) => [
                   ...(canSend ? [{ label: row.status === "sent" ? "Send again" : "Retry", confirm: { title: `${row.status === "sent" ? "Send this SMS again" : "Retry this SMS"} to ${row.recipient}?`, message: `“${row.message.slice(0, 120)}${row.message.length > 120 ? "…" : ""}” goes to ${row.phone}.`, confirmLabel: row.status === "sent" ? "Yes, send again" : "Yes, retry" }, onClick: () => act(async () => {
                     const data = await call(`/messages/${row.id}/retry`, { method: "POST" });
-                    return data.sms.status === "sent" ? `SMS sent to ${row.phone}` : `Still not sent (${data.sms.status === "not_configured" ? "SMS not set up" : data.sms.error || "failed"})`;
+                    return data.sms.status === "sent" ? `SMS sent to ${row.phone}` : `Still not sent (${smsNotSentReason(data.sms)})`;
                   }) }] : []),
                   { label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) },
                   ...(canDelete ? [{ label: "Delete from history", danger: true, confirm: { title: "Delete this message from history?", message: `To ${row.recipient}, ${new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. This can’t be undone.`, confirmLabel: "Yes, delete" }, onClick: () => act(async () => {
@@ -7544,6 +7550,70 @@ function PaymentMethodsEditor({ methods, onChange, error }) {
   );
 }
 
+// SMS gateway switch: connected sends SMS, disconnected stops every SMS (they are still logged).
+function SmsGatewayCard({ admin, onToast }) {
+  const { call } = useApi();
+  const status = useResource("/integrations/sms");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [ask, confirmDialog] = useConfirm();
+  const gateway = status.data?.gateway;
+
+  async function change(connect) {
+    setError("");
+    const ok = await ask(connect
+      ? { title: "Connect the SMS gateway?", message: `The app will check the ${gateway.provider} keys and then start sending SMS to customers and staff again.`, confirmLabel: "Yes, connect" }
+      : { title: "Disconnect the SMS gateway?", message: "No SMS will be sent — booking, payment, login and reminder messages stop until you connect again. They are still listed in SMS history as “Disconnected”.", confirmLabel: "Yes, disconnect", danger: true });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const data = await call(`/integrations/sms/${connect ? "connect" : "disconnect"}`, { method: "POST" });
+      status.setData(data);
+      onToast(connect ? "SMS gateway connected" : "SMS gateway disconnected");
+    } catch (changeError) {
+      setError(changeError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pill = !gateway ? <span className="set-pill"><LoaderCircle size={10} className="auth-spin" /> Checking…</span>
+    : !gateway.configured ? <span className="set-pill"><CircleDot size={10} /> Not set up</span>
+      : gateway.connected ? <span className="set-pill open"><CircleCheck size={10} /> Connected</span>
+        : <span className="set-pill off"><CircleDot size={10} /> Disconnected</span>;
+
+  return (
+    <article className={`set-integration set-sms-gateway ${gateway?.connected ? "is-on" : ""}`}>
+      <span className="set-integration-icon"><MessageSquareText size={18} /></span>
+      <strong>SMS gateway</strong>
+      <p>Send booking, payment and reminder SMS through {gateway?.provider === "Beem" ? "Beem Africa" : "eHub SMS"}.</p>
+      {gateway?.configured && (
+        <dl className="set-gateway-facts">
+          <div><dt>Provider</dt><dd>{gateway.provider === "Beem" ? "Beem Africa" : "eHub SMS"}</dd></div>
+          {gateway.sender && <div><dt>Sender ID</dt><dd>{gateway.sender}</dd></div>}
+          {gateway.changedAt && <div><dt>{gateway.connected ? "Connected" : "Disconnected"}</dt><dd>{new Date(gateway.changedAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}{gateway.changedBy ? ` · ${gateway.changedBy}` : ""}</dd></div>}
+        </dl>
+      )}
+      {gateway && !gateway.configured && <p className="set-gateway-note">The SMS keys are not set on the server yet (EHUB_API_KEY, EHUB_API_SECRET, EHUB_SENDER_ID).</p>}
+      {gateway && gateway.configured && !gateway.connected && <p className="set-gateway-note warn"><CircleAlert size={12} /> No SMS is being sent while the gateway is disconnected.</p>}
+      {(error || status.error) && <p className="set-gateway-note warn"><CircleAlert size={12} /> {error || status.error}</p>}
+      <div>
+        {pill}
+        {admin && gateway?.configured && (gateway.connected ? (
+          <button type="button" className="button button-secondary cust-danger" onClick={() => change(false)} disabled={busy}>
+            {busy ? <LoaderCircle size={13} className="auth-spin" /> : <Unplug size={13} />} Disconnect
+          </button>
+        ) : (
+          <button type="button" className="button button-primary" onClick={() => change(true)} disabled={busy}>
+            {busy ? <><LoaderCircle size={13} className="auth-spin" /> Checking…</> : <><Plug size={13} /> Connect</>}
+          </button>
+        ))}
+      </div>
+      {confirmDialog}
+    </article>
+  );
+}
+
 function SettingsPage({ onLogout, session, settingsResource }) {
   const { call } = useApi();
   const admin = hasPerm(session, "settings.manage");
@@ -8102,8 +8172,8 @@ function SettingsPage({ onLogout, session, settingsResource }) {
         {active === "integrations" && (
           <SettingsCard title="Connected services" desc="Connect these once the Pendo server is set up.">
             <div className="set-integrations">
+              <SmsGatewayCard admin={admin} onToast={setToast} />
               {[
-                [MessageSquareText, "SMS gateway", "Send booking, payment and reminder SMS through eHub SMS."],
                 [Smartphone, "M-Pesa payments", "Confirm Lipa Namba payments automatically and issue receipts."],
                 [Cloud, "Google Drive backup", "Daily backup of orders, customers and receipts."],
                 [HardDriveDownload, "Data export", "Download all workspace data as Excel files."],

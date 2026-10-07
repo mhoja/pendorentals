@@ -11977,3 +11977,18 @@ body {
         padding-right: env(safe-area-inset-right);
     }
 }
+
+/* Settings → Integrations: SMS gateway connect / disconnect */
+.set-pill.off { background: #fdecea; color: #c8423a; }
+.set-pill svg { color: inherit; }
+.set-sms-gateway.is-on { border-color: #bfe6d2; background: #f6fcf9; }
+.set-gateway-facts { display: grid; gap: 3px; margin: 2px 0 0; font-size: 11px; }
+.set-gateway-facts div { display: flex; gap: 8px; }
+.set-gateway-facts dt { min-width: 78px; color: #7b899d; }
+.set-gateway-facts dd { margin: 0; color: #263750; font-weight: 600; overflow-wrap: anywhere; }
+.set-integration p.set-gateway-note { color: #6b7a90; font-size: 10.5px; }
+.set-integration p.set-gateway-note.warn { display: flex; align-items: flex-start; gap: 5px; color: #b5543a; }
+.set-gateway-note svg { flex: none; margin-top: 2px; color: inherit; }
+.set-sms-gateway .button { gap: 5px; padding: 0 12px; font: 700 12px 'DM Sans', sans-serif; }
+.set-sms-gateway .button svg { color: inherit; }
+.set-sms-gateway .button.cust-danger { border-color: #f3c9c5; background: #fff; color: #c8423a !important; }

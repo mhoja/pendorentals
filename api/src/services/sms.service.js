@@ -18,6 +18,44 @@ export function smsProvider() {
 
 export const smsConfigured = () => smsProvider() !== null;
 
+// Admins connect or disconnect the gateway in Settings → Integrations. While disconnected nothing is sent;
+// messages are still recorded with status "disconnected". Stored in settings under 'sms_gateway';
+// a workspace that never changed it stays connected, as it was before the switch existed.
+const GATEWAY_TTL = 30000;
+let gatewayCache = null;
+export async function getGatewayState() {
+    if (gatewayCache && Date.now() - gatewayCache.loadedAt < GATEWAY_TTL) return gatewayCache.state;
+    const { rows } = await query("select value from settings where key = 'sms_gateway'");
+    const stored = rows[0]?.value || {};
+    const state = { connected: stored.connected !== false, changedAt: stored.changedAt || null, changedBy: stored.changedBy || null };
+    gatewayCache = { state, loadedAt: Date.now() };
+    return state;
+}
+
+export async function setGatewayConnected(connected, changedBy) {
+    const state = { connected, changedAt: new Date().toISOString(), changedBy };
+    await query(
+        `insert into settings (key, value, updated_at) values ('sms_gateway', $1, now())
+         on conflict (key) do update set value = excluded.value, updated_at = now()`,
+        [state],
+    );
+    gatewayCache = { state, loadedAt: Date.now() };
+    return state;
+}
+
+// Checks the keys before connecting: eHub must accept them and the sender ID must be approved.
+export async function verifyGateway() {
+    const provider = smsProvider();
+    if (!provider) return { ok: false, error: 'SMS keys are not set on the server. Add EHUB_API_KEY, EHUB_API_SECRET and EHUB_SENDER_ID.' };
+    if (provider !== 'eHub') return { ok: true, provider };
+    senderUuid = null;
+    const result = await withTimeout(async (signal) => {
+        await ehubSender(signal);
+        return { status: 'ok' };
+    });
+    return result.status === 'ok' ? { ok: true, provider } : { ok: false, provider, error: result.error };
+}
+
 // 0712345678 -> 255712345678
 export const toInternational = (phone) => `255${phone.slice(1)}`;
 
@@ -60,13 +98,14 @@ async function ehubSender(signal) {
     const configured = process.env.EHUB_SENDER_ID.trim();
     if (UUID.test(configured)) return configured;
     if (senderUuid) return senderUuid;
-    const { ok, data } = await ehubRequest('GET', '/api/v1/sender-ids', undefined, signal);
+    const { ok, status, data } = await ehubRequest('GET', '/api/v1/sender-ids', undefined, signal);
+    if (!ok) throw new Error(`eHub did not accept the API keys (${data?.message || `HTTP ${status}`}).`);
     // eHub groups sender IDs as { own: [], public: [], shared: [] }; only approved ones can send.
     const groups = data?.data || {};
     const list = Array.isArray(groups) ? groups : [...(groups.own || []), ...(groups.shared || []), ...(groups.public || [])];
     const match = list.find((entry) => (!entry.status || entry.status === 'approved')
         && [entry.sender_name, entry.name, entry.sender_id, entry.sender].some((name) => typeof name === 'string' && name.toLowerCase() === configured.toLowerCase()));
-    if (!ok || !match) throw new Error(`eHub sender ID "${configured}" was not found or is not approved.`);
+    if (!match) throw new Error(`eHub sender ID "${configured}" was not found or is not approved.`);
     senderUuid = match.id || match.uuid;
     return senderUuid;
 }
@@ -101,11 +140,13 @@ function deliverBeem(phone, message) {
     });
 }
 
-function deliver(phone, message) {
+async function deliver(phone, message) {
     const provider = smsProvider();
+    if (!provider) return { status: 'not_configured' };
+    const gateway = await getGatewayState().catch(() => ({ connected: true }));
+    if (!gateway.connected) return { status: 'disconnected', error: 'SMS gateway is disconnected (Settings → Integrations).' };
     if (provider === 'eHub') return deliverEhub(phone, message);
-    if (provider === 'Beem') return deliverBeem(phone, message);
-    return Promise.resolve({ status: 'not_configured' });
+    return deliverBeem(phone, message);
 }
 
 // Sends again and updates the existing sms_log row instead of adding a new one. Never throws.
