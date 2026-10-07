@@ -1,6 +1,6 @@
 import { query } from '../config/db.js';
 import { HttpError, cleanText, isIsoDate, isPhone, normalizePhone, prettyPhone } from '../utils/helpers.js';
-import { resendLogged, sendSms, smsConfigured } from '../services/sms.service.js';
+import { resendLogged, sendSms, smsConfigured, smsProvider } from '../services/sms.service.js';
 
 // GET /api/messages
 export async function listMessages(_request, response) {
@@ -35,6 +35,7 @@ export async function listMessages(_request, response) {
         })),
         stats: counts,
         smsConfigured: smsConfigured(),
+        smsProvider: smsProvider(),
     });
 }
 

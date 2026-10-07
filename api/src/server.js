@@ -4,7 +4,7 @@ import { pool } from './config/db.js';
 import { migrate } from './database/migrations.js';
 import { ensureAdmin, importLegacyStore } from './database/bootstrap.js';
 import { HttpError } from './utils/helpers.js';
-import { smsConfigured } from './services/sms.service.js';
+import { smsConfigured, smsProvider } from './services/sms.service.js';
 import publicRoutes from './routes/public.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import portalRoutes from './routes/portal.routes.js';
@@ -59,7 +59,7 @@ async function start() {
     await ensureAdmin();
     await importLegacyStore();
     const server = app.listen(port, () => {
-        console.log(`API listening on http://localhost:${port} (SMS ${smsConfigured() ? 'enabled' : 'not configured'})`);
+        console.log(`API listening on http://localhost:${port} (SMS ${smsConfigured() ? `via ${smsProvider()}` : 'not configured'})`);
     });
     const shutdown = () => server.close(() => pool.end().finally(() => process.exit(0)));
     process.on('SIGTERM', shutdown);

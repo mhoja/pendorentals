@@ -4578,12 +4578,12 @@ function MessagingPage({ session, settingsResource }) {
   return (
     <>
       {messages.data && !messages.data.smsConfigured && (
-        <p className="set-notice ws-banner"><CircleAlert size={14} /> SMS sending is not set up on the server yet. Messages are recorded below as “not configured”. Add the Beem keys to GitHub secrets and redeploy.</p>
+        <p className="set-notice ws-banner"><CircleAlert size={14} /> SMS sending is not set up on the server yet. Messages are recorded below as “not configured”. Add the eHub keys (EHUB_API_KEY, EHUB_API_SECRET, EHUB_SENDER_ID) and redeploy.</p>
       )}
       <section className="inv-stats">
         {[
           [Send, "Sent (30 days)", stats?.month ?? "…", "all messages", "blue"],
-          [CircleCheck, "Delivered to Beem", stats?.delivered ?? "…", "accepted for delivery", "mint"],
+          [CircleCheck, `Accepted by ${messages.data?.smsProvider || "gateway"}`, stats?.delivered ?? "…", "accepted for delivery", "mint"],
           [CircleAlert, "Not sent", stats?.not_sent ?? "…", "failed or not configured", "orange"],
           [MessageSquareText, "Templates", Object.keys(TEMPLATE_INFO).length, "automatic messages", "purple"],
         ].map(([Icon, label, value, hint, tone]) => (
@@ -7375,7 +7375,7 @@ function SettingsPage({ onLogout, session, settingsResource }) {
           <SettingsCard title="Connected services" desc="Connect these once the Pendo server is set up.">
             <div className="set-integrations">
               {[
-                [MessageSquareText, "SMS gateway", "Send booking and reminder SMS through Beem Africa or Africa’s Talking."],
+                [MessageSquareText, "SMS gateway", "Send booking, payment and reminder SMS through eHub SMS."],
                 [Smartphone, "M-Pesa payments", "Confirm Lipa Namba payments automatically and issue receipts."],
                 [Cloud, "Google Drive backup", "Daily backup of orders, customers and receipts."],
                 [HardDriveDownload, "Data export", "Download all workspace data as Excel files."],

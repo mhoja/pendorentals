@@ -109,6 +109,9 @@ jobs:
 
       - name: Ship API environment
         env:
+          EHUB_API_KEY: ${{ secrets.EHUB_API_KEY }}
+          EHUB_API_SECRET: ${{ secrets.EHUB_API_SECRET }}
+          EHUB_SENDER_ID: ${{ secrets.EHUB_SENDER_ID }}
           BEEM_API_KEY: ${{ secrets.BEEM_API_KEY }}
           BEEM_SECRET_KEY: ${{ secrets.BEEM_SECRET_KEY }}
           BEEM_SENDER_ID: ${{ secrets.BEEM_SENDER_ID }}
@@ -125,7 +128,7 @@ jobs:
           env_file="$RUNNER_TEMP/api.env"
           echo "PUBLIC_URL=http://$DEPLOY_HOST:$WEB_NGINX_PORT" > "$env_file"
           echo "DATA_DIR=/app/data" >> "$env_file"
-          for name in BEEM_API_KEY BEEM_SECRET_KEY BEEM_SENDER_ID STAFF_PASSWORD DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD DB_SSL; do
+          for name in EHUB_API_KEY EHUB_API_SECRET EHUB_SENDER_ID BEEM_API_KEY BEEM_SECRET_KEY BEEM_SENDER_ID STAFF_PASSWORD DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD DB_SSL; do
             eval "value=\${$name:-}"
             if [ -n "$value" ]; then
               printf '%s=%s\n' "$name" "$value" >> "$env_file"
@@ -134,8 +137,8 @@ jobs:
           if [ -z "${DB_HOST:-}" ]; then
             echo "::notice::DB_* secrets not set in GitHub; the server's secrets.env file will be used."
           fi
-          if [ -z "${BEEM_API_KEY:-}" ]; then
-            echo "::warning::BEEM_API_KEY secret is not set; customer SMS will not be sent."
+          if [ -z "${EHUB_API_KEY:-}" ]; then
+            echo "::warning::EHUB_API_KEY secret is not set; SMS uses the server's secrets.env or Beem if present."
           fi
           scp -i "$HOME/.ssh/deploy_key" -P "${DEPLOY_SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
             "$env_file" "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/api.env"
