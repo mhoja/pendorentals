@@ -1359,14 +1359,58 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
   );
 }
 
+// Read-only invoice for customers: the same document staff see, with Print and PDF.
+function CustomerInvoice({ session, invoiceId, onClose }) {
+  const [detail, setDetail] = useState(null);
+  const [error, setError] = useState("");
+  const frameRef = useRef(null);
+  useEffect(() => {
+    api(`/my/invoices/${invoiceId}`, { token: session.token }).then(setDetail).catch((loadError) => setError(loadError.message));
+  }, [invoiceId, session.token]);
+  const html = useMemo(() => (detail ? invoiceHtml(detail, detail.settings, { screen: true }) : ""), [detail]);
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="modal cust-invoice-modal" role="dialog" aria-modal="true" aria-label="Invoice">
+        <div className="modal-heading">
+          <div><span className="modal-kicker">INVOICE</span><h2>{detail?.invoice.code || "Loading…"}</h2></div>
+          <button className="icon-button" onClick={onClose} aria-label="Close"><X size={19} /></button>
+        </div>
+        {error ? <p className="inv-form-error cust-invoice-error"><CircleAlert size={14} /> {error}</p> : !detail ? (
+          <div className="cust-loading"><LoaderCircle size={18} className="auth-spin" /> Loading invoice…</div>
+        ) : (
+          <>
+            <div className="cust-invoice-bar">
+              <span>Total <b>{formatShillings(detail.invoice.amount)}</b> · Paid <b>{formatShillings(detail.invoice.paid)}</b> · {detail.invoice.balance ? <>Balance <b className="cust-due">{formatShillings(detail.invoice.balance)}</b></> : <b className="ord-settled">Paid in full</b>}</span>
+              <span>
+                <button type="button" className="button button-secondary" onClick={() => printInvoice(detail, detail.settings)}><Printer size={14} /> Print</button>
+                <button type="button" className="button button-primary" onClick={() => downloadInvoicePdf(detail, detail.settings)}><Download size={14} /> PDF</button>
+              </span>
+            </div>
+            <iframe ref={frameRef} className="inv-view-frame" title={`Invoice ${detail.invoice.code}`} srcDoc={html}
+              onLoad={() => { const frame = frameRef.current; if (frame?.contentDocument?.body) frame.style.height = `${frame.contentDocument.documentElement.scrollHeight}px`; }} />
+          </>
+        )}
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function CustomerHome({ session, onLogout, onRentMore }) {
-  const [state, setState] = useState({ loading: true, error: "", customer: null, orders: [] });
+  const [state, setState] = useState({ loading: true, error: "", customer: null, orders: [], payments: [], invoices: [] });
+  const [tab, setTab] = useState("orders");
+  const [receipt, setReceipt] = useState(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(null);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: "" }));
     try {
-      const data = await api("/my/orders", { token: session.token });
-      setState({ loading: false, error: "", customer: data.customer, orders: data.orders });
+      const [data, paid, billed] = await Promise.all([
+        api("/my/orders", { token: session.token }),
+        api("/my/payments", { token: session.token }),
+        api("/my/invoices", { token: session.token }),
+      ]);
+      setState({ loading: false, error: "", customer: data.customer, orders: data.orders, payments: paid.payments, invoices: billed.invoices });
     } catch (error) {
       if (error.status === 401) {
         onLogout();
@@ -1401,7 +1445,7 @@ function CustomerHome({ session, onLogout, onRentMore }) {
           <div>
             <span className="auth-kicker">MY RENTALS</span>
             <h1>Karibu, {firstName}!</h1>
-            <p>Track your rental requests and bookings with Pendo Rentals.</p>
+            <p>Track your bookings, see your payments and print receipts and invoices.</p>
           </div>
           <button type="button" className="auth-primary cust-rent" onClick={() => onRentMore(state.customer)}>
             <Plus size={16} /> Rent more
@@ -1410,7 +1454,13 @@ function CustomerHome({ session, onLogout, onRentMore }) {
 
         <section className="cust-section">
           <div className="cust-section-head">
-            <h2>My requests {!state.loading && <span className="heading-count">{state.orders.length}</span>}</h2>
+            <div className="cust-tabs-row" role="tablist" aria-label="My account">
+              {[["orders", "My orders", state.orders.length], ["payments", "Payments & receipts", state.payments.length], ["invoices", "Invoices", state.invoices.length]].map(([value, label, count]) => (
+                <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>
+                  {label}{!state.loading && <span>{count}</span>}
+                </button>
+              ))}
+            </div>
             <button type="button" className="cust-refresh" onClick={load} disabled={state.loading}><RotateCcw size={13} /> Refresh</button>
           </div>
 
@@ -1418,6 +1468,47 @@ function CustomerHome({ session, onLogout, onRentMore }) {
             <div className="cust-loading"><LoaderCircle size={18} className="auth-spin" /> Loading your requests…</div>
           ) : state.error ? (
             <div className="cust-empty"><CircleAlert size={20} /><strong>{state.error}</strong><button type="button" className="auth-link" onClick={load}>Try again</button></div>
+          ) : tab === "payments" ? (
+            state.payments.length === 0 ? (
+              <div className="cust-empty"><Banknote size={22} /><strong>No payments yet</strong><small>Receipts appear here after you pay for a booking.</small></div>
+            ) : (
+              <div className="cust-list">
+                {state.payments.map((payment) => (
+                  <article className="cust-row" key={payment.id}>
+                    <span className="cust-row-icon mint"><Receipt size={16} /></span>
+                    <div className="cust-row-copy">
+                      <strong>{payment.receipt} · {formatShillings(payment.amount)}</strong>
+                      <small>{shortDate(payment.date)} · {payment.method}{payment.transactionRef ? ` · ${payment.transactionRef}` : ""} · {payment.reference}{payment.delivery ? ` · items ${formatShillings(payment.amount - payment.delivery)}, delivery ${formatShillings(payment.delivery)}` : ""}</small>
+                    </div>
+                    <span className={`status-pill ${payment.status === "Paid" ? "green" : "red"}`}><i />{payment.status}</span>
+                    <div className="cust-row-actions">
+                      <button type="button" className="button button-secondary" onClick={() => setReceipt(payment)}><Eye size={14} /> View</button>
+                      <button type="button" className="button button-secondary" onClick={() => printReceipts([payment])}><Printer size={14} /> Print</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
+          ) : tab === "invoices" ? (
+            state.invoices.length === 0 ? (
+              <div className="cust-empty"><FileText size={22} /><strong>No invoices yet</strong><small>Invoices from Pendo Rentals for your bookings appear here.</small></div>
+            ) : (
+              <div className="cust-list">
+                {state.invoices.map((invoice) => (
+                  <article className="cust-row" key={invoice.id}>
+                    <span className="cust-row-icon blue"><FileText size={16} /></span>
+                    <div className="cust-row-copy">
+                      <strong>{invoice.code} · {formatShillings(invoice.amount)}</strong>
+                      <small>{invoice.orderCode || "No order"} · issued {shortDate(invoice.issuedOn)} · due {shortDate(invoice.dueOn)} · paid {formatShillings(invoice.paid)}{invoice.balance ? ` · balance ${formatShillings(invoice.balance)}` : ""}</small>
+                    </div>
+                    <span className={`status-pill ${invoiceTone(invoice.status)}`}><i />{invoice.status}</span>
+                    <div className="cust-row-actions">
+                      <button type="button" className="button button-primary" onClick={() => setInvoiceOpen(invoice.id)}><Eye size={14} /> View & print</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
           ) : state.orders.length === 0 ? (
             <div className="cust-empty"><Tent size={22} /><strong>No requests yet</strong><small>Tap “Rent more” to request tents, chairs and more.</small></div>
           ) : (
@@ -1468,6 +1559,8 @@ function CustomerHome({ session, onLogout, onRentMore }) {
           <a href={`mailto:${BUSINESS_INFO.email}`}><Mail size={14} /> Email us</a>
         </section>
       </main>
+      {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+      {invoiceOpen && <CustomerInvoice session={session} invoiceId={invoiceOpen} onClose={() => setInvoiceOpen(null)} />}
     </div>
   );
 }
@@ -6085,15 +6178,15 @@ const TEAM_ROLES = [
     name: "Customer",
     tone: "pink",
     customer: true,
-    desc: "People who rent from Pendo. They sign up themselves and only see their own bookings and payments.",
-    access: ["Browse rentals", "Book & request quotes", "My bookings", "My receipts & invoices", "Payment history", "My profile"],
+    desc: "People who rent from Pendo. Rent Now creates their account and texts the login; they only ever see their own records.",
+    access: ["Rent Now (place orders)", "My orders", "My payments", "Print receipts", "My invoices (view, print, PDF)"],
   },
 ];
 
 const STAFF_ROLES = TEAM_ROLES.filter((role) => !role.customer);
 
 const ALL_PERMISSIONS = ["Dashboard", "Orders", "Inventory", "Customers", "Invoices", "Finance & receipts", "Reports", "Users & roles", "Settings"];
-const CUSTOMER_PERMISSIONS = ["Browse rentals", "Book & request quotes", "My bookings", "My receipts & invoices", "Payment history", "My profile", "Other customers’ data", "Staff workspace"];
+const CUSTOMER_PERMISSIONS = ["Rent Now (place orders)", "My orders", "My payments", "Print receipts", "My invoices (view, print, PDF)", "Other customers’ data", "Staff workspace"];
 
 
 const memberTones = { Active: "green", Invited: "amber", Inactive: "red" };
