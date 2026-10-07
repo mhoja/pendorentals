@@ -10471,14 +10471,19 @@ button.inv-open:hover .report-id {
 .report-filters-finance .report-filter-field input,
 .report-filters-inventory .report-search input,
 .report-filters-inventory .report-filter-field select,
-.report-filters-inventory .report-filter-field input {
+.report-filters-inventory .report-filter-field input,
+.report-filters-sales .report-search input,
+.report-filters-sales .report-filter-field select,
+.report-filters-sales .report-filter-field input {
     font-size: 11px;
 }
 
 .report-filters-finance .report-search input::placeholder,
 .report-filters-finance .report-filter-field input::placeholder,
 .report-filters-inventory .report-search input::placeholder,
-.report-filters-inventory .report-filter-field input::placeholder {
+.report-filters-inventory .report-filter-field input::placeholder,
+.report-filters-sales .report-search input::placeholder,
+.report-filters-sales .report-filter-field input::placeholder {
     font-size: 11px;
 }
 
@@ -10487,12 +10492,16 @@ button.inv-open:hover .report-id {
 .report-filters-finance .report-filter-field input,
 .report-filters-inventory .report-filter-search,
 .report-filters-inventory .report-filter-field select,
-.report-filters-inventory .report-filter-field input {
+.report-filters-inventory .report-filter-field input,
+.report-filters-sales .report-filter-search,
+.report-filters-sales .report-filter-field select,
+.report-filters-sales .report-filter-field input {
     height: 34px;
 }
 
 .report-filters-finance .report-filter-field,
-.report-filters-inventory .report-filter-field {
+.report-filters-inventory .report-filter-field,
+.report-filters-sales .report-filter-field {
     font-size: 9.5px;
 }
 
