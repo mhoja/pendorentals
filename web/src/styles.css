@@ -10420,31 +10420,37 @@ button.inv-open:hover .report-id {
 }
 
 /* Finance & receipts: larger, easier-to-read table text */
-.data-table.report-table-finance thead th {
+.data-table.report-table-finance thead th,
+.data-table.report-table-inventory thead th {
     height: 38px;
     font-size: 10px;
 }
 
-.data-table.report-table-finance tbody td {
+.data-table.report-table-finance tbody td,
+.data-table.report-table-inventory tbody td {
     padding-top: 13px;
     padding-bottom: 13px;
     color: #4b5d77;
     font-size: 11px;
 }
 
-.report-table-finance .table-primary {
+.report-table-finance .table-primary,
+.report-table-inventory .table-primary {
     font-size: 11px;
 }
 
-.report-table-finance .report-id {
+.report-table-finance .report-id,
+.report-table-inventory .report-id {
     font-size: 11px;
 }
 
-.data-table.report-table-finance .status-pill {
+.data-table.report-table-finance .status-pill,
+.data-table.report-table-inventory .status-pill {
     font-size: 9.5px;
 }
 
-.report-table-finance tfoot td {
+.report-table-finance tfoot td,
+.report-table-inventory tfoot td {
     height: 44px;
     font-size: 11px;
 }
@@ -10462,21 +10468,50 @@ button.inv-open:hover .report-id {
 /* Finance & receipts: larger filter text and placeholders */
 .report-filters-finance .report-search input,
 .report-filters-finance .report-filter-field select,
-.report-filters-finance .report-filter-field input {
+.report-filters-finance .report-filter-field input,
+.report-filters-inventory .report-search input,
+.report-filters-inventory .report-filter-field select,
+.report-filters-inventory .report-filter-field input {
     font-size: 11px;
 }
 
 .report-filters-finance .report-search input::placeholder,
-.report-filters-finance .report-filter-field input::placeholder {
+.report-filters-finance .report-filter-field input::placeholder,
+.report-filters-inventory .report-search input::placeholder,
+.report-filters-inventory .report-filter-field input::placeholder {
     font-size: 11px;
 }
 
 .report-filters-finance .report-filter-search,
 .report-filters-finance .report-filter-field select,
-.report-filters-finance .report-filter-field input {
+.report-filters-finance .report-filter-field input,
+.report-filters-inventory .report-filter-search,
+.report-filters-inventory .report-filter-field select,
+.report-filters-inventory .report-filter-field input {
     height: 34px;
 }
 
-.report-filters-finance .report-filter-field {
+.report-filters-finance .report-filter-field,
+.report-filters-inventory .report-filter-field {
     font-size: 9.5px;
+}
+
+/* Items & availability: utilization meter */
+.report-table-inventory .report-meter>span {
+    width: 60px;
+    height: 6px;
+}
+
+.report-meter.over,
+.report-meter.over * {
+    color: #c8423a;
+}
+
+.report-meter.over i {
+    background: #d0443c;
+}
+
+.report-table-inventory .report-meter {
+    color: #4b5d77;
+    font-weight: 600;
 }

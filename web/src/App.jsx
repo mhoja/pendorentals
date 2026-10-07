@@ -238,6 +238,7 @@ function formatReportValue(value, type) {
   if (type === "money") return formatTSh(value);
   if (type === "date") return formatReportDate(value);
   if (type === "percent") return `${value}%`;
+  if (type === "number") return Number(value).toLocaleString("en-US");
   if (type === "km") return `${Number(value).toFixed(1)} km`;
   return String(value);
 }
@@ -432,7 +433,7 @@ const reportDefinitions = [
       { key: "sku", label: "SKU", type: "id" },
       { key: "category", label: "CATEGORY" },
       { key: "quantity", label: "QTY", type: "number", total: true },
-      { key: "rented", label: "RENTED", type: "number", total: true },
+      { key: "rented", label: "OUT TODAY", type: "number", total: true },
       { key: "utilization", label: "UTILIZATION", type: "percent" },
       { key: "status", label: "STATUS", type: "status" },
       { key: "revenue", label: "REVENUE", type: "money", total: true },
@@ -444,11 +445,15 @@ const reportDefinitions = [
     metrics: (rows) => {
       const quantity = sumBy(rows, "quantity");
       const rented = sumBy(rows, "rented");
+      // Units in maintenance can't be rented, so they don't count as available.
+      const available = rows.filter((row) => row.status === "Available").reduce((sum, row) => sum + Math.max(0, row.quantity - row.rented), 0);
+      const inMaintenance = sumBy(rows.filter((row) => row.status === "Maintenance"), "quantity");
+      const overbooked = rows.filter((row) => row.rented > row.quantity).length;
       return [
-        { label: "Units in stock", value: quantity, hint: `${rows.length} items` },
-        { label: "Units rented", value: rented, hint: `${quantity - rented} available` },
-        { label: "Utilization", value: `${quantity ? Math.round((rented / quantity) * 100) : 0}%`, hint: "rented / in stock" },
-        { label: "Rental revenue", value: formatTSh(sumBy(rows, "revenue")), hint: "lifetime" },
+        { label: "Units in stock", value: quantity.toLocaleString("en-US"), hint: `${rows.length} item${rows.length === 1 ? "" : "s"}${inMaintenance ? ` · ${inMaintenance.toLocaleString("en-US")} in maintenance` : ""}` },
+        { label: "Out on orders today", value: rented.toLocaleString("en-US"), hint: `${available.toLocaleString("en-US")} available now` },
+        { label: "Utilization", value: `${quantity ? Math.round((rented / quantity) * 100) : 0}%`, hint: overbooked ? `${overbooked} item${overbooked === 1 ? "" : "s"} overbooked` : "out today / in stock", tone: overbooked ? "negative" : "" },
+        { label: "Rental revenue", value: formatTSh(sumBy(rows, "revenue")), hint: "booked, all time" },
       ];
     },
   },
@@ -5381,7 +5386,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
                         ) : column.type === "money" ? (
                           <strong className="table-primary">{cellText(row[column.key], column)}</strong>
                         ) : column.type === "percent" ? (
-                          <span className="report-meter"><span><i style={{ width: `${row[column.key]}%` }} /></span>{row[column.key]}%</span>
+                          <span className={`report-meter ${row[column.key] > 100 ? "over" : ""}`} title={row[column.key] > 100 ? "More units booked than in stock" : undefined}><span><i style={{ width: `${Math.min(100, row[column.key])}%` }} /></span>{row[column.key]}%</span>
                         ) : column.type === "id" ? (
                           <span className="report-id">{row[column.key]}</span>
                         ) : (
