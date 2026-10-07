@@ -39,6 +39,19 @@ async function deliver(phone, message) {
     }
 }
 
+// Sends again and updates the existing sms_log row instead of adding a new one. Never throws.
+export async function resendLogged(row) {
+    const result = await deliver(row.phone, row.message);
+    await query(
+        `update sms_log set status = $2, error = $3, provider_ref = coalesce($4, provider_ref),
+                attempts = attempts + 1, last_attempt_at = now()
+          where id = $1`,
+        [row.id, result.status, result.error || null, result.requestId ? String(result.requestId) : null],
+    );
+    if (result.status === 'failed') console.error(`SMS retry to ${row.phone} failed: ${result.error}`);
+    return result;
+}
+
 // Sends and records every SMS in sms_log. Never throws.
 export async function sendSms(phone, message, { kind = 'manual', orderId = null } = {}) {
     const result = await deliver(phone, message);

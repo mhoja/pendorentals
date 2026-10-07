@@ -264,6 +264,15 @@ const migrations = [
             alter table payments add constraint payments_delivery_amount_check check (delivery_amount >= 0 and delivery_amount <= amount);
         `,
     },
+    {
+        id: 7,
+        name: 'sms retries',
+        sql: `
+            alter table sms_log
+                add column attempts integer not null default 1,
+                add column last_attempt_at timestamptz;
+        `,
+    },
 ];
 
 export async function migrate() {

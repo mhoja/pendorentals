@@ -11024,3 +11024,75 @@ button.ov-task:disabled {
 }
 
 .ov-money>div[title] { cursor: help; }
+
+/* Tables with tick boxes */
+.data-table .select-cell {
+    width: 38px;
+    padding-right: 0 !important;
+}
+
+.data-table .select-cell input {
+    width: 15px;
+    height: 15px;
+    accent-color: #1764dd;
+    cursor: pointer;
+}
+
+.data-table tbody tr.is-selected {
+    background: #f1f6fe;
+}
+
+/* SMS history: filters and bulk actions */
+.sms-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 0 18px 12px;
+}
+
+.sms-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 8px 18px;
+    border-top: 1px solid #edf1f6;
+    border-bottom: 1px solid #edf1f6;
+    background: #f8fafd;
+    color: #66748a;
+    font-size: 12px;
+}
+
+.sms-bulk strong {
+    color: #172a45;
+    font-size: 12.5px;
+}
+
+.sms-bulk .button {
+    height: 32px;
+    gap: 6px;
+    padding: 0 11px;
+    font: 700 12px 'DM Sans', sans-serif;
+}
+
+.sms-bulk .button svg { color: inherit; }
+
+.sms-bulk .button.sms-danger {
+    border-color: #f3c9c5;
+    background: #fff;
+    color: #c8423a !important;
+}
+
+.sms-bulk>.auth-spin {
+    color: #1764dd;
+}
+
+.sms-error {
+    max-width: 180px;
+    overflow: hidden;
+    color: #c8423a !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

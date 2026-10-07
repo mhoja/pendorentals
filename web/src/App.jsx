@@ -4503,6 +4503,63 @@ function MessagingPage({ session, settingsResource }) {
   const list = messages.data?.messages || [];
   const currentTemplates = templates || settingsResource.data?.settings?.smsTemplates || {};
   const admin = session.staffRole === "Admin";
+  const [ask, confirmDialog] = useConfirm();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  const sentRange = useDateRange();
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const STATUS_OPTIONS = { "All statuses": null, Sent: "sent", Failed: "failed", "Not configured": "not_configured" };
+  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = list.filter((row) => sentRange.matches(row.createdAt)
+    && (!STATUS_OPTIONS[statusFilter] || row.status === STATUS_OPTIONS[statusFilter])
+    && words.every((word) => `${row.recipient} ${row.phone} ${row.message} ${row.kind} ${row.orderCode || ""}`.toLowerCase().includes(word)));
+  const filtersOn = Boolean(search) || statusFilter !== "All statuses" || sentRange.active;
+  const clearFilters = () => { setSearch(""); setStatusFilter("All statuses"); sentRange.reset(); setSelected([]); };
+  const visibleSelected = selected.filter((id) => rows.some((row) => row.id === id));
+  const notSentShown = rows.filter((row) => row.status !== "sent");
+  const plural = (n) => `${n} message${n === 1 ? "" : "s"}`;
+
+  // Runs a history action, then reloads the list and reports the result.
+  async function act(work) {
+    setBusy(true);
+    try {
+      const message = await work();
+      setSelected([]);
+      await messages.reload();
+      if (message) setToast(message);
+    } catch (error) {
+      setToast(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const retryIds = async (ids) => {
+    if (!(await ask({ title: `Retry ${plural(ids.length)}?`, message: "Each one is sent again to the same number. The history row updates with the new result.", confirmLabel: "Yes, retry" }))) return;
+    act(async () => {
+      const data = await call("/messages/retry", { method: "POST", body: { ids } });
+      return `${data.sent} of ${data.tried} sent${data.notSent ? ` · ${data.notSent} still not sent` : ""}`;
+    });
+  };
+  const deleteIds = async (ids) => {
+    if (!(await ask({ title: `Delete ${plural(ids.length)} from history?`, message: "They are removed for good. This doesn’t affect orders or customers.", confirmLabel: "Yes, delete", danger: true }))) return;
+    act(async () => {
+      const data = await call("/messages/purge", { method: "POST", body: { ids } });
+      return `${plural(data.deleted)} deleted`;
+    });
+  };
+  const deleteShown = async () => {
+    const everything = !filtersOn;
+    const rangeOnly = sentRange.active && !search;
+    if (!everything && !rangeOnly) return deleteIds(rows.map((row) => row.id));
+    const scope = everything ? "every message in the history" : `messages sent ${sentRange.period === "Custom range" ? `${sentRange.from ? `from ${shortDate(sentRange.from)}` : ""}${sentRange.to ? ` to ${shortDate(sentRange.to)}` : ""}` : sentRange.period.startsWith("Last ") && sentRange.period !== "Last month" ? `in the ${sentRange.period.toLowerCase()}` : sentRange.period.toLowerCase()}${STATUS_OPTIONS[statusFilter] ? ` that are “${statusFilter.toLowerCase()}”` : ""}`;
+    if (!(await ask({ title: everything ? "Delete the whole SMS history?" : "Delete these messages?", message: `This removes ${scope} (${plural(rows.length)} shown). It can’t be undone.`, confirmLabel: everything ? "Yes, delete everything" : "Yes, delete", danger: true }))) return undefined;
+    return act(async () => {
+      const body = everything ? { all: true } : { from: sentRange.from || undefined, to: sentRange.to || undefined, status: STATUS_OPTIONS[statusFilter] || undefined };
+      const data = await call("/messages/purge", { method: "POST", body });
+      return `${plural(data.deleted)} deleted`;
+    });
+  };
 
   async function saveTemplates() {
     setSaving(true);
@@ -4539,7 +4596,7 @@ function MessagingPage({ session, settingsResource }) {
             {["History", "Templates"].map((option) => <button key={option} role="tab" aria-selected={tab === option} className={tab === option ? "active" : ""} onClick={() => setTab(option)}>{option}</button>)}
           </div>
           <div className="inv-toolbar-actions">
-            <button className="button button-secondary" onClick={messages.reload}><RotateCcw size={14} /> Refresh</button>
+            <button className="button button-secondary" onClick={messages.reload} disabled={busy}><RotateCcw size={14} /> Refresh</button>
             <button className="button button-primary inv-add-button" onClick={() => setComposing(true)}><Send size={15} /> Send SMS</button>
           </div>
         </div>
@@ -4547,18 +4604,58 @@ function MessagingPage({ session, settingsResource }) {
           <>
             <LoadState status={messages.status} error={messages.error} onRetry={messages.reload} empty={messages.status === "ready" && list.length === 0 ? "No messages yet" : ""} emptyIcon={MessageSquareText} emptyText="Every SMS the system sends — requests, bookings, receipts and invites — is listed here." />
             {list.length > 0 && (
+              <div className="sms-filters">
+                <label className="inv-search"><Search size={15} /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, message" aria-label="Search messages" /></label>
+                <select className="inv-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status">{Object.keys(STATUS_OPTIONS).map((option) => <option key={option}>{option}</option>)}</select>
+                <DateRangeFilter range={sentRange} label="Sent" />
+                <ClearFiltersButton active={filtersOn} onClear={clearFilters} />
+              </div>
+            )}
+            {list.length > 0 && (
+              <div className="sms-bulk">
+                {visibleSelected.length > 0 ? (
+                  <>
+                    <strong>{plural(visibleSelected.length)} selected</strong>
+                    <button type="button" className="button button-secondary" onClick={() => retryIds(visibleSelected)} disabled={busy}><Send size={13} /> Retry selected</button>
+                    {admin && <button type="button" className="button button-secondary sms-danger" onClick={() => deleteIds(visibleSelected)} disabled={busy}><Trash2 size={13} /> Delete selected</button>}
+                    <button type="button" className="text-action" onClick={() => setSelected([])}>Clear selection</button>
+                  </>
+                ) : (
+                  <>
+                    <span>{rows.length === list.length ? `${plural(list.length)} in history` : `${plural(rows.length)} match your filters`} · tick rows to act on them</span>
+                    {notSentShown.length > 0 && <button type="button" className="button button-secondary" onClick={() => retryIds(notSentShown.map((row) => row.id).slice(0, 200))} disabled={busy}><Send size={13} /> Retry not sent ({notSentShown.length})</button>}
+                    {admin && rows.length > 0 && <button type="button" className="button button-secondary sms-danger" onClick={deleteShown} disabled={busy}><Trash2 size={13} /> {filtersOn ? `Delete shown (${rows.length})` : "Delete all"}</button>}
+                  </>
+                )}
+                {busy && <LoaderCircle size={15} className="auth-spin" />}
+              </div>
+            )}
+            {list.length > 0 && (
               <DataTable
+                selected={selected}
+                onSelect={setSelected}
                 columns={[
                   { key: "createdAt", label: "SENT", render: (row) => <span className="team-muted">{new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> },
                   { key: "recipient", label: "TO", render: (row) => <div className="ws-two-line"><strong>{row.recipient}</strong><small>{row.phone}</small></div> },
                   { key: "message", label: "MESSAGE", render: (row) => <span className="ws-message" title={row.message}>{row.message}</span> },
                   { key: "kind", label: "TYPE", render: (row) => <span className="team-muted">{row.kind.replace(/_/g, " ")}{row.orderCode ? ` · ${row.orderCode}` : ""}</span> },
-                  { key: "status", label: "STATUS", render: (row) => <StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" ? "amber" : "red"}>{row.status === "sent" ? "Sent" : row.status === "not_configured" ? "Not configured" : "Failed"}</StatusPill> },
+                  { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" ? "amber" : "red"}>{row.status === "sent" ? "Sent" : row.status === "not_configured" ? "Not configured" : "Failed"}</StatusPill>{row.attempts > 1 && <small title={row.lastAttemptAt ? `Last try ${new Date(row.lastAttemptAt).toLocaleString("en-GB")}` : undefined}>{row.attempts} attempts</small>}{row.status === "failed" && row.error && <small className="sms-error" title={row.error}>{row.error}</small>}</div> },
                 ]}
-                rows={list}
+                rows={rows}
                 itemLabel="messages"
+                totalCount={list.length}
                 rowKey="id"
-                renderActions={(row) => [{ label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) }]}
+                renderActions={(row) => [
+                  { label: row.status === "sent" ? "Send again" : "Retry", confirm: { title: `${row.status === "sent" ? "Send this SMS again" : "Retry this SMS"} to ${row.recipient}?`, message: `“${row.message.slice(0, 120)}${row.message.length > 120 ? "…" : ""}” goes to ${row.phone}.`, confirmLabel: row.status === "sent" ? "Yes, send again" : "Yes, retry" }, onClick: () => act(async () => {
+                    const data = await call(`/messages/${row.id}/retry`, { method: "POST" });
+                    return data.sms.status === "sent" ? `SMS sent to ${row.phone}` : `Still not sent (${data.sms.status === "not_configured" ? "SMS not set up" : data.sms.error || "failed"})`;
+                  }) },
+                  { label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) },
+                  ...(admin ? [{ label: "Delete from history", danger: true, confirm: { title: "Delete this message from history?", message: `To ${row.recipient}, ${new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. This can’t be undone.`, confirmLabel: "Yes, delete" }, onClick: () => act(async () => {
+                    await call(`/messages/${row.id}`, { method: "DELETE" });
+                    return "Message deleted";
+                  }) }] : []),
+                ]}
               />
             )}
           </>
@@ -4578,6 +4675,7 @@ function MessagingPage({ session, settingsResource }) {
         )}
       </section>
       {composing && <SmsModal onClose={() => setComposing(false)} onSent={(sms) => { setComposing(false); messages.reload(); setToast(sms.status === "sent" ? "SMS sent" : "SMS recorded but not sent"); }} />}
+      {confirmDialog}
       {toast}
     </>
   );
@@ -5013,7 +5111,8 @@ function pageList(page, pages) {
   return list;
 }
 
-function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", totalCount, footerExtra }) {
+// Pass `selected` (array of row keys) and `onSelect` to show tick boxes for picking rows.
+function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", totalCount, footerExtra, selected, onSelect }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [panelPosition, setPanelPosition] = useState({});
   const [pageSize, setPageSize] = useState(10);
@@ -5040,9 +5139,19 @@ function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", t
 
   return (
     <div className="table-scroll">
-      <table className="data-table">
+      <table className={`data-table ${onSelect ? "selectable" : ""}`}>
         <thead>
           <tr>
+            {onSelect && (() => {
+              const pageKeys = pageRows.map((row) => row[rowKey]);
+              const allOn = pageKeys.length > 0 && pageKeys.every((key) => selected.includes(key));
+              return (
+                <th className="select-cell">
+                  <input type="checkbox" checked={allOn} aria-label="Select all on this page"
+                    onChange={() => onSelect(allOn ? selected.filter((key) => !pageKeys.includes(key)) : [...new Set([...selected, ...pageKeys])])} />
+                </th>
+              );
+            })()}
             {columns.map((column) => (
               <th key={column.key}>{column.label}</th>
             ))}
@@ -5054,7 +5163,13 @@ function DataTable({ columns, rows, rowKey, renderActions, itemLabel = "rows", t
             const actions = renderActions ? renderActions(row) : [];
             const rowId = row[rowKey];
             return (
-              <tr key={rowId}>
+              <tr key={rowId} className={onSelect && selected.includes(rowId) ? "is-selected" : ""}>
+                {onSelect && (
+                  <td className="select-cell">
+                    <input type="checkbox" checked={selected.includes(rowId)} aria-label={`Select ${rowId}`}
+                      onChange={() => onSelect(selected.includes(rowId) ? selected.filter((key) => key !== rowId) : [...selected, rowId])} />
+                  </td>
+                )}
                 {columns.map((column) => (
                   <td key={column.key}>
                     {column.render ? column.render(row) : row[column.key]}
