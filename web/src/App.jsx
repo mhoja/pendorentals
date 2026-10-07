@@ -5025,6 +5025,8 @@ function ReportDetail({ report, onBack, onSwitch }) {
   const [receipt, setReceipt] = useState(null);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [moreCards, setMoreCards] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const columnStore = `pendo-report-columns-${report.id}`;
   const defaultColumns = report.columns.filter((column) => !column.hidden).map((column) => column.key);
   // Chosen columns are remembered on this device for each report.
@@ -5145,6 +5147,14 @@ function ReportDetail({ report, onBack, onSwitch }) {
     const better = metric.lowerIsBetter ? current < previous : current > previous;
     return { badge: percent === 0 ? "≈ 0%" : `${percent > 0 ? "▲" : "▼"} ${Math.abs(percent)}%`, last, tone: better ? "up" : "down" };
   }
+
+  // The table is paged; totals, exports and printing still cover every matching record.
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageRows = sortedRows.slice(pageStart, pageStart + pageSize);
+  const filterKey = JSON.stringify([query, period, customFrom, customTo, selections, minAmount, maxAmount, sort]);
+  useEffect(() => { setPage(1); }, [filterKey]);
 
   const totalsRow = columns.map((column, index) => {
     if (column.total) return cellText(sumBy(sortedRows, column.key), column);
@@ -5378,7 +5388,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((row) => (
+                {pageRows.map((row) => (
                   <tr key={row[report.rowKey]}>
                     {columns.map((column) => (
                       <td key={column.key} className={["money", "number", "km", "percent"].includes(column.type) ? "numeric" : ""}>
@@ -5426,6 +5436,26 @@ function ReportDetail({ report, onBack, onSwitch }) {
               </div>
             )}
           </div>
+          {sortedRows.length > 0 && (
+            <div className="table-bottom dt-pager report-pager">
+              <span>Showing <strong>{pageStart + 1}–{pageStart + pageRows.length}</strong> of <strong>{sortedRows.length}</strong> records · totals cover all {sortedRows.length}</span>
+              <div className="dt-pager-controls">
+                <label className="dt-page-size">
+                  Rows per page
+                  <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} aria-label="Rows per page">
+                    {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                </label>
+                <nav className="dt-pages" aria-label="Report pages">
+                  <button type="button" onClick={() => setPage(currentPage - 1)} disabled={currentPage === 1} aria-label="Previous page"><ChevronLeft size={15} /></button>
+                  {pageList(currentPage, pageCount).map((number, index) => (number === "…"
+                    ? <span key={`gap-${index}`} className="dt-gap">…</span>
+                    : <button type="button" key={number} className={number === currentPage ? "active" : ""} aria-current={number === currentPage ? "page" : undefined} onClick={() => setPage(number)}>{number}</button>))}
+                  <button type="button" onClick={() => setPage(currentPage + 1)} disabled={currentPage === pageCount} aria-label="Next page"><ChevronRight size={15} /></button>
+                </nav>
+              </div>
+            </div>
+          )}
         </section>
       ) : (
         <ReportAnalytics report={report} rows={sortedRows} onClear={clearFilters} />

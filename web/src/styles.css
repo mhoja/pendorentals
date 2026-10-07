@@ -10515,3 +10515,15 @@ button.inv-open:hover .report-id {
     color: #4b5d77;
     font-weight: 600;
 }
+
+/* Reports: pager under the table */
+.report-pager {
+    border-top: 1px solid #edf1f6;
+}
+
+/* Items & availability: item names stand out */
+.data-table.report-table-inventory tbody td:first-child {
+    color: #172a45;
+    font-size: 12.5px;
+    font-weight: 600;
+}
