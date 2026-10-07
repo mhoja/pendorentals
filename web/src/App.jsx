@@ -2024,7 +2024,7 @@ orders.length === 0 ? (
 }
 
 
-// Forgot password: a new password goes to the account's phone by SMS (hidden as **** in SMS history).
+// Reset password: a new password goes to the account's phone by SMS (hidden as **** in SMS history).
 function ForgotPasswordScreen({ initialPhone, onBack }) {
   const [phone, setPhone] = useState(initialPhone || "");
   const [busy, setBusy] = useState(false);
@@ -2076,7 +2076,7 @@ function ForgotPasswordScreen({ initialPhone, onBack }) {
           ) : (
             <>
               <div className="auth-heading">
-                <span className="auth-kicker">FORGOT PASSWORD</span>
+                <span className="auth-kicker">RESET PASSWORD</span>
                 <h1>Reset your password</h1>
                 <p>Enter the phone number you sign in with. We’ll send a new password to it by SMS.</p>
               </div>
@@ -2242,7 +2242,7 @@ function LoginScreen({ onLogin, onRentNow }) {
                   setForgot(true);
                 }}
               >
-                Forgot Password?
+                Reset Password
               </button>
             </div>
             <button className="auth-primary" type="submit" disabled={submitting || !username.trim() || !password}>
@@ -3849,7 +3849,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
     try {
       const data = await call("/invoices", { method: "POST", body: { orderCode: order.id } });
       orders.reload();
-      setToast(`Invoice ${data.invoice.code} created for ${order.id}`);
+      setToast(`Invoice ${data.invoice.code} created for ${order.id}${data.sms ? (data.sms.status === "sent" ? " · SMS sent to the customer" : ` · SMS not sent (${smsNotSentReason(data.sms)})`) : ""}`);
     } catch (error) {
       setToast(error.message);
     }
@@ -3926,7 +3926,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
                   });
                 }
                 if (order.status !== "Cancelled") {
-                  if (perm("invoices.manage") && !order.invoice && order.priced) actions.push({ label: "Create invoice", confirm: { title: `Create an invoice for ${order.id}?`, message: `${order.customer.name} will be invoiced ${formatShillings(order.total)}.`, confirmLabel: "Yes, create invoice" }, onClick: () => createInvoice(order) });
+                  if (perm("invoices.manage") && !order.invoice && order.priced) actions.push({ label: "Create invoice", confirm: { title: `Create an invoice for ${order.id}?`, message: `${order.customer.name} will be invoiced ${formatShillings(order.total)} and get an SMS to view it in their account.`, confirmLabel: "Yes, create invoice" }, onClick: () => createInvoice(order) });
                   if (perm("payments.record") && order.priced && order.balance > 0) actions.push({ label: "Record payment", onClick: () => setPaying(order) });
                   if (perm("orders.cancel")) actions.push({ label: "Cancel order", danger: true, confirm: { title: `Cancel ${order.id}?`, message: `${order.customer.name}’s booking for ${orderDates(order)} will be cancelled.`, confirmLabel: "Yes, cancel order" }, onClick: () => setOrderStatus(order, "Cancelled") });
                 }
@@ -5037,6 +5037,7 @@ function InvoiceCreateModal({ onClose, onSaved }) {
   const [amount, setAmount] = useState("");
   const [dueOn, setDueOn] = useState(shiftIsoDate(localTodayIso(), 7));
   const [notes, setNotes] = useState("");
+  const [notify, setNotify] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const candidates = (orders.data?.orders || []).filter((order) => !order.invoice && order.status !== "Cancelled");
@@ -5046,14 +5047,14 @@ function InvoiceCreateModal({ onClose, onSaved }) {
     event.preventDefault();
     if (selected && !(await ask({
       title: `Create an invoice for ${selected.id}?`,
-      message: `${selected.customer.name} will be invoiced ${amount === "" ? "the order total" : formatShillings(Number(amount))}, due ${shortDate(dueOn)}.`,
+      message: `${selected.customer.name} will be invoiced ${amount === "" ? "the order total" : formatShillings(Number(amount))}, due ${shortDate(dueOn)}.${notify ? ` An SMS will tell them to view it in their account (${selected.customer.phone}).` : ""}`,
       confirmLabel: "Yes, create invoice",
     }))) return;
     setBusy(true);
     setError("");
     try {
-      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn, notes } });
-      onSaved(data.invoice);
+      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn, notes, notifyCustomer: notify } });
+      onSaved(data.invoice, data.sms);
     } catch (saveError) {
       setError(saveError.message);
       setBusy(false);
@@ -5082,6 +5083,10 @@ function InvoiceCreateModal({ onClose, onSaved }) {
           </div>
         )}
         <label className="set-field"><span>Notes on the invoice <em>Optional</em></span><input value={notes} maxLength={300} onChange={(event) => setNotes(event.target.value)} placeholder="e.g. Deposit received at booking" /></label>
+        <label className="auth-check ws-check">
+          <input type="checkbox" checked={notify} onChange={(event) => setNotify(event.target.checked)} />
+          <span>SMS the customer that the invoice is ready to view or download in their account</span>
+        </label>
         {selected && selected.total === null && <p className="team-form-note"><Info size={13} /> This order has no prices yet — enter the invoice amount, or price the order first.</p>}
         {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
         <div className="modal-actions">
@@ -5216,7 +5221,7 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
           </>
         )}
       </section>
-      {creating && <InvoiceCreateModal onClose={() => setCreating(false)} onSaved={(invoice) => { setCreating(false); invoices.setData((current) => ({ ...current, invoices: [invoice, ...current.invoices] })); setToast(`Invoice ${invoice.code} created`); }} />}
+      {creating && <InvoiceCreateModal onClose={() => setCreating(false)} onSaved={(invoice, sms) => { setCreating(false); invoices.setData((current) => ({ ...current, invoices: [invoice, ...current.invoices] })); setToast(`Invoice ${invoice.code} created${sms ? (sms.status === "sent" ? " · SMS sent to the customer" : ` · SMS not sent (${smsNotSentReason(sms)})`) : ""}`); }} />}
       {viewing && (
         <InvoiceView
           invoiceId={viewing}
@@ -5446,6 +5451,7 @@ const TEMPLATE_INFO = {
   completed: ["Thank you", "Sent when an order is marked Completed."],
   paymentReceived: ["Payment receipt", "Sent when you record a payment."],
   invoiceSent: ["Invoice", "Sent when you send an invoice by SMS."],
+  invoiceCreated: ["Invoice created", "Sent when an invoice is created, so the customer can view or download it in their account."],
 };
 const SMS_LANGUAGES = [
   ["en", "English", "Every SMS in English"],
@@ -5648,7 +5654,7 @@ function MessagingPage({ session, settingsResource }) {
           </>
         ) : (
           <div className="ws-templates">
-            <p className="team-muted">Use placeholders: {"{firstName} {business} {order} {date} {days} {items} {itemList} {total} {paid} {balance} {place} {amount} {receipt} {invoice} {due} {login} {priceNote} {phone}"}. {"{items}"} lists every item with quantity, price per day, days and line total, then delivery, discount and the total; {"{itemList}"} lists items and quantities only. Turn each message on or off in Settings → Notifications.</p>
+            <p className="team-muted">Use placeholders: {"{firstName} {business} {order} {date} {days} {items} {itemList} {total} {paid} {balance} {place} {amount} {receipt} {invoice} {due} {login} {link} {priceNote} {phone}"}. {"{items}"} lists every item with quantity, price per day, days and line total, then delivery, discount and the total; {"{itemList}"} lists items and quantities only. Turn each message on or off in Settings → Notifications.</p>
             <div className="sms-lang" role="radiogroup" aria-label="SMS language">
               <strong>Send customer SMS in</strong>
               {SMS_LANGUAGES.map(([value, label, hint]) => (
@@ -7535,6 +7541,7 @@ const DEFAULT_SETTINGS = {
   reminderLead: "1 day before",
   customerDelivery: true,
   customerThanks: true,
+  customerInvoice: true,
   smsSender: "PENDO",
   minDays: "1",
   depositPercent: "30",
@@ -8366,6 +8373,7 @@ function SettingsPage({ onLogout, session, settingsResource }) {
               </div>
               {toggleRow("customerDelivery", "Delivery updates", "When a driver is on the way or has delivered", Truck)}
               {toggleRow("customerThanks", "Thank-you message", "After items are returned", Sparkles)}
+              {toggleRow("customerInvoice", "Invoice created", "Tells the customer to view or download a new invoice in their account", Receipt)}
               <label className="set-field set-sender">
                 <span>SMS sender name</span>
                 <input {...bind("smsSender")} maxLength={11} />

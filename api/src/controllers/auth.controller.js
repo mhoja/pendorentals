@@ -66,7 +66,7 @@ export async function forgotPassword(request, response) {
     }
 
     const { rows: [staff] } = await query("select id, first_name, 'staff' as kind from staff where phone = $1 and status <> 'Inactive'", [phone]);
-    const { rows: [customer] } = staff ? { rows: [] } : await query("select id, first_name, 'customer' as kind from customers where phone = $1 and password_hash is not null", [phone]);
+    const { rows: [customer] } = staff ? { rows: [] } : await query("select id, first_name, 'customer' as kind from customers where phone = $1", [phone]);
     const account = staff || customer;
     if (!account) {
         throw new HttpError(404, `No account uses ${prettyPhone(phone)}. Check the number, or call ${settings.phone}.`, { fields: { phone: 'No account uses this number.' } });

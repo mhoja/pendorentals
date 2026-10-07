@@ -4,6 +4,8 @@ import { loadOrder, nextCode, smsDate, smsItems } from '../services/orders.servi
 import { enabledPaymentMethods, getSettings, sendTemplate } from '../services/settings.service.js';
 import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
 
+const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
+
 async function refreshInvoiceStatus(db, invoiceId) {
     if (!invoiceId) return;
     await db.query(
@@ -54,7 +56,24 @@ export async function createInvoice(request, response) {
         return invoice.id;
     });
     const { rows: [row] } = await query(`${INVOICE_SELECT} where i.id = $1`, [id]);
-    response.status(201).json({ invoice: shapeInvoice(row) });
+    const invoice = shapeInvoice(row);
+    // Tell the customer the invoice is ready in their account (Settings → Notifications → Invoice created).
+    let sms = null;
+    if (body.notifyCustomer !== false && settings.customerInvoice !== false) {
+        sms = await sendTemplate(settings, 'invoiceCreated', order.customerPhone, (lang) => ({
+            firstName: greetName(order.customer.firstName),
+            invoice: invoice.code,
+            order: order.id,
+            amount: formatTSh(invoice.amount),
+            paid: formatTSh(invoice.paid),
+            due: invoice.balance <= 0
+                ? (lang === 'sw' ? 'Imelipwa yote - asante!' : 'Fully paid - asante!')
+                : lang === 'sw' ? `Salio ${formatTSh(invoice.balance)} kabla ya ${smsDate(invoice.dueOn, 'sw')}.` : `Balance ${formatTSh(invoice.balance)} due by ${formatDate(invoice.dueOn)}.`,
+            link: publicUrl,
+            phone: settings.phone,
+        }), { kind: 'invoice', orderId: order.dbId });
+    }
+    response.status(201).json({ invoice, sms: sms && { status: sms.status, error: sms.error } });
 }
 
 async function loadInvoice(id) {

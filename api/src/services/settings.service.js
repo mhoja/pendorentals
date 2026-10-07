@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS = {
     reminderLead: '1 day before',
     customerDelivery: true,
     customerThanks: true,
+    customerInvoice: true,
     smsSender: 'PENDO',
     minDays: '1',
     depositPercent: '30',
@@ -82,6 +83,7 @@ export const DEFAULT_SETTINGS = {
         completed: 'Thank you {firstName} for renting with Pendo Rentals! We hope your event was a great one. {phone}',
         paymentReceived: 'Hi {firstName}, we received {amount} for {order}. Receipt {receipt}.\n{items}\nPaid {paid}. Balance {balance}. Asante! Pendo Rentals',
         invoiceSent: 'Hi {firstName}, {business} invoice {invoice} for {order}.\n{items}\nInvoice total {amount}, paid {paid}. {due}\nHelp: {phone}',
+        invoiceCreated: 'Hi {firstName}, {business} has created invoice {invoice} for {order}. Total {amount}, paid {paid}. {due}\nView or download it in your account: {link} (sign in with your phone number; forgot your password? tap Reset Password).\nHelp: {phone}',
     },
     smsTemplatesSw: {
         bookingCreated: 'Habari {firstName}, {business} imeandaa oda yako {order} ya tarehe {date} ({days}).\n{items}{priceNote}{login}\nMsaada: {phone}',
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS = {
         completed: 'Asante {firstName} kwa kukodi kutoka {business}! Tunatumaini sherehe yako ilienda vizuri. {phone}',
         paymentReceived: 'Habari {firstName}, tumepokea {amount} kwa oda {order}. Risiti {receipt}.\n{items}\nUmelipa {paid}. Salio {balance}. Asante! {business}',
         invoiceSent: 'Habari {firstName}, ankara ya {business} {invoice} kwa oda {order}.\n{items}\nJumla ya ankara {amount}, umelipa {paid}. {due}\nMsaada: {phone}',
+        invoiceCreated: 'Habari {firstName}, {business} imeandaa ankara {invoice} ya oda {order}. Jumla {amount}, umelipa {paid}. {due}\nIangalie au uipakue kwenye akaunti yako: {link} (ingia kwa namba yako ya simu; umesahau nenosiri? bonyeza Reset Password).\nMsaada: {phone}',
     },
 };
 
