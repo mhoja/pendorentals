@@ -19,9 +19,24 @@ const UNITS_OUT_SQL = `
 // GET /api/dashboard
 export async function getDashboard(request, response) {
     const today = todayIso();
-    const range = request.query.period === 'month' ? 30 : 7;
-    const from = addDays(today, -(range - 1));
-    const previousFrom = addDays(from, -range);
+    // period: 'thisMonth' (1st → today, compared with the same days last month), 'month' (30 days) or 'week' (7 days).
+    let range;
+    let from;
+    let previousFrom;
+    let previousTo;
+    if (request.query.period === 'thisMonth') {
+        from = `${today.slice(0, 7)}-01`;
+        range = Number(today.slice(8, 10));
+        const lastMonthEnd = addDays(from, -1);
+        previousFrom = `${lastMonthEnd.slice(0, 7)}-01`;
+        const sameDay = addDays(previousFrom, range - 1);
+        previousTo = sameDay < lastMonthEnd ? sameDay : lastMonthEnd;
+    } else {
+        range = request.query.period === 'month' ? 30 : 7;
+        from = addDays(today, -(range - 1));
+        previousFrom = addDays(from, -range);
+        previousTo = addDays(from, -1);
+    }
 
     const [inventory, unitsOut, revenueRows, previous, counts, popular] = await Promise.all([
         query(`select count(*) as products, coalesce(sum(quantity), 0) as units,
@@ -30,7 +45,7 @@ export async function getDashboard(request, response) {
                  from inventory_items`),
         query(UNITS_OUT_SQL, [ACTIVE_STATUSES, today]),
         query(`select paid_on, sum(amount) as total from payments where status = 'Paid' and paid_on between $1 and $2 group by paid_on`, [from, today]),
-        query(`select coalesce(sum(amount), 0) as total from payments where status = 'Paid' and paid_on between $1 and $2`, [previousFrom, addDays(from, -1)]),
+        query(`select coalesce(sum(amount), 0) as total from payments where status = 'Paid' and paid_on between $1 and $2`, [previousFrom, previousTo]),
         query(`select count(*) filter (where status = 'New request') as new_requests,
                       count(*) filter (where status = any($1)) as active,
                       count(*) filter (where status not in ('Completed', 'Cancelled') and event_date >= $2) as upcoming

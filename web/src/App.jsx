@@ -1842,7 +1842,7 @@ function WorkspaceShell({ session, onLogout }) {
 
   const settings = settingsRes.data?.settings;
   let content;
-  if (activePage === "Overview") content = <OverviewPage onNavigate={changePage} onNewOrder={() => openNewOrder(null)} />;
+  if (activePage === "Overview") content = <OverviewPage onNavigate={changePage} />;
   else if (activePage === "Inventory") {
     content = (
       <InventoryManager
@@ -1943,7 +1943,7 @@ function WorkspaceShell({ session, onLogout }) {
               {activePage === "Customers" && isManager(session) && (
                 <button className="button button-primary" onClick={() => setCustomerAddOpen(true)}><Plus size={17} /> Add customer</button>
               )}
-              {["Overview", "Orders"].includes(activePage) && isManager(session) && (
+              {activePage === "Orders" && isManager(session) && (
                 <button className="button button-primary" onClick={() => openNewOrder(null)}><Plus size={17} /> New order</button>
               )}
             </div>
@@ -4596,9 +4596,9 @@ function compactShillings(value) {
   return `TSh ${value}`;
 }
 
-function OverviewPage({ onNavigate, onNewOrder }) {
+function OverviewPage({ onNavigate }) {
   const { session } = useApi();
-  const [period, setPeriod] = useState("week");
+  const [period, setPeriod] = useState("thisMonth");
   const dash = useResource(`/dashboard?period=${period}`);
   const d = dash.data;
   if (!d) return <section className="panel inv-panel"><LoadState status={dash.status} error={dash.error} onRetry={dash.reload} /></section>;
@@ -4688,6 +4688,7 @@ function OverviewPage({ onNavigate, onNewOrder }) {
               <h2>Revenue overview</h2>
             </div>
             <select className="inv-select ws-period-select" value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Revenue period">
+              <option value="thisMonth">This month</option>
               <option value="week">Last 7 days</option>
               <option value="month">Last 30 days</option>
             </select>
@@ -4699,7 +4700,9 @@ function OverviewPage({ onNavigate, onNewOrder }) {
                 {change >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />} {Math.abs(change).toFixed(1)}%
               </span>
             )}
-            <small>{change === null ? "payments received" : `vs previous ${period === "week" ? "7" : "30"} days`}</small>
+            <small>{period === "thisMonth"
+              ? `${monthWindows().thisMonth} so far${change === null ? "" : ` · vs same days in ${monthWindows().lastMonth}`}`
+              : change === null ? "payments received" : `vs previous ${period === "week" ? "7" : "30"} days`}</small>
           </div>
           <div className="chart-wrap">
             <div className="chart-y-labels">
@@ -4715,7 +4718,7 @@ function OverviewPage({ onNavigate, onNewOrder }) {
                       <div className={`bar ${day.total && day.total === best ? "bar-emphasis" : ""}`} style={{ height: `${Math.max(2, (day.total / peak) * 100)}%` }}>
                         <span className="bar-tooltip">{formatShillings(day.total)}</span>
                       </div>
-                      <span className="bar-label">{index % labelEvery === 0 || index === d.revenue.days.length - 1 ? (period === "week" ? date.toLocaleDateString("en-GB", { weekday: "short" }) : date.getDate()) : ""}</span>
+                      <span className="bar-label">{index % labelEvery === 0 || index === d.revenue.days.length - 1 ? (period === "week" ? date.toLocaleDateString("en-GB", { weekday: "short" }) : period === "thisMonth" && d.revenue.days.length <= 10 ? `${date.getDate()} ${date.toLocaleDateString("en-GB", { month: "short" })}` : date.getDate()) : ""}</span>
                     </div>
                   );
                 })}
@@ -4831,7 +4834,6 @@ function OverviewPage({ onNavigate, onNewOrder }) {
             <h2>Upcoming bookings <span className="heading-count">{d.orders.upcoming}</span></h2>
           </div>
           <div className="heading-actions">
-            {isManager(session) && <button className="button button-primary ws-small-button" onClick={onNewOrder}><Plus size={14} /> New order</button>}
             <button className="text-action" onClick={() => onNavigate("Orders")}>See all orders <ArrowRight size={15} /></button>
           </div>
         </div>
