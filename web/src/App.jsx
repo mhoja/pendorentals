@@ -1549,6 +1549,42 @@ function CustomerInvoice({ session, invoiceId, onClose }) {
   );
 }
 
+// Copies text on both https and plain http. Browsers only offer navigator.clipboard on secure (https)
+// pages, so on http the text is copied through a hidden text box instead. Resolves true when copied.
+async function copyText(text) {
+  const value = String(text);
+  try {
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // fall through to the text-box method
+  }
+  const box = document.createElement("textarea");
+  box.value = value;
+  box.setAttribute("readonly", "");
+  Object.assign(box.style, { position: "fixed", top: "0", left: "0", opacity: "0", fontSize: "16px" });
+  document.body.appendChild(box);
+  const selection = document.getSelection();
+  const previous = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+  box.focus();
+  box.select();
+  box.setSelectionRange(0, value.length);
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  box.remove();
+  if (previous && selection) {
+    selection.removeAllRanges();
+    selection.addRange(previous);
+  }
+  return copied;
+}
+
 const greetFirst = (name) => String(name || "").toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (match, gap, letter) => gap + letter.toUpperCase());
 
 // Rent now inside the customer account: same steps as the public form, but name and phone come from the account.
@@ -1730,7 +1766,11 @@ function CustomerHome({ session, onLogout }) {
   }, [session.token]);
 
   const go = (next) => { setPage(next); setMobileNav(false); window.scrollTo({ top: 0 }); };
-  const copy = (text) => navigator.clipboard?.writeText(text).then(() => { setCopied(text); setTimeout(() => setCopied(""), 1800); });
+  const copy = async (text) => {
+    const ok = await copyText(text);
+    setCopied(ok ? text : `failed:${text}`);
+    setTimeout(() => setCopied(""), ok ? 1800 : 3500);
+  };
   const firstName = greetFirst(state.customer?.firstName || session.name.split(" ")[0]);
   const initials = session.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const business = state.business || { name: BUSINESS_INFO.name, phone: BUSINESS_INFO.phone, email: BUSINESS_INFO.email, address: BUSINESS_INFO.address, paymentMethods: [] };
@@ -1911,8 +1951,8 @@ orders.length === 0 ? (
                   <div key={label}>
                     <dt>{label}</dt>
                     <dd>
-                      <b>{value}</b>
-                      {value !== "Ask us" && value !== "—" && label !== "Bank" && <button type="button" className="cust-copy" onClick={() => copy(value)}>{copied === value ? <><Check size={12} /> Copied</> : <><ClipboardCheck size={12} /> Copy</>}</button>}
+                      <b className="cust-copy-value">{value}</b>
+                      {value !== "Ask us" && value !== "—" && label !== "Bank" && <button type="button" className="cust-copy" onClick={() => copy(value)}>{copied === value ? <><Check size={12} /> Copied</> : copied === `failed:${value}` ? <>Hold to copy</> : <><ClipboardCheck size={12} /> Copy</>}</button>}
                     </dd>
                   </div>
                 ))}
@@ -5761,7 +5801,7 @@ function MessagingPage({ session, settingsResource }) {
                     const data = await call(`/messages/${row.id}/retry`, { method: "POST" });
                     return data.sms.status === "sent" ? `SMS sent to ${row.phone}` : `Still not sent (${smsNotSentReason(data.sms)})`;
                   }) }] : []),
-                  { label: "Copy message", onClick: () => navigator.clipboard?.writeText(row.message).then(() => setToast("Message copied")) },
+                  { label: "Copy message", onClick: async () => setToast((await copyText(row.message)) ? "Message copied" : "Couldn’t copy — select the text and copy it instead") },
                   ...(canDelete ? [{ label: "Delete from history", danger: true, confirm: { title: "Delete this message from history?", message: `To ${row.recipient}, ${new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}. This can’t be undone.`, confirmLabel: "Yes, delete" }, onClick: () => act(async () => {
                     await call(`/messages/${row.id}`, { method: "DELETE" });
                     return "Message deleted";

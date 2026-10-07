@@ -12504,3 +12504,5 @@ body {
     .cust-hero-sep { display: none; }
     .cust-hero-dates { display: block; margin-top: 2px; color: #12233d; font-size: 12px; font-weight: 800; }
 }
+/* Payment numbers: one tap selects the whole number, for copying by hand if needed */
+.cust-copy-value { user-select: all; -webkit-user-select: all; }
