@@ -418,6 +418,7 @@ const reportDefinitions = [
     title: "Items & availability",
     desc: "Rental utilization, availability and revenue per item.",
     tag: "INVENTORY",
+    currencyInHeader: true,
     rows: [],
     rowKey: "sku",
     labelKey: "name",
