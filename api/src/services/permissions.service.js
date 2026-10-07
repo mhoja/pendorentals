@@ -2,9 +2,9 @@ import { query } from '../config/db.js';
 
 // Every action and page a staff role can be given. Admin always has all of them.
 export const PERMISSION_GROUPS = [
-    { group: 'Overview', items: [
-        ['overview.view', 'See the Overview page'],
-        ['overview.money', 'See money on Overview (collected, net, to collect, recent payments)'],
+    { group: 'Dashboard', items: [
+        ['overview.view', 'See the Dashboard page'],
+        ['overview.money', 'See money on the Dashboard (collected, net, to collect, recent payments)'],
     ] },
     { group: 'Orders', items: [
         ['orders.view', 'See all orders'],

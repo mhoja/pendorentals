@@ -101,7 +101,7 @@ import {
 } from "lucide-react";
 
 const navigation = [
-  { label: "Overview", icon: LayoutDashboard },
+  { label: "Dashboard", icon: LayoutDashboard },
   { label: "Inventory", icon: Package, count: "248" },
   { label: "Orders", icon: CalendarDays, count: "8" },
   { label: "Customers", icon: Users },
@@ -1829,7 +1829,7 @@ function applyBusinessInfo(settings) {
 const hasPerm = (session, key) => session?.role === "staff" && (session.staffRole === "Admin" || (session.permissions || []).includes(key));
 // A page shows in the menu when the role has any of these permissions. Settings is always open (own account).
 const PAGE_PERMISSIONS = {
-  Overview: ["overview.view"],
+  Dashboard: ["overview.view"],
   Inventory: ["inventory.view", "inventory.manage"],
   Orders: ["orders.view", "orders.deliveries"],
   Customers: ["customers.view"],
@@ -1873,7 +1873,7 @@ function Workspace({ session, onLogout }) {
 
 function WorkspaceShell({ session, onLogout }) {
   const { call } = useApi();
-  const [activePage, setActivePage] = useState("Overview");
+  const [activePage, setActivePage] = useState("Dashboard");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
@@ -1919,7 +1919,7 @@ function WorkspaceShell({ session, onLogout }) {
     setActivePage(label);
     setMobileNav(false);
     setQuery("");
-    if (label === "Overview") pulse.reload();
+    if (label === "Dashboard") pulse.reload();
     if (label === "Inventory") loadInventory();
   }
 
@@ -1944,7 +1944,7 @@ function WorkspaceShell({ session, onLogout }) {
 
   const settings = settingsRes.data?.settings;
   let content;
-  if (activePage === "Overview") content = <OverviewPage onNavigate={changePage} />;
+  if (activePage === "Dashboard") content = <OverviewPage onNavigate={changePage} />;
   else if (activePage === "Inventory") {
     content = (
       <InventoryManager
@@ -1977,7 +1977,7 @@ function WorkspaceShell({ session, onLogout }) {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
-        <a className="brand" href="#overview" onClick={() => changePage("Overview")}>
+        <a className="brand" href="#dashboard" onClick={() => changePage("Dashboard")}>
           <BrandMark />
           <span className="brand-lockup">
             <span className="brand-name">Pendo<span>rentals</span></span>
@@ -2013,7 +2013,7 @@ function WorkspaceShell({ session, onLogout }) {
           <div className="topbar-actions">
             <label className="global-search">
               <Search size={16} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={activePage === "Overview" ? "Search on any list page…" : `Search ${activePage.toLowerCase()}…`} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={activePage === "Dashboard" ? "Search on any list page…" : `Search ${activePage.toLowerCase()}…`} />
             </label>
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => (newRequests && canSee("Orders") ? changePage("Orders") : setModal("notifications"))}>
               <Bell size={18} />
@@ -2032,8 +2032,8 @@ function WorkspaceShell({ session, onLogout }) {
           <section className="welcome-row">
             <div>
               <div className="eyebrow"><span className="eyebrow-dot" /> {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
-              <h1>{activePage === "Overview" ? `${greeting}, ${firstName}` : activePage}</h1>
-              <p>{activePage === "Overview" ? "Here’s what’s happening with your rentals today." : PAGE_COPY[activePage]}</p>
+              <h1>{activePage === "Dashboard" ? `${greeting}, ${firstName}` : activePage}</h1>
+              <p>{activePage === "Dashboard" ? "Here’s what’s happening with your rentals today." : PAGE_COPY[activePage]}</p>
             </div>
             <div className="welcome-actions">
               {activePage === "Inventory" && canEditInventory && (
@@ -4841,7 +4841,7 @@ function MessagingPage({ session, settingsResource }) {
   );
 }
 
-// ===== Overview (dashboard) =====
+// ===== Dashboard =====
 function niceCeiling(value) {
   if (value <= 0) return 1000;
   const magnitude = 10 ** Math.floor(Math.log10(value));
@@ -6306,7 +6306,7 @@ function InviteMemberModal({ onClose, onInvite, existingPhones }) {
 }
 
 // Tick-box permissions for one staff role, saved to /api/roles. Admin always has everything.
-function RolePermissionsEditor({ role, session, onSaved }) {
+function RolePermissionsEditor({ role, session, onSaved, onDirtyChange }) {
   const { call } = useApi();
   const roles = useResource("/roles");
   const [draft, setDraft] = useState(null);
@@ -6318,9 +6318,32 @@ function RolePermissionsEditor({ role, session, onSaved }) {
   const current = draft ?? entry?.permissions ?? [];
   const dirty = draft !== null && JSON.stringify([...draft].sort()) !== JSON.stringify([...(entry?.permissions || [])].sort());
   useEffect(() => { setDraft(null); setError(""); }, [role.name]);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
-  const toggle = (key) => setDraft(current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
-  const setGroup = (keys, on) => setDraft(on ? [...new Set([...current, ...keys])] : current.filter((item) => !keys.includes(item)));
+  // Every change asks first; nothing is saved until "Save permissions".
+  const labelOf = (key) => roles.data?.groups.flatMap((group) => group.items).find((item) => item.key === key)?.label || key;
+  async function toggle(key) {
+    const adding = !current.includes(key);
+    const ok = await ask({
+      title: adding ? `Allow ${role.name} to “${labelOf(key)}”?` : `Remove “${labelOf(key)}” from ${role.name}?`,
+      message: "This changes the draft only. Click “Save permissions” to apply it.",
+      confirmLabel: adding ? "Yes, allow" : "Yes, remove",
+      danger: !adding,
+    });
+    if (ok) setDraft(adding ? [...current, key] : current.filter((item) => item !== key));
+  }
+  async function setGroup(group, keys, on) {
+    const ok = await ask({
+      title: on ? `Allow every ${group} permission for ${role.name}?` : `Remove every ${group} permission from ${role.name}?`,
+      message: `${keys.length} permission${keys.length === 1 ? "" : "s"} in ${group}. This changes the draft only until you save.`,
+      confirmLabel: on ? "Yes, allow all" : "Yes, remove all",
+      danger: !on,
+    });
+    if (ok) setDraft(on ? [...new Set([...current, ...keys])] : current.filter((item) => !keys.includes(item)));
+  }
+  async function discard() {
+    if (await ask({ title: `Discard unsaved changes to ${role.name}?`, message: "The permissions go back to what is saved now.", confirmLabel: "Yes, discard", danger: true })) setDraft(null);
+  }
 
   async function save(permissions, message) {
     setBusy(true);
@@ -6341,12 +6364,12 @@ function RolePermissionsEditor({ role, session, onSaved }) {
     const before = new Set(entry.permissions);
     const added = current.filter((key) => !before.has(key)).length;
     const removed = entry.permissions.filter((key) => !current.includes(key)).length;
-    if (!(await ask({ title: `Save ${role.name} permissions?`, message: `${added} added, ${removed} removed. Everyone with this role gets the change the next time the app loads.`, confirmLabel: "Yes, save" }))) return;
+    if (!(await ask({ title: `Are you sure you want to save ${role.name} permissions?`, message: `${added} added, ${removed} removed. Everyone with this role gets the change the next time the app loads.`, confirmLabel: "Yes, save", danger: true }))) return;
     save(current, `${role.name} permissions saved`);
   }
 
   async function resetDefaults() {
-    if (!(await ask({ title: `Reset ${role.name} to the default permissions?`, message: "Any changes you made to this role are replaced by the original set.", confirmLabel: "Yes, reset" }))) return;
+    if (!(await ask({ title: `Are you sure you want to reset ${role.name} to the default permissions?`, message: "Any changes you made to this role are replaced by the original set, and saved straight away.", confirmLabel: "Yes, reset", danger: true }))) return;
     save(entry.defaults, `${role.name} reset to default permissions`);
   }
 
@@ -6369,8 +6392,8 @@ function RolePermissionsEditor({ role, session, onSaved }) {
                 <small>{on}/{keys.length}</small>
                 {editable && (
                   <span className="role-group-tools">
-                    <button type="button" onClick={() => setGroup(keys, true)} disabled={on === keys.length}>All</button>
-                    <button type="button" onClick={() => setGroup(keys, false)} disabled={on === 0}>None</button>
+                    <button type="button" onClick={() => setGroup(group.group, keys, true)} disabled={on === keys.length}>All</button>
+                    <button type="button" onClick={() => setGroup(group.group, keys, false)} disabled={on === 0}>None</button>
                   </span>
                 )}
               </header>
@@ -6389,7 +6412,7 @@ function RolePermissionsEditor({ role, session, onSaved }) {
         <div className="role-actions">
           <button type="button" className="text-action" onClick={resetDefaults} disabled={busy}><RotateCcw size={13} /> Reset to defaults</button>
           <span>
-            <button type="button" className="button button-secondary" onClick={() => setDraft(null)} disabled={!dirty || busy}>Discard</button>
+            <button type="button" className="button button-secondary" onClick={discard} disabled={!dirty || busy}>Discard</button>
             <button type="button" className="button button-primary" onClick={saveChanges} disabled={!dirty || busy}><Save size={14} /> {busy ? "Saving…" : "Save permissions"}</button>
           </span>
         </div>
@@ -6444,6 +6467,8 @@ function UsersPage({ query, session }) {
     }
   }
   const activeRole = TEAM_ROLES.find((role) => role.name === selectedRole);
+  const [rolesDirty, setRolesDirty] = useState(false);
+  const [askRoles, rolesConfirmDialog] = useConfirm();
   const rolesRes = useResource("/roles");
   const roleCounts = Object.fromEntries((rolesRes.data?.roles || []).map((entry) => [entry.role, entry.permissions.length]));
   const filtersActive = search || roleFilter !== "All roles" || statusFilter !== "All statuses";
@@ -6548,10 +6573,11 @@ function UsersPage({ query, session }) {
         />
       </section>
 
-      <section className="panel team-roles">
+      <section className="panel team-roles danger-zone">
         <div className="team-roles-head">
           <div className="panel-kicker">ROLES & PERMISSIONS</div>
           <h2 className="toolbar-title">What each role can access</h2>
+          <p className="danger-zone-note"><CircleAlert size={14} /> Danger zone — changes here decide what every team member can see and do. Each change asks you to confirm.</p>
         </div>
         <div className="team-roles-body">
           <div className="team-role-list" role="tablist" aria-label="Roles">
@@ -6566,7 +6592,12 @@ function UsersPage({ query, session }) {
                   role="tab"
                   aria-selected={selectedRole === role.name}
                   className={`team-role-card ${role.tone} ${selectedRole === role.name ? "active" : ""}`}
-                  onClick={() => setSelectedRole(role.name)}
+                  onClick={async () => {
+                    if (role.name === selectedRole) return;
+                    if (rolesDirty && !(await askRoles({ title: `Are you sure you want to leave ${selectedRole}?`, message: "You have unsaved permission changes. They will be lost.", confirmLabel: "Yes, leave without saving", danger: true }))) return;
+                    setRolesDirty(false);
+                    setSelectedRole(role.name);
+                  }}
                 >
                   <span className="team-role-icon"><ShieldCheck size={16} /></span>
                   <span className="team-role-copy">
@@ -6581,7 +6612,7 @@ function UsersPage({ query, session }) {
             })}
           </div>
           {!activeRole.customer ? (
-            <RolePermissionsEditor role={activeRole} session={session} onSaved={(message) => setToast(message)} />
+            <RolePermissionsEditor role={activeRole} session={session} onSaved={(message) => setToast(message)} onDirtyChange={setRolesDirty} />
           ) : (
           <div className="team-permissions" role="tabpanel" aria-label={`${activeRole.name} permissions`}>
             <div className="team-permissions-head">
@@ -6623,6 +6654,7 @@ function UsersPage({ query, session }) {
         </WsModal>
       )}
       {toast && <div className="set-toast" role="status"><Check size={15} /> {toast}</div>}
+      {rolesConfirmDialog}
     </>
   );
 }

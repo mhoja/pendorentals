@@ -11533,3 +11533,28 @@ button.ov-task:disabled {
     align-content: start;
     grid-auto-rows: max-content;
 }
+
+/* Users & Roles: roles card marked as a danger zone */
+.panel.team-roles.danger-zone {
+    border: 2px dashed #e06a63;
+    box-shadow: none;
+}
+
+.danger-zone .team-roles-head {
+    background: #fff6f5;
+}
+
+.danger-zone-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0 0;
+    color: #b8352e;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.danger-zone-note svg {
+    flex: none;
+    color: inherit;
+}
