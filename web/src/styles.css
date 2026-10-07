@@ -10611,3 +10611,48 @@ button.inv-open:hover .report-id {
 .report-performance-heading p { font-size: 12px; }
 .report-summary-stats article>span { font-size: 12px; }
 .report-summary-stats article>small { font-size: 11px; }
+
+/* Record payment: items and delivery paid separately */
+.ws-balance small {
+    flex-basis: 100%;
+    color: #66748a;
+    font-size: 11.5px;
+}
+
+.ws-balance {
+    flex-wrap: wrap;
+}
+
+.pay-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+    padding: 12px;
+    border: 1px solid #e3eaf3;
+    border-radius: 10px;
+    background: #f8fafd;
+}
+
+.pay-split.single {
+    grid-template-columns: 1fr;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+.pay-split-total {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px dashed #d5deea;
+    color: #4b5d77;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.pay-split-total strong {
+    color: #10305e;
+    font: 800 16px 'Manrope', sans-serif;
+}

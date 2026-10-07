@@ -281,6 +281,8 @@ const reportDefinitions = [
       { key: "cashier", label: "RECEIVED BY" },
       { key: "status", label: "STATUS", type: "status" },
       { key: "amount", label: "AMOUNT", type: "money", total: true },
+      { key: "items", label: "ITEMS", type: "money", total: true },
+      { key: "delivery", label: "DELIVERY", type: "money", total: true },
       { key: "tithe", label: "TITHE", type: "money", total: true },
       { key: "giving", label: "GIVING", type: "money", total: true },
       { key: "net", label: "NET", type: "money", total: true, hidden: true },
@@ -299,12 +301,14 @@ const reportDefinitions = [
         const kept = list.filter((row) => row.status !== "Refunded");
         const refunds = list.filter((row) => row.status === "Refunded");
         const collected = sumBy(kept, "amount");
+        const delivery = sumBy(kept, "delivery");
         const tithe = sumBy(kept, "tithe");
         const giving = sumBy(kept, "giving");
         const byMethod = kept.reduce((map, row) => map.set(row.method, (map.get(row.method) || 0) + (Number(row.amount) || 0)), new Map());
         const [topLabel, topValue] = [...byMethod.entries()].sort((left, right) => right[1] - left[1])[0] || [];
         return {
           collected, tithe, giving, net: collected - tithe - giving,
+          delivery, items: collected - delivery,
           payments: kept.length, receipts: list.length,
           average: kept.length ? collected / kept.length : 0,
           refunded: sumBy(refunds, "amount"), refunds: refunds.length,
@@ -319,10 +323,10 @@ const reportDefinitions = [
         card("Tithe", "tithe", formatTSh(now.tithe), "set aside from payments"),
         card("Giving", "giving", formatTSh(now.giving), "set aside from payments"),
         card("Net", "net", formatTSh(now.net), "collected − tithe − giving", { tone: now.net < 0 ? "negative" : "" }),
-        card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), "including refunds", { format: (value) => value.toLocaleString("en-US") }),
-        card("Average receipt", "average", formatTSh(now.average), "excluding refunds"),
+        card("Items (rental)", "items", formatTSh(now.items), "paid for rented items"),
+        card("Delivery fees", "delivery", formatTSh(now.delivery), "paid for delivery"),
+        card("Receipts issued", "receipts", now.receipts.toLocaleString("en-US"), `avg ${formatTSh(now.average)} · ${now.topMethod?.label || "no payments"}`, { format: (value) => value.toLocaleString("en-US") }),
         card("Refunded", "refunded", formatTSh(now.refunded), `${now.refunds} refund${now.refunds === 1 ? "" : "s"}`, { tone: now.refunded > 0 ? "negative" : "", lowerIsBetter: true }),
-        { label: "Top method", value: now.topMethod?.label || "—", hint: now.topMethod ? `${formatTSh(now.topMethod.value)} collected` : "no payments" },
       ];
     },
   },
@@ -352,6 +356,8 @@ const reportDefinitions = [
       { key: "channel", label: "CHANNEL" },
       { key: "days", label: "DAYS", type: "number", total: true },
       { key: "status", label: "STATUS", type: "status" },
+      { key: "rental", label: "RENTAL", type: "money", total: true },
+      { key: "delivery", label: "DELIVERY", type: "money", total: true },
       { key: "total", label: "TOTAL", type: "money", total: true },
     ],
     groupBy: [
@@ -359,22 +365,25 @@ const reportDefinitions = [
       { key: "channel", label: "Revenue by channel" },
       { key: "customer", label: "Top customers" },
     ],
+    currencyInHeader: true,
     monthlyCards: true,
     metrics: (rows, previous) => {
       const totals = (list) => {
         const kept = list.filter((row) => row.status !== "Cancelled");
-        const revenue = sumBy(kept, "total");
+        // Delivery fees are reported apart from rental revenue.
+        const revenue = sumBy(kept, "rental");
+        const delivery = sumBy(kept, "delivery");
         const cancelled = list.filter((row) => row.status === "Cancelled");
-        return { revenue, orders: list.length, kept: kept.length, average: kept.length ? revenue / kept.length : 0, cancelled: cancelled.length, cancelledValue: sumBy(cancelled, "total") };
+        return { revenue, delivery, orders: list.length, kept: kept.length, average: kept.length ? revenue / kept.length : 0, cancelled: cancelled.length, cancelledValue: sumBy(cancelled, "total") };
       };
       const now = totals(rows);
       const before = previous ? totals(previous) : null;
       const count = (value) => value.toLocaleString("en-US");
       const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatTSh, ...extra });
       return [
-        card("Revenue", "revenue", formatTSh(now.revenue), "excluding cancelled"),
-        card("Orders", "orders", count(now.orders), `${now.kept} not cancelled`, { format: count }),
-        card("Average order", "average", formatTSh(now.average), "per order"),
+        card("Rental revenue", "revenue", formatTSh(now.revenue), "items only, excl. delivery"),
+        card("Delivery fees", "delivery", formatTSh(now.delivery), "charged on orders"),
+        card("Orders", "orders", count(now.orders), `${now.kept} not cancelled · avg ${formatTSh(now.average)}`, { format: count }),
         card("Cancelled", "cancelled", count(now.cancelled), formatTSh(now.cancelledValue), { format: count, tone: now.cancelled ? "negative" : "", lowerIsBetter: true }),
       ];
     },
@@ -705,6 +714,7 @@ function receiptMarkup(payment) {
         <div><span>Order</span><strong>${escapeHtml(payment.reference)}</strong></div>
         <div><span>Invoice</span><strong>${escapeHtml(payment.invoice)}</strong></div>
         <div><span>Payment method</span><strong>${escapeHtml(payment.method)}</strong></div>
+        ${payment.delivery ? `<div><span>For items</span><strong>${escapeHtml(formatTSh(payment.amount - payment.delivery))}</strong></div><div><span>For delivery</span><strong>${escapeHtml(formatTSh(payment.delivery))}</strong></div>` : ""}
         <div><span>Received by</span><strong>${escapeHtml(payment.cashier)}</strong></div>
       </div>
       <div class="r-amount"><span>Amount ${payment.status === "Refunded" ? "refunded" : "received"}<em class="r-stamp ${tone}">${escapeHtml(payment.status.toUpperCase())}</em></span><strong>${escapeHtml(formatTSh(payment.amount))}</strong></div>
@@ -2721,28 +2731,51 @@ function TempPasswordNote({ phone, password }) {
 function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
   const { call } = useApi();
   const methods = enabledMethods(settings).map((method) => method.name);
+  // Invoices are paid against their order, so load it to split items and delivery.
+  const linked = useResource(invoice?.orderCode ? `/orders/${invoice.orderCode}` : null);
+  const source = order || linked.data?.order || null;
   const balance = invoice ? invoice.balance : order?.balance;
-  const [form, setForm] = useState({ amount: balance ? String(balance) : "", method: methods[0] || "Cash", reference: "", paidOn: localTodayIso(), notify: true });
+  const deliveryDue = Math.min(source?.deliveryBalance || 0, balance ?? Infinity);
+  const itemsDue = Math.max(0, (balance || 0) - deliveryDue);
+  const [form, setForm] = useState({ items: "", delivery: "", method: methods[0] || "Cash", reference: "", paidOn: localTodayIso(), notify: true });
+  const [touched, setTouched] = useState(false);
+  // Pre-fill with what is still owed until staff change the figures.
+  useEffect(() => {
+    if (touched) return;
+    setForm((current) => ({ ...current, items: itemsDue ? String(itemsDue) : "", delivery: deliveryDue ? String(deliveryDue) : "" }));
+  }, [itemsDue, deliveryDue, touched]);
+  const hasDelivery = (source?.deliveryFee || 0) > 0;
+  const itemsAmount = Number(form.items) || 0;
+  const deliveryAmount = hasDelivery ? Number(form.delivery) || 0 : 0;
+  const amount = itemsAmount + deliveryAmount;
   const [errors, setErrors] = useState({});
+  const setPart = (key) => (event) => {
+    setTouched(true);
+    setForm({ ...form, [key]: event.target.value });
+    setErrors((current) => ({ ...current, [key]: undefined }));
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const tithePercent = settings?.titheEnabled ? Number(settings.tithePercent) || 0 : 0;
-  const tithe = Math.round(((Number(form.amount) || 0) * tithePercent) / 100);
+  const tithe = Math.round((amount * tithePercent) / 100);
   const givingPercent = settings?.givingEnabled ? Number(settings.givingPercent) || 0 : 0;
-  const giving = Math.round(((Number(form.amount) || 0) * givingPercent) / 100);
+  const giving = Math.round((amount * givingPercent) / 100);
   const label = invoice ? `${invoice.code} · ${invoice.customer}` : `${order.id} · ${order.customer.name}`;
   const [ask, confirmDialog] = useConfirm();
 
   async function save(event) {
     event.preventDefault();
     const next = {};
-    if (!(Number(form.amount) >= 1) || !Number.isInteger(Number(form.amount))) next.amount = "Enter the amount received (whole TSh).";
+    if (!Number.isInteger(itemsAmount) || itemsAmount < 0) next.items = "Whole TSh only.";
+    if (!Number.isInteger(deliveryAmount) || deliveryAmount < 0) next.delivery = "Whole TSh only.";
+    else if (deliveryAmount > deliveryDue) next.delivery = deliveryDue ? `Only ${formatShillings(deliveryDue)} delivery is due.` : "No delivery fee is due.";
+    if (!next.items && !next.delivery && amount < 1) next.items = "Enter the amount received.";
     if (form.paidOn > localTodayIso()) next.paidOn = "Not in the future.";
     setErrors(next);
     if (Object.keys(next).length) return;
     const ok = await ask({
-      title: `Record ${formatShillings(Number(form.amount))}?`,
-      message: `${form.method} payment for ${label} on ${shortDate(form.paidOn)}.${tithe ? ` Tithe set aside: ${formatShillings(tithe)}.` : ""}${giving ? ` Giving set aside: ${formatShillings(giving)}.` : ""} A receipt will be issued.`,
+      title: `Record ${formatShillings(amount)}?`,
+      message: `${form.method} payment for ${label} on ${shortDate(form.paidOn)}${hasDelivery ? ` — items ${formatShillings(itemsAmount)}, delivery ${formatShillings(deliveryAmount)}` : ""}.${tithe ? ` Tithe set aside: ${formatShillings(tithe)}.` : ""}${giving ? ` Giving set aside: ${formatShillings(giving)}.` : ""} A receipt will be issued.`,
       confirmLabel: "Yes, record payment",
     });
     if (!ok) return;
@@ -2753,7 +2786,8 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
         method: "POST",
         body: {
           ...(invoice ? { invoiceId: invoice.id } : { orderCode: order.id }),
-          amount: Number(form.amount),
+          amount,
+          deliveryAmount,
           method: form.method,
           reference: form.reference,
           paidOn: form.paidOn,
@@ -2772,10 +2806,19 @@ function PaymentModal({ order, invoice, settings, onClose, onSaved }) {
     <WsModal title="Record payment" kicker={label} onClose={onClose} busy={busy}>
       <form className="team-form" onSubmit={save} noValidate>
         {balance !== null && balance !== undefined && (
-          <div className="ws-balance"><span>Balance due</span><strong>{formatShillings(balance)}</strong></div>
+          <div className="ws-balance">
+            <span>Balance due</span><strong>{formatShillings(balance)}</strong>
+            {hasDelivery && <small>Items {formatShillings(itemsDue)} · Delivery {formatShillings(deliveryDue)}</small>}
+          </div>
         )}
+        <div className={`pay-split ${hasDelivery ? "" : "single"}`}>
+          <label className="set-field"><span>{hasDelivery ? "For items / rental (TSh)" : "Amount received (TSh)"}</span><input type="number" min="0" value={form.items} onChange={setPart("items")} aria-invalid={Boolean(errors.items)} autoFocus /><FieldError message={errors.items} /></label>
+          {hasDelivery && (
+            <label className="set-field"><span>For delivery fee (TSh)</span><input type="number" min="0" max={deliveryDue} value={form.delivery} onChange={setPart("delivery")} aria-invalid={Boolean(errors.delivery)} /><FieldError message={errors.delivery} /></label>
+          )}
+          {hasDelivery && <div className="pay-split-total"><span>Total received</span><strong>{formatShillings(amount)}</strong></div>}
+        </div>
         <div className="set-grid">
-          <label className="set-field"><span>Amount received (TSh)</span><input type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} aria-invalid={Boolean(errors.amount)} autoFocus /><FieldError message={errors.amount} /></label>
           <label className="set-field"><span>Method</span><select value={form.method} onChange={(event) => setForm({ ...form, method: event.target.value })}>{methods.map((method) => <option key={method}>{method}</option>)}</select></label>
           <label className="set-field"><span>Transaction ref. <em>Optional</em></span><input value={form.reference} maxLength={40} placeholder="e.g. M-Pesa code" onChange={(event) => setForm({ ...form, reference: event.target.value.toUpperCase() })} /></label>
           <label className="set-field"><span>Date received</span><input type="date" max={localTodayIso()} value={form.paidOn} onChange={(event) => setForm({ ...form, paidOn: event.target.value })} aria-invalid={Boolean(errors.paidOn)} /><FieldError message={errors.paidOn} /></label>
@@ -5626,6 +5669,8 @@ function ReceiptPreview({ payment, onClose }) {
             <div><dt>Phone</dt><dd>{payment.phone}</dd></div>
             <div><dt>Date</dt><dd>{formatReportDate(payment.date)}</dd></div>
             <div><dt>Payment method</dt><dd>{payment.method}</dd></div>
+            {payment.delivery > 0 && <div><dt>For items</dt><dd>{formatTSh(payment.amount - payment.delivery)}</dd></div>}
+            {payment.delivery > 0 && <div><dt>For delivery</dt><dd>{formatTSh(payment.delivery)}</dd></div>}
             <div><dt>Order</dt><dd>{payment.reference}</dd></div>
             <div><dt>Invoice</dt><dd>{payment.invoice}</dd></div>
             <div><dt>Received by</dt><dd>{payment.cashier}</dd></div>

@@ -119,6 +119,7 @@ export async function getReport(request, response) {
         response.json({ rows: rows.map((row) => ({
             id: row.id, receipt: row.code, date: row.paid_on, customer: row.customer, phone: prettyPhone(row.phone),
             reference: row.order_code || '—', invoice: row.invoice_code || '—', method: row.method, amount: row.amount,
+            items: row.amount - row.delivery_amount, delivery: row.delivery_amount,
             status: row.status, cashier: row.cashier || '—', tithe: row.tithe_amount, giving: row.giving_amount,
             net: row.amount - row.tithe_amount - row.giving_amount, transactionRef: row.reference || '',
         })) });
@@ -134,7 +135,7 @@ export async function getReport(request, response) {
                 items: order.items.map((item) => `${item.custom || item.name} ×${item.quantity}`).join(', '),
                 category: categories.find((row) => row.id === firstLinked?.inventoryItemId)?.category || 'Unassigned',
                 channel: order.source === 'rent_now' ? 'Online (Rent Now)' : 'Staff', days: order.days,
-                total: order.total || 0, status: order.status,
+                total: order.total || 0, rental: order.itemsTotal || 0, delivery: order.deliveryFee || 0, status: order.status,
             };
         }) });
         return;

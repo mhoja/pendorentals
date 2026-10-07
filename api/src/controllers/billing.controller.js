@@ -145,17 +145,32 @@ export async function recordPayment(request, response) {
     let orderId = null;
     let invoiceId = null;
     let customerId = null;
+    let order = null;
     if (body.invoiceId) {
-        const { rows: [invoice] } = await query('select * from invoices where id = $1', [Number(body.invoiceId)]);
+        const { rows: [invoice] } = await query('select i.*, o.code as order_code from invoices i left join orders o on o.id = i.order_id where i.id = $1', [Number(body.invoiceId)]);
         if (!invoice || invoice.status === 'Cancelled') throw new HttpError(400, 'Invoice not found.');
         ({ id: invoiceId, order_id: orderId, customer_id: customerId } = invoice);
+        if (invoice.order_code) order = await loadOrder(invoice.order_code);
     } else if (body.orderCode) {
-        const order = await loadOrder(String(body.orderCode));
+        order = await loadOrder(String(body.orderCode));
         orderId = order.dbId;
         customerId = order.customer.id;
         invoiceId = order.invoice?.id || null;
     } else {
         throw new HttpError(400, 'Choose the order or invoice this payment is for.', { fields: { orderCode: 'Choose an order.' } });
+    }
+
+    // Split between rented items and the delivery fee. If not given, items are paid first.
+    const deliveryDue = order?.deliveryBalance || 0;
+    let deliveryAmount;
+    if (body.deliveryAmount === undefined || body.deliveryAmount === null || body.deliveryAmount === '') {
+        deliveryAmount = Math.max(0, Math.min(deliveryDue, amount - (order?.itemsBalance || 0)));
+    } else {
+        deliveryAmount = Number(body.deliveryAmount);
+        if (!isWhole(deliveryAmount, 0, amount)) throw new HttpError(400, 'The delivery part must be between 0 and the amount received.', { fields: { deliveryAmount: 'Check the delivery amount.' } });
+        if (deliveryAmount > deliveryDue) {
+            throw new HttpError(400, deliveryDue ? `Only ${formatTSh(deliveryDue)} of delivery fee is still due.` : 'No delivery fee is due on this order.', { fields: { deliveryAmount: 'More than the delivery fee due.' } });
+        }
     }
 
     const settings = await getSettings();
@@ -166,9 +181,9 @@ export async function recordPayment(request, response) {
     const paymentId = await transaction(async (db) => {
         const code = await nextCode(db, 'receipt_number_seq', settings.receiptPrefix || 'RCT-', 4);
         const { rows: [payment] } = await db.query(
-            `insert into payments (code, invoice_id, order_id, customer_id, amount, method, reference, paid_on, tithe_percent, tithe_amount, giving_percent, giving_amount, received_by)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
-            [code, invoiceId, orderId, customerId, amount, body.method, cleanText(body.reference, 40) || null, paidOn, tithePercent, titheAmount, givingPercent, givingAmount, request.user.id],
+            `insert into payments (code, invoice_id, order_id, customer_id, amount, delivery_amount, method, reference, paid_on, tithe_percent, tithe_amount, giving_percent, giving_amount, received_by)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
+            [code, invoiceId, orderId, customerId, amount, deliveryAmount, body.method, cleanText(body.reference, 40) || null, paidOn, tithePercent, titheAmount, givingPercent, givingAmount, request.user.id],
         );
         await refreshInvoiceStatus(db, invoiceId);
         return payment.id;

@@ -19,7 +19,13 @@ export function computeTotals(order, items) {
 
 function shapeOrder(row, items, payments, invoice) {
     const { priced, subtotal, total } = computeTotals(row, items);
-    const paid = payments.filter((payment) => payment.status === 'Paid').reduce((sum, payment) => sum + payment.amount, 0);
+    const kept = payments.filter((payment) => payment.status === 'Paid');
+    const paid = kept.reduce((sum, payment) => sum + payment.amount, 0);
+    // Delivery fee is tracked apart from the rented items.
+    const deliveryFee = row.delivery_fee || 0;
+    const deliveryPaid = kept.reduce((sum, payment) => sum + (payment.delivery_amount || 0), 0);
+    const itemsTotal = total === null ? null : Math.max(0, total - deliveryFee);
+    const itemsPaid = paid - deliveryPaid;
     return {
         id: row.code,
         dbId: row.id,
@@ -58,6 +64,11 @@ function shapeOrder(row, items, payments, invoice) {
         total,
         paid,
         balance: total === null ? null : Math.max(0, total - paid),
+        itemsTotal,
+        itemsPaid,
+        itemsBalance: itemsTotal === null ? null : Math.max(0, itemsTotal - itemsPaid),
+        deliveryPaid,
+        deliveryBalance: Math.max(0, deliveryFee - deliveryPaid),
         invoice: invoice ? { id: invoice.id, code: invoice.code, status: invoice.status, amount: invoice.amount, dueOn: invoice.due_on } : null,
         sms: row.sms_status || undefined,
         createdAt: row.created_at,
@@ -82,7 +93,7 @@ export async function loadOrders(where = 'true', params = [], db = { query }) {
     const ids = rows.map((row) => row.id);
     const [items, payments, invoices] = await Promise.all([
         db.query('select * from order_items where order_id = any($1) order by position, id', [ids]),
-        db.query('select order_id, amount, status from payments where order_id = any($1)', [ids]),
+        db.query('select order_id, amount, status, delivery_amount from payments where order_id = any($1)', [ids]),
         db.query(`select distinct on (order_id) * from invoices where order_id = any($1) and status <> 'Cancelled'
                   order by order_id, id desc`, [ids]),
     ]);

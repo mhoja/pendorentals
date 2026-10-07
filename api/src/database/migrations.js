@@ -233,6 +233,37 @@ const migrations = [
                 add column giving_amount integer not null default 0;
         `,
     },
+    {
+        id: 6,
+        name: 'delivery share of each payment',
+        sql: `
+            -- How much of each payment paid the delivery fee; the rest is for the rented items.
+            alter table payments add column delivery_amount integer not null default 0;
+
+            -- Existing payments: items are treated as paid first, so delivery is whatever was paid
+            -- beyond the items total, up to the delivery fee.
+            with item_totals as (
+                select o.id as order_id, o.delivery_fee,
+                       greatest(0, coalesce(sum(coalesce(oi.rate, 0) * oi.quantity * o.days), 0) - o.discount) as items_total
+                  from orders o left join order_items oi on oi.order_id = o.id
+                 where o.delivery_fee > 0
+                 group by o.id
+            ), running as (
+                select p.id, t.items_total, t.delivery_fee,
+                       coalesce(sum(p.amount) over (partition by p.order_id order by p.paid_on, p.id
+                                                    rows between unbounded preceding and 1 preceding), 0) as before,
+                       sum(p.amount) over (partition by p.order_id order by p.paid_on, p.id) as after
+                  from payments p join item_totals t on t.order_id = p.order_id
+                 where p.status = 'Paid'
+            )
+            update payments p
+               set delivery_amount = greatest(0, least(r.after, r.items_total + r.delivery_fee) - greatest(r.before, r.items_total))
+              from running r
+             where r.id = p.id;
+
+            alter table payments add constraint payments_delivery_amount_check check (delivery_amount >= 0 and delivery_amount <= amount);
+        `,
+    },
 ];
 
 export async function migrate() {

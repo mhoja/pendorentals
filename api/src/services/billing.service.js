@@ -55,6 +55,8 @@ export function shapePayment(row) {
         cashier: row.cashier || '—',
         tithePercent: row.tithe_percent,
         tithe: row.tithe_amount,
+        delivery: row.delivery_amount || 0,
+        items: row.amount - (row.delivery_amount || 0),
         givingPercent: row.giving_percent,
         giving: row.giving_amount,
         createdAt: row.created_at,
