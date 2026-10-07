@@ -291,6 +291,8 @@ const reportDefinitions = [
     ],
     // Cards show this month vs last month until a filter is applied (see ReportDetail).
     monthlyCards: true,
+    // Money columns show plain numbers; the currency sits in the column heading.
+    currencyInHeader: true,
     metrics: (rows, previous) => {
       const totals = (list) => {
         const kept = list.filter((row) => row.status !== "Refunded");
@@ -5030,6 +5032,11 @@ function ReportDetail({ report, onBack, onSwitch }) {
     }
   });
   const columns = report.columns.filter((column) => shownKeys.includes(column.key));
+  const plainMoney = (column) => report.currencyInHeader && column.type === "money";
+  const heading = (column) => (plainMoney(column) ? `${column.label} (TSh)` : column.label);
+  const cellText = (value, column) => (plainMoney(column)
+    ? Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : formatReportValue(value, column.type));
   function chooseColumns(keys) {
     setShownKeys(keys);
     try { localStorage.setItem(columnStore, JSON.stringify(keys)); } catch { /* storage unavailable */ }
@@ -5134,7 +5141,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
   }
 
   const totalsRow = columns.map((column, index) => {
-    if (column.total) return formatReportValue(sumBy(sortedRows, column.key), column.type);
+    if (column.total) return cellText(sumBy(sortedRows, column.key), column);
     return index === 0 ? `Total (${sortedRows.length})` : "";
   });
 
@@ -5144,8 +5151,8 @@ function ReportDetail({ report, onBack, onSwitch }) {
     try {
       await downloadTableReport(
         report.title,
-        columns.map((column) => column.label),
-        sortedRows.map((row) => columns.map((column) => formatReportValue(row[column.key], column.type))),
+        columns.map(heading),
+        sortedRows.map((row) => columns.map((column) => cellText(row[column.key], column))),
         format,
         {
           subtitle: `${activeFilters.length ? activeFilters.join(" · ") : "All records"} · ${sortedRows.length} rows · Generated ${new Date().toLocaleString("en-US")}`,
@@ -5354,7 +5361,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
                   {columns.map((column) => (
                     <th key={column.key} className={["money", "number", "km", "percent"].includes(column.type) ? "numeric" : ""}>
                       <button className="report-sort" onClick={() => toggleSort(column.key)} aria-label={`Sort by ${column.label.toLowerCase()}`}>
-                        {column.label}
+                        {heading(column)}
                         {sort.key === column.key
                           ? sort.dir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
                           : <ArrowUpDown size={11} className="report-sort-idle" />}
@@ -5372,7 +5379,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
                         {column.type === "status" ? (
                           <span className={`status-pill ${statusTones[row[column.key]] || "blue"}`}><i />{row[column.key]}</span>
                         ) : column.type === "money" ? (
-                          <strong className="table-primary">{formatReportValue(row[column.key], column.type)}</strong>
+                          <strong className="table-primary">{cellText(row[column.key], column)}</strong>
                         ) : column.type === "percent" ? (
                           <span className="report-meter"><span><i style={{ width: `${row[column.key]}%` }} /></span>{row[column.key]}%</span>
                         ) : column.type === "id" ? (
