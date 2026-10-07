@@ -4612,15 +4612,74 @@ function OverviewPage({ onNavigate, onNewOrder }) {
   const best = Math.max(...d.revenue.days.map((day) => day.total));
   const labelEvery = d.revenue.days.length > 10 ? 5 : 1;
   const change = d.revenue.change;
+  const allowed = PAGE_ACCESS[session.staffRole];
+  const canOpen = (page) => !allowed || allowed.includes(page);
+  const fin = d.finance;
+  const windows = monthWindows();
+  const lastShort = windows.lastMonth.slice(0, 3);
+  // ▲/▼ % against last month for the money cards.
+  const vsLast = (now, before, lowerIsBetter = false) => {
+    if (!before && !now) return { change: "Same", kind: "up", caption: `as ${lastShort}` };
+    if (!before) return { change: "New", kind: lowerIsBetter ? "down" : "up", caption: `${lastShort}: TSh 0` };
+    const pct = Math.round(((now - before) / Math.abs(before)) * 100);
+    const better = lowerIsBetter ? now <= before : now >= before;
+    return { change: `${Math.abs(pct)}%`, kind: better ? "up" : "down", caption: `vs ${lastShort} ${formatShillings(before)}` };
+  };
+  const today = localTodayIso();
+  const whenLabel = (iso) => (iso < today ? "Late" : iso === today ? "Today" : "Tomorrow");
+  const lateReturns = d.returns.filter((order) => order.endDate < today).length;
+  const attention = [
+    { count: d.orders.unpriced, text: "new request", textMany: "new requests", detail: "waiting for a price", page: "Orders", tone: "blue", icon: Sparkles },
+    { count: lateReturns, text: "return overdue", textMany: "returns overdue", detail: "items not back yet", page: "Orders", tone: "red", icon: Clock3 },
+    { count: d.deliveries.filter((order) => !order.driver).length, text: "delivery without a driver", textMany: "deliveries without a driver", detail: "today or tomorrow", page: "Orders", tone: "amber", icon: Truck },
+    ...(fin ? [
+      { count: fin.overdueInvoices.count, text: "overdue invoice", textMany: "overdue invoices", detail: formatShillings(fin.overdueInvoices.amount), page: "Invoices", tone: "red", icon: Receipt },
+      { count: fin.pendingExpenses.count, text: "expense to approve", textMany: "expenses to approve", detail: formatShillings(fin.pendingExpenses.amount), page: "Finance", tone: "amber", icon: Wallet },
+    ] : []),
+    { count: inv.maintenance, text: "item in maintenance", textMany: "items in maintenance", detail: `${inv.maintenanceUnits.toLocaleString("en-US")} units not rentable`, page: "Inventory", tone: "amber", icon: Wrench },
+  ].filter((entry) => entry.count > 0);
+  const pipelineMax = Math.max(1, ...d.pipeline.map((row) => row.count));
+  const collectedVs = fin && vsLast(fin.month.collected, fin.lastMonth.collected);
+  const netVs = fin && vsLast(fin.month.net, fin.lastMonth.net);
 
   return (
     <>
-      <section className="metrics-grid" aria-label="Business overview">
-        <Metric icon={Package} label="Total units" value={units.toLocaleString("en-US")} change={`${inv.products} products`} kind="up" color="mint-icon" caption="in inventory" />
-        <Metric icon={CalendarDays} label="Out on rent" value={inv.out.toLocaleString("en-US")} change={`${outPct}%`} kind="up" color="blue-icon" caption="of units today" />
-        <Metric icon={Sparkles} label="Available now" value={inv.available.toLocaleString("en-US")} change={`${availablePct}%`} kind="up" color="purple-icon" caption="ready to rent" />
-        <Metric icon={ShieldCheck} label="Needs attention" value={String(d.orders.new_requests + inv.maintenance)} change={`${d.orders.new_requests} new request${d.orders.new_requests === 1 ? "" : "s"}`} kind={d.orders.new_requests + inv.maintenance ? "down" : "up"} color="orange-icon" caption={`${inv.maintenance} in maintenance`} />
-      </section>
+      {fin ? (
+        <section className="metrics-grid" aria-label={`This month, ${windows.thisMonth}`}>
+          <Metric icon={Banknote} label={`Collected · ${windows.thisMonth}`} value={formatShillings(fin.month.collected)} change={collectedVs.change} kind={collectedVs.kind} color="mint-icon" caption={collectedVs.caption} />
+          <Metric icon={ChartNoAxesCombined} label={`Net · ${windows.thisMonth}`} value={formatShillings(fin.month.net)} change={netVs.change} kind={netVs.kind} color="blue-icon" caption={netVs.caption} />
+          <Metric icon={Receipt} label="To collect" value={formatShillings(fin.outstanding)} change={`${fin.owingOrders} order${fin.owingOrders === 1 ? "" : "s"}`} kind={fin.overdueInvoices.count ? "down" : "up"} color="orange-icon" caption={fin.overdueInvoices.count ? `${fin.overdueInvoices.count} invoice${fin.overdueInvoices.count === 1 ? "" : "s"} overdue` : "balance owed"} />
+          <Metric icon={CalendarDays} label="Out on rent today" value={inv.out.toLocaleString("en-US")} change={`${outPct}%`} kind="up" color="purple-icon" caption={`${inv.available.toLocaleString("en-US")} available`} />
+        </section>
+      ) : (
+        <section className="metrics-grid" aria-label="Business overview">
+          <Metric icon={Package} label="Total units" value={units.toLocaleString("en-US")} change={`${inv.products} products`} kind="up" color="mint-icon" caption="in inventory" />
+          <Metric icon={CalendarDays} label="Out on rent" value={inv.out.toLocaleString("en-US")} change={`${outPct}%`} kind="up" color="blue-icon" caption="of units today" />
+          <Metric icon={Sparkles} label="Available now" value={inv.available.toLocaleString("en-US")} change={`${availablePct}%`} kind="up" color="purple-icon" caption="ready to rent" />
+          <Metric icon={ShieldCheck} label="Needs attention" value={String(attention.reduce((sum, entry) => sum + entry.count, 0))} change={`${d.orders.unpriced} new request${d.orders.unpriced === 1 ? "" : "s"}`} kind={attention.length ? "down" : "up"} color="orange-icon" caption={`${inv.maintenance} in maintenance`} />
+        </section>
+      )}
+      {fin && (
+        <section className="ov-money panel" aria-label="This month's money">
+          {[
+            ["Tithe", fin.month.tithe, fin.lastMonth.tithe, false],
+            ["Giving", fin.month.giving, fin.lastMonth.giving, false],
+            ["Expenses", fin.month.expenses, fin.lastMonth.expenses, true],
+            ["Delivery fees", fin.month.delivery, fin.lastMonth.delivery, false],
+            ["Payments", fin.month.payments, fin.lastMonth.payments, false],
+          ].map(([label, now, before, lower]) => {
+            const cmp = vsLast(now, before, lower);
+            const shown = label === "Payments" ? now.toLocaleString("en-US") : formatShillings(now);
+            return (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{shown}</strong>
+                <em className={`ov-delta ${cmp.kind}`}>{cmp.change === "Same" || cmp.change === "New" ? cmp.change : `${cmp.kind === "up" ? (lower ? "▼" : "▲") : (lower ? "▲" : "▼")} ${cmp.change}`} <i>{label === "Payments" ? `${lastShort}: ${before}` : `${lastShort}: ${formatShillings(before)}`}</i></em>
+              </div>
+            );
+          })}
+        </section>
+      )}
       <section className="overview-grid">
         <article className="panel revenue-panel">
           <div className="panel-heading">
@@ -4691,6 +4750,80 @@ function OverviewPage({ onNavigate, onNewOrder }) {
           </div>
         </article>
       </section>
+      <section className="ov-row">
+        <article className="panel ov-card">
+          <div className="panel-heading">
+            <div>
+              <div className="panel-kicker">TO DO</div>
+              <h2>Needs attention <span className="heading-count">{attention.reduce((sum, entry) => sum + entry.count, 0)}</span></h2>
+            </div>
+          </div>
+          {attention.length === 0 ? (
+            <p className="ov-empty"><CircleCheck size={16} /> All caught up — nothing waiting.</p>
+          ) : (
+            <ul className="ov-list">
+              {attention.map((entry) => {
+                const Icon = entry.icon;
+                const open = canOpen(entry.page);
+                return (
+                  <li key={entry.text}>
+                    <button type="button" className="ov-task" onClick={() => open && onNavigate(entry.page)} disabled={!open}>
+                      <span className={`ov-task-icon ${entry.tone}`}><Icon size={15} /></span>
+                      <span className="ov-task-copy"><strong>{entry.count} {entry.count === 1 ? entry.text : entry.textMany}</strong><small>{entry.detail}</small></span>
+                      {open && <ArrowRight size={14} />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </article>
+        <article className="panel ov-card">
+          <div className="panel-heading">
+            <div>
+              <div className="panel-kicker">ON THE ROAD</div>
+              <h2>Deliveries &amp; returns</h2>
+            </div>
+            <span className="ov-chip">{d.orders.eventsToday} event{d.orders.eventsToday === 1 ? "" : "s"} running today</span>
+          </div>
+          {d.deliveries.length === 0 && d.returns.length === 0 ? (
+            <p className="ov-empty"><Truck size={16} /> No deliveries or returns due.</p>
+          ) : (
+            <ul className="ov-list">
+              {d.deliveries.slice(0, 4).map((order) => (
+                <li key={`d-${order.id}`} className="ov-run">
+                  <span className={`ov-when ${whenLabel(order.eventDate).toLowerCase()}`}>{whenLabel(order.eventDate)}</span>
+                  <span className="ov-task-copy"><strong>Deliver {order.id} · {order.customer}</strong><small>{order.place || "No venue"} · {order.driver || "No driver"} · {order.deliveryStatus}</small></span>
+                </li>
+              ))}
+              {d.returns.slice(0, 3).map((order) => (
+                <li key={`r-${order.id}`} className="ov-run">
+                  <span className={`ov-when ${order.endDate < today ? "late" : "today"}`}>{order.endDate < today ? "Late" : "Today"}</span>
+                  <span className="ov-task-copy"><strong>Collect {order.id} · {order.customer}</strong><small>ended {shortDate(order.endDate)} · {order.place || "No venue"}</small></span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {canOpen("Orders") && <button className="text-action ov-more" onClick={() => onNavigate("Orders")}>Open orders <ArrowRight size={14} /></button>}
+        </article>
+        <article className="panel ov-card">
+          <div className="panel-heading">
+            <div>
+              <div className="panel-kicker">ALL ORDERS</div>
+              <h2>Order pipeline</h2>
+            </div>
+          </div>
+          <ul className="ov-pipeline">
+            {d.pipeline.map((row) => (
+              <li key={row.status}>
+                <span>{row.status}</span>
+                <i><b className={orderTone(row.status)} style={{ width: `${(row.count / pipelineMax) * 100}%` }} /></i>
+                <strong>{row.count}</strong>
+              </li>
+            ))}
+          </ul>
+        </article>
+      </section>
       <section className="panel bookings-panel">
         <div className="panel-heading bookings-heading">
           <div>
@@ -4707,7 +4840,7 @@ function OverviewPage({ onNavigate, onNewOrder }) {
         ) : (
           <div className="table-scroll">
             <table className="booking-table ws-booking-table">
-              <thead><tr><th>CUSTOMER</th><th>RENTAL</th><th>EVENT</th><th>AMOUNT</th><th>STATUS</th></tr></thead>
+              <thead><tr><th>CUSTOMER</th><th>RENTAL</th><th>EVENT</th><th>AMOUNT</th>{fin && <th>DUE</th>}<th>STATUS</th></tr></thead>
               <tbody>
                 {d.upcoming.map((order) => (
                   <tr key={order.id} onClick={() => onNavigate("Orders")}>
@@ -4715,6 +4848,7 @@ function OverviewPage({ onNavigate, onNewOrder }) {
                     <td className="rental-cell">{orderItemsText(order.items)}</td>
                     <td className="date-cell">{orderDates(order)}</td>
                     <td className="amount-cell">{order.total === null ? "Quote pending" : formatShillings(order.total)}</td>
+                    {fin && <td className="amount-cell">{order.total === null ? "—" : order.balance ? <span className="cust-due">{formatShillings(order.balance)}</span> : <span className="ord-settled">Paid</span>}</td>}
                     <td><StatusPill tone={orderTone(order.status)}>{order.status}</StatusPill></td>
                   </tr>
                 ))}
@@ -4723,6 +4857,31 @@ function OverviewPage({ onNavigate, onNewOrder }) {
           </div>
         )}
       </section>
+      <div className={fin ? "ov-split" : ""}>
+      {fin && (
+        <section className="panel ov-card">
+          <div className="panel-heading">
+            <div>
+              <div className="panel-kicker">LATEST</div>
+              <h2>Recent payments</h2>
+            </div>
+            <button className="text-action" onClick={() => onNavigate("Finance")}>View finance <ArrowRight size={14} /></button>
+          </div>
+          {fin.recentPayments.length === 0 ? (
+            <p className="ov-empty"><Banknote size={16} /> No payments yet.</p>
+          ) : (
+            <ul className="ov-list">
+              {fin.recentPayments.map((payment) => (
+                <li key={payment.id} className="ov-run">
+                  <span className="ov-task-icon mint"><Banknote size={15} /></span>
+                  <span className="ov-task-copy"><strong>{payment.customer}</strong><small>{payment.receipt} · {payment.reference} · {payment.method} · {shortDate(payment.date)}</small></span>
+                  <strong className={payment.status === "Refunded" ? "cust-due" : "ord-paid"}>{payment.status === "Refunded" ? "−" : ""}{formatShillings(payment.amount)}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
       <section className="panel inventory-panel">
         <div className="panel-heading inventory-heading">
           <div>
@@ -4752,6 +4911,7 @@ function OverviewPage({ onNavigate, onNewOrder }) {
           </div>
         )}
       </section>
+      </div>
     </>
   );
 }

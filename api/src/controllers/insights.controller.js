@@ -1,6 +1,8 @@
 import { query } from '../config/db.js';
 import { HttpError, addDays, isIsoDate, prettyPhone, todayIso } from '../utils/helpers.js';
-import { ACTIVE_STATUSES, loadOrders } from '../services/orders.service.js';
+import { ACTIVE_STATUSES, ORDER_STATUSES, loadOrders } from '../services/orders.service.js';
+import { MANAGERS } from '../services/auth.service.js';
+import { PAYMENT_SELECT, shapePayment } from '../services/billing.service.js';
 
 // Units of each inventory item out on active orders today.
 const UNITS_OUT_SQL = `
@@ -42,9 +44,65 @@ export async function getDashboard(request, response) {
     const revenue = days.map((day) => ({ date: day, total: revenueRows.rows.find((row) => row.paid_on === day)?.total || 0 }));
     const revenueTotal = revenue.reduce((sum, day) => sum + day.total, 0);
     const out = unitsOut.rows.reduce((sum, row) => sum + row.units, 0);
-    const upcoming = (await loadOrders("o.status not in ('Completed', 'Cancelled') and o.event_date >= $1", [today]))
+    const openOrders = await loadOrders("o.status not in ('Completed', 'Cancelled')");
+    const upcoming = openOrders
+        .filter((order) => order.eventDate >= today)
         .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
         .slice(0, 6);
+
+    // Today's work: deliveries for today/tomorrow and rentals whose last day has passed.
+    const tomorrow = addDays(today, 1);
+    const lastDay = (order) => addDays(order.eventDate, Math.max(1, order.days) - 1);
+    const brief = (order) => ({
+        id: order.id, customer: order.customer.name, phone: order.customer.phone, place: [order.place, order.area].filter(Boolean).join(', '),
+        eventDate: order.eventDate, endDate: lastDay(order), status: order.status, deliveryStatus: order.deliveryStatus, driver: order.driver?.name || '',
+    });
+    const deliveries = openOrders
+        .filter((order) => order.deliveryRequired && order.deliveryStatus !== 'Delivered' && order.status !== 'New request' && order.eventDate <= tomorrow)
+        .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+        .map(brief);
+    const returns = openOrders
+        .filter((order) => ACTIVE_STATUSES.includes(order.status) && lastDay(order) <= today)
+        .sort((a, b) => lastDay(a).localeCompare(lastDay(b)))
+        .map(brief);
+    const { rows: statusRows } = await query('select status, count(*)::int as count from orders group by status');
+    const pipeline = ORDER_STATUSES.map((status) => ({ status, count: statusRows.find((row) => row.status === status)?.count || 0 }));
+    const eventsToday = openOrders.filter((order) => order.eventDate <= today && lastDay(order) >= today && order.status !== 'New request').length;
+
+    // Money figures are only for managers, like the Finance page.
+    let finance = null;
+    if (MANAGERS.includes(request.user.role)) {
+        const monthStart = `${today.slice(0, 7)}-01`;
+        const lastMonthEnd = addDays(monthStart, -1);
+        const lastMonthStart = `${lastMonthEnd.slice(0, 7)}-01`;
+        const money = async (start, end) => {
+            const [{ rows: [paid] }, { rows: [spent] }] = await Promise.all([
+                query(`select coalesce(sum(amount), 0) as collected, coalesce(sum(tithe_amount), 0) as tithe,
+                              coalesce(sum(giving_amount), 0) as giving, coalesce(sum(delivery_amount), 0) as delivery, count(*)::int as payments
+                         from payments where status = 'Paid' and paid_on between $1 and $2`, [start, end]),
+                query(`select coalesce(sum(amount), 0) as expenses from expenses where status = 'Approved' and spent_on between $1 and $2`, [start, end]),
+            ]);
+            return { ...paid, expenses: spent.expenses, net: paid.collected - paid.tithe - paid.giving - spent.expenses };
+        };
+        const [month, lastMonth, overdue, pending, recent] = await Promise.all([
+            money(monthStart, today),
+            money(lastMonthStart, lastMonthEnd),
+            query(`select count(*)::int as count, coalesce(sum(i.amount - coalesce(p.paid, 0)), 0) as amount
+                     from invoices i left join (select invoice_id, sum(amount) as paid from payments where status = 'Paid' group by invoice_id) p on p.invoice_id = i.id
+                    where i.status not in ('Paid', 'Cancelled') and i.due_on < $1`, [today]),
+            query(`select count(*)::int as count, coalesce(sum(amount), 0) as amount from expenses where status = 'Pending'`),
+            query(`${PAYMENT_SELECT} order by p.paid_on desc, p.id desc limit 5`),
+        ]);
+        const owing = openOrders.filter((order) => order.balance > 0);
+        finance = {
+            month, lastMonth,
+            outstanding: owing.reduce((sum, order) => sum + order.balance, 0),
+            owingOrders: owing.length,
+            overdueInvoices: overdue.rows[0],
+            pendingExpenses: pending.rows[0],
+            recentPayments: recent.rows.map(shapePayment),
+        };
+    }
 
     response.json({
         inventory: {
@@ -61,9 +119,13 @@ export async function getDashboard(request, response) {
             previous: previous.rows[0].total,
             change: previous.rows[0].total ? ((revenueTotal - previous.rows[0].total) / previous.rows[0].total) * 100 : null,
         },
-        orders: counts.rows[0],
+        orders: { ...counts.rows[0], unpriced: openOrders.filter((order) => !order.priced).length, eventsToday },
         upcoming,
         popular: popular.rows,
+        pipeline,
+        deliveries,
+        returns,
+        finance,
     });
 }
 
