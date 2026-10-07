@@ -1,7 +1,7 @@
 import { query, transaction } from '../config/db.js';
 import { createSession, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
 import { HttpError, cleanText, greetName, isIsoDate, isPhone, normalizePhone, personName, prettyPhone, todayIso } from '../utils/helpers.js';
-import { loadOrder, nextCode, smsDate, smsDays } from '../services/orders.service.js';
+import { MAX_ORDER_DAYS, loadOrder, nextCode, smsDate, smsDays } from '../services/orders.service.js';
 import { getSettings, sendTemplate } from '../services/settings.service.js';
 import { OTHER_AREA, isKnownArea } from '../services/areas.service.js';
 
@@ -37,7 +37,7 @@ function validateRequest(body) {
     if (value.area === OTHER_AREA && !value.place) errors.place = 'Tell us where the event is.';
     if (!isIsoDate(value.eventDate)) errors.eventDate = 'Choose the event date.';
     else if (value.eventDate < todayIso()) errors.eventDate = 'The event date cannot be in the past.';
-    if (!Number.isInteger(value.days) || value.days < 1 || value.days > 30) errors.days = 'Choose between 1 and 30 days.';
+    if (!Number.isInteger(value.days) || value.days < 1 || value.days > MAX_ORDER_DAYS) errors.days = `Choose between 1 and ${MAX_ORDER_DAYS} days.`;
 
     for (const raw of (Array.isArray(body.items) ? body.items : []).slice(0, 30)) {
         const quantity = Number(raw?.quantity);

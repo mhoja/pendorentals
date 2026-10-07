@@ -285,6 +285,15 @@ const migrations = [
             );
         `,
     },
+    {
+        id: 9,
+        name: 'longer rentals',
+        sql: `
+            -- Orders may run for up to a year (custom number of days).
+            alter table orders drop constraint if exists orders_days_check;
+            alter table orders add constraint orders_days_check check (days between 1 and 365);
+        `,
+    },
 ];
 
 export async function migrate() {

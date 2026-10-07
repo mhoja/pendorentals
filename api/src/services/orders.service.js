@@ -1,6 +1,9 @@
 import { query } from '../config/db.js';
 import { HttpError, cleanText, isIsoDate, isWhole, prettyPhone } from '../utils/helpers.js';
 
+// Longest rental an order may cover (matches the orders.days check in the database).
+export const MAX_ORDER_DAYS = 365;
+
 export const ORDER_STATUSES = ['New request', 'Confirmed', 'Ready for pickup', 'Out for delivery', 'Completed', 'Cancelled'];
 export const DELIVERY_STATUSES = ['Not needed', 'Scheduled', 'In transit', 'Delivered', 'Failed'];
 export const ACTIVE_STATUSES = ['Confirmed', 'Ready for pickup', 'Out for delivery'];
@@ -154,7 +157,7 @@ export function validateSchedule(body, { partial = false } = {}) {
     }
     if (!partial || body.days !== undefined) {
         const days = Number(body.days);
-        if (!isWhole(days, 1, 60)) throw new HttpError(400, 'Days must be between 1 and 60.', { fields: { days: 'Between 1 and 60 days.' } });
+        if (!isWhole(days, 1, MAX_ORDER_DAYS)) throw new HttpError(400, `Days must be between 1 and ${MAX_ORDER_DAYS}.`, { fields: { days: `Between 1 and ${MAX_ORDER_DAYS} days.` } });
         value.days = days;
     }
     return value;

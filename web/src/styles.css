@@ -11938,3 +11938,42 @@ button.ov-task:disabled {
     .ws-cols-dates.multi > :first-child { grid-column: 1 / -1; }
     .ws-cols-place { grid-template-columns: 1fr; }
 }
+
+/* Invoice viewers on phones: full-width sheet, toolbar scrolls away instead of covering the invoice */
+@media (max-width: 640px) {
+    .inv-view-frame { min-height: 0; }
+    .inv-view-bar,
+    .cust-invoice-bar { position: static; padding: 10px 12px; gap: 8px; }
+    .inv-view-sum { gap: 6px 12px; font-size: 12px; }
+    .inv-view-actions .button,
+    .cust-invoice-bar .button { height: 32px; padding: 0 10px; }
+    .cust-invoice-bar { font-size: 12px; }
+}
+
+/* Rent forms: custom number of days beside the day picker */
+.rent-days-custom { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .rent-days-custom { grid-template-columns: 1fr; } }
+
+/* Phones and tablets: behave like an app. Phones zoom into any field whose text is under 16px when it is
+   tapped, which enlarged the login form and pushed it off screen; 16px fields keep the page still. */
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+body {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+@media (pointer: coarse), (max-width: 760px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+    .auth-page {
+        min-height: 100dvh;
+        overflow-x: hidden;
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+}

@@ -1003,6 +1003,9 @@ const addDaysIso = (iso, count) => {
   date.setUTCDate(date.getUTCDate() + count);
   return date.toISOString().slice(0, 10);
 };
+// Longest order (matches the API); the day pickers list 1–30 and "Custom" opens a number field for more.
+const MAX_ORDER_DAYS = 365;
+const LISTED_DAYS = 30;
 const endDateIso = (iso, days) => (iso ? addDaysIso(iso, Math.max(1, Number(days) || 1) - 1) : "");
 const daysBetween = (start, end) => Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
 const formatDateRange = (iso, days) => {
@@ -1021,7 +1024,7 @@ function validateRentRequest(form) {
   else if (form.items.some((item) => item.name === "Other" && item.custom.trim().length < 2)) errors.items = "Tell us which item you need for “Other”.";
   if (!form.eventDate) errors.eventDate = "Choose the event date.";
   else if (form.eventDate < localTodayIso()) errors.eventDate = "The event date cannot be in the past.";
-  if (!(Number(form.days) >= 1 && Number(form.days) <= 30)) errors.days = "Between 1 and 30 days.";
+  if (!(Number.isInteger(Number(form.days)) && Number(form.days) >= 1 && Number(form.days) <= MAX_ORDER_DAYS)) errors.days = `Between 1 and ${MAX_ORDER_DAYS} days.`;
   if (!form.area) errors.area = "Choose your area.";
   if (form.area === "Other area" && !form.place.trim()) errors.place = "Tell us where the event is.";
   if (!form.firstName.trim()) errors.firstName = "Enter your first name.";
@@ -1136,21 +1139,53 @@ function RentItemsSection({ items, onItems, submitted, error }) {
 // Step 2 of a rental request: event date, days, area and venue.
 function RentWhenWhereFields({ form, update, invalid, show }) {
   const multiDay = Number(form.days) > 1;
+  const [customDays, setCustomDays] = useState(() => Number(form.days) > LISTED_DAYS);
   return (
     <fieldset className="rent-section">
       <legend><span>2</span> When &amp; where?</legend>
       <div className="auth-field-grid">
         <div className={`auth-field ${multiDay ? "rent-span" : ""}`}>
-          <label className={`auth-input auth-select ${invalid("days") ? "has-error" : ""}`}>
-            <Clock3 size={17} />
-            <span className="sr-only">Number of days</span>
-            <select value={form.days} onChange={(event) => update("days", event.target.value)} aria-invalid={invalid("days")}>
-              {Array.from({ length: 30 }, (_, index) => String(index + 1)).map((value) => (
-                <option key={value} value={value}>{value} day{value === "1" ? "" : "s"}</option>
-              ))}
-            </select>
-            <ChevronDown size={15} className="auth-select-caret" />
-          </label>
+          <div className={customDays ? "rent-days-custom" : undefined}>
+            <label className={`auth-input auth-select ${invalid("days") && !customDays ? "has-error" : ""}`}>
+              <Clock3 size={17} />
+              <span className="sr-only">Number of days</span>
+              <select
+                value={customDays ? "custom" : form.days}
+                onChange={(event) => {
+                  if (event.target.value === "custom") {
+                    setCustomDays(true);
+                    update("days", String(LISTED_DAYS + 1));
+                  } else {
+                    setCustomDays(false);
+                    update("days", event.target.value);
+                  }
+                }}
+                aria-invalid={invalid("days")}
+              >
+                {Array.from({ length: LISTED_DAYS }, (_, index) => String(index + 1)).map((value) => (
+                  <option key={value} value={value}>{value} day{value === "1" ? "" : "s"}</option>
+                ))}
+                <option value="custom">Custom (more than {LISTED_DAYS} days)…</option>
+              </select>
+              <ChevronDown size={15} className="auth-select-caret" />
+            </label>
+            {customDays && (
+              <label className={`auth-input rent-date ${invalid("days") ? "has-error" : ""}`}>
+                <Clock3 size={17} />
+                <span className="rent-date-label">Number of days</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_ORDER_DAYS}
+                  value={form.days}
+                  onChange={(event) => update("days", event.target.value.replace(/\D/g, "").slice(0, 3))}
+                  aria-invalid={invalid("days")}
+                  autoFocus
+                />
+              </label>
+            )}
+          </div>
           {show("days")}
         </div>
         <div className="auth-field">
@@ -1169,12 +1204,15 @@ function RentWhenWhereFields({ form, update, invalid, show }) {
               <input
                 type="date"
                 min={form.eventDate || localTodayIso()}
-                max={form.eventDate ? endDateIso(form.eventDate, 30) : undefined}
+                max={form.eventDate ? endDateIso(form.eventDate, MAX_ORDER_DAYS) : undefined}
                 value={endDateIso(form.eventDate, form.days)}
                 disabled={!form.eventDate}
                 onChange={(event) => {
                   const days = event.target.value && form.eventDate ? daysBetween(form.eventDate, event.target.value) : 0;
-                  if (days >= 1 && days <= 30) update("days", String(days));
+                  if (days >= 1 && days <= MAX_ORDER_DAYS) {
+                    setCustomDays(days > LISTED_DAYS);
+                    update("days", String(days));
+                  }
                 }}
               />
             </label>
@@ -1439,7 +1477,7 @@ function CustomerInvoice({ session, invoiceId, onClose }) {
               </span>
             </div>
             <iframe ref={frameRef} className="inv-view-frame" title={`Invoice ${detail.invoice.code}`} srcDoc={html}
-              onLoad={() => { const frame = frameRef.current; if (frame?.contentDocument?.body) frame.style.height = `${frame.contentDocument.documentElement.scrollHeight}px`; }} />
+              onLoad={() => fitFrameToContent(frameRef.current)} />
           </>
         )}
       </section>
@@ -3339,6 +3377,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
       else if (!isLocalMobile(form.newCustomer.phone)) errors.customer = "Enter the customer’s 9-digit phone number after +255.";
     }
     if (!form.eventDate) errors.eventDate = "Choose the event date.";
+    if (!(Number.isInteger(Number(form.days)) && Number(form.days) >= 1 && Number(form.days) <= MAX_ORDER_DAYS)) errors.days = `Days must be between 1 and ${MAX_ORDER_DAYS}.`;
     form.items.forEach((item, index) => {
       if (!item.inventoryItemId && (!item.isCustom || (item.custom || item.name).trim().length < 2)) errors[`item${index}`] = "Choose an item or type a name.";
       else if (!(Number(item.quantity) >= 1)) errors[`item${index}`] = "Enter a quantity.";
@@ -3435,7 +3474,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
           <section className="ws-order-card">
             <header className="ws-order-card-head"><h3><CalendarDays size={15} /> Event</h3></header>
             <div className={`ws-order-row ws-cols-dates ${days > 1 ? "multi" : ""}`}>
-              <label className="set-field"><span>Days</span><input type="number" min="1" max="60" value={form.days} onChange={(event) => set("days", event.target.value)} /></label>
+              <label className="set-field"><span>Days</span><input type="number" min="1" max={MAX_ORDER_DAYS} inputMode="numeric" value={form.days} onChange={(event) => set("days", event.target.value)} aria-invalid={Boolean(fieldErrors.days)} /></label>
               <label className="set-field"><span>{days > 1 ? "Start date" : "Event date"}</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /></label>
               {days > 1 && (
                 <label className="set-field">
@@ -3444,12 +3483,12 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
                     type="date"
                     value={endDateIso(form.eventDate, days)}
                     min={form.eventDate || undefined}
-                    max={form.eventDate ? endDateIso(form.eventDate, 60) : undefined}
+                    max={form.eventDate ? endDateIso(form.eventDate, MAX_ORDER_DAYS) : undefined}
                     disabled={!form.eventDate}
                     title={form.eventDate ? "" : "Choose the start date first"}
                     onChange={(event) => {
                       const count = event.target.value && form.eventDate ? daysBetween(form.eventDate, event.target.value) : 0;
-                      if (count >= 1 && count <= 60) set("days", String(count));
+                      if (count >= 1 && count <= MAX_ORDER_DAYS) set("days", String(count));
                     }}
                   />
                 </label>
@@ -3459,7 +3498,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
               <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option><AreaOptions current={form.area} /></select></label>
               <label className="set-field"><span>Venue / landmark</span><input value={form.place} maxLength={80} placeholder="e.g. Kayenze Primary School" onChange={(event) => set("place", event.target.value)} /></label>
             </div>
-            <FieldError message={fieldErrors.eventDate} />
+            <FieldError message={fieldErrors.eventDate || fieldErrors.days} />
           </section>
 
           <section className="ws-order-card">
@@ -4246,8 +4285,59 @@ const invoiceStyles = `
   .payments th { color: #8492a6; font-weight: 700; }
   .payments .num { text-align: right; }
   .foot { margin-top: 26px; padding-top: 12px; border-top: 1px dashed #c9d3e0; color: #6b7a90; font-size: 10.5px; text-align: center; }
+  .items .calc, .payments .meta { display: none; }
   @media print { .screen { padding: 0; background: #fff; } .screen .sheet { max-width: none; padding: 0; box-shadow: none; } }
+  /* Phones: one column, items and payments as stacked rows. Screen view only, printing keeps the A4 layout. */
+  @media screen and (max-width: 640px) {
+    .screen { padding: 10px; }
+    .screen .sheet { padding: 20px 16px; border-radius: 8px; }
+    .screen .top { flex-wrap: wrap; gap: 10px; padding-bottom: 14px; }
+    .screen .brand strong { font-size: 21px; }
+    .screen .title { text-align: left; }
+    .screen .title b { font-size: 18px; letter-spacing: 2px; }
+    .screen .title em { font-size: 13px; }
+    .screen .stamp { margin-top: 6px; }
+    .screen .parties { grid-template-columns: 1fr; gap: 14px; margin: 16px 0; }
+    .screen .parties p, .screen .facts { overflow-wrap: anywhere; }
+    .screen .facts dd { text-align: left; }
+    .screen .items thead, .screen .payments thead { display: none; }
+    .screen .items tr, .screen .payments tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 2px; border-bottom: 1px solid #edf1f6; }
+    .screen .items td, .screen .payments td { display: none; padding: 0; border: 0; }
+    .screen .items td.name, .screen .items td.amt, .screen .items td.calc, .screen .items td[colspan],
+    .screen .payments td.rcpt, .screen .payments td.amt, .screen .payments td.meta { display: block; }
+    .screen .items td.name, .screen .payments td.rcpt { font-weight: 700; overflow-wrap: anywhere; }
+    .screen .items td.amt, .screen .payments td.amt { font-weight: 700; text-align: right; }
+    .screen .items td.calc, .screen .payments td.meta { grid-column: 1 / -1; color: #6b7a90; font-size: 11px; }
+    .screen .items td[colspan] { grid-column: 1 / -1; }
+    .screen .summary { grid-template-columns: 1fr; gap: 0; margin-top: 8px; }
+    .screen .summary > div:last-child { order: -1; }
+    .screen .pay { grid-template-columns: 1fr; gap: 1px; }
+    .screen .pay dd { margin-bottom: 6px; overflow-wrap: anywhere; }
+    .screen .due strong { font-size: 16px; }
+  }
 `;
+
+// Sizes an invoice iframe to its content, and again whenever that content reflows (rotation, fonts loading).
+function fitFrameToContent(frame) {
+  const doc = frame?.contentDocument;
+  if (!doc?.body) return;
+  const fit = () => {
+    frame.style.height = "0px";
+    frame.style.height = `${doc.documentElement.scrollHeight}px`;
+  };
+  fit();
+  if (frame.fitObserver) frame.fitObserver.disconnect();
+  if (typeof ResizeObserver === "function") {
+    let lastWidth = frame.clientWidth;
+    frame.fitObserver = new ResizeObserver(() => {
+      if (frame.clientWidth === lastWidth) return;
+      lastWidth = frame.clientWidth;
+      fit();
+    });
+    frame.fitObserver.observe(frame);
+  }
+  doc.fonts?.ready.then(fit).catch(() => {});
+}
 
 function invoiceHtml(detail, settings, { screen = false } = {}) {
   const c = invoiceContent(detail, settings);
@@ -4281,7 +4371,7 @@ function invoiceHtml(detail, settings, { screen = false } = {}) {
   </section>
   <table class="items">
     <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Rate / day</th><th class="num">Days</th><th class="num">Amount</th></tr></thead>
-    <tbody>${c.items.length ? c.items.map((item) => `<tr><td class="muted">${item.no}</td><td>${escapeHtml(item.name)}</td><td class="num">${item.quantity.toLocaleString("en-US")}</td><td class="num">${money(item.rate)}</td><td class="num">${item.days}</td><td class="num">${money(item.amount)}</td></tr>`).join("") : `<tr><td colspan="6" class="muted">Rental services for ${escapeHtml(invoice.orderCode || "this booking")}</td></tr>`}</tbody>
+    <tbody>${c.items.length ? c.items.map((item) => `<tr><td class="muted">${item.no}</td><td class="name">${escapeHtml(item.name)}</td><td class="num">${item.quantity.toLocaleString("en-US")}</td><td class="num">${money(item.rate)}</td><td class="num">${item.days}</td><td class="num amt">${money(item.amount)}</td><td class="calc">${item.quantity.toLocaleString("en-US")} × ${money(item.rate)} / day × ${item.days} day${item.days === 1 ? "" : "s"}</td></tr>`).join("") : `<tr><td colspan="6" class="muted">Rental services for ${escapeHtml(invoice.orderCode || "this booking")}</td></tr>`}</tbody>
   </table>
   <section class="summary">
     <div>
@@ -4298,7 +4388,7 @@ function invoiceHtml(detail, settings, { screen = false } = {}) {
       <div class="due ${invoice.balance > 0 ? "" : "settled"}"><span>${invoice.status === "Cancelled" ? "Cancelled" : invoice.balance > 0 ? "Balance due" : "Paid in full"}</span><strong>${money(invoice.status === "Cancelled" ? 0 : invoice.balance)}</strong></div>
     </div>
   </section>
-  ${c.payments.length ? `<div class="block"><h4>Payments received</h4><table class="payments"><thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th>Status</th><th class="num">Amount</th></tr></thead><tbody>${c.payments.map((payment) => `<tr><td>${escapeHtml(payment.receipt)}</td><td>${escapeHtml(shortDate(payment.date))}</td><td>${escapeHtml(payment.method)}</td><td>${escapeHtml(payment.status)}</td><td class="num">${money(payment.amount)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  ${c.payments.length ? `<div class="block"><h4>Payments received</h4><table class="payments"><thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th>Status</th><th class="num">Amount</th></tr></thead><tbody>${c.payments.map((payment) => `<tr><td class="rcpt">${escapeHtml(payment.receipt)}</td><td>${escapeHtml(shortDate(payment.date))}</td><td>${escapeHtml(payment.method)}</td><td>${escapeHtml(payment.status)}</td><td class="num amt">${money(payment.amount)}</td><td class="meta">${escapeHtml(shortDate(payment.date))} · ${escapeHtml(payment.method)} · ${escapeHtml(payment.status)}</td></tr>`).join("")}</tbody></table></div>` : ""}
   <div class="foot">Thank you for renting with ${escapeHtml(c.business.name)}. Questions? Call ${escapeHtml(c.business.phone)}.</div>
 </div></body></html>`;
 }
@@ -4459,10 +4549,7 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
   const html = useMemo(() => (data ? invoiceHtml(data, settings, { screen: true }) : ""), [data, settings]);
   const refresh = () => { setVersion((value) => value + 1); onChanged?.(); };
 
-  function fitFrame() {
-    const frame = frameRef.current;
-    if (frame?.contentDocument?.body) frame.style.height = `${frame.contentDocument.documentElement.scrollHeight}px`;
-  }
+  const fitFrame = () => fitFrameToContent(frameRef.current);
 
   async function act(name, work) {
     setBusy(name);
