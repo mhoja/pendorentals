@@ -128,6 +128,9 @@ export const smsText = (text) => String(text)
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/…/g, '...')
+    // "@" arrives as "!" through the gateway; spell it out instead.
+    .replace(/@/g, ' at ')
+    .replace(/ {2,}/g, ' ')
     .replace(/[ \t]+\n/g, '\n');
 
 // Sends and records every SMS in sms_log. Never throws.

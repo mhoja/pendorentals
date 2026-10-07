@@ -164,8 +164,8 @@ export function validateSchedule(body, { partial = false } = {}) {
 // delivery, discount and the total. Lines are dropped (with "+N more") to stay within `budget` characters.
 const smsNumber = (value) => Number(value || 0).toLocaleString('en-US');
 const SMS_WORDS = {
-    en: { items: 'Items', confirm: '(price to confirm)', days: (n) => ` x${n}d`, delivery: 'Delivery', discount: 'Discount', total: 'Total', tbc: 'Total: to be confirmed', more: (n) => `+${n} more item${n === 1 ? '' : 's'}` },
-    sw: { items: 'Vifaa', confirm: '(bei itathibitishwa)', days: (n) => ` x siku ${n}`, delivery: 'Usafiri', discount: 'Punguzo', total: 'Jumla', tbc: 'Jumla: itathibitishwa', more: (n) => `+vifaa ${n} zaidi` },
+    en: { items: 'Items', perDay: 'day', confirm: '(price to confirm)', days: (n) => ` x${n}d`, delivery: 'Delivery', discount: 'Discount', total: 'Total', tbc: 'Total: to be confirmed', more: (n) => `+${n} more item${n === 1 ? '' : 's'}` },
+    sw: { items: 'Vifaa', perDay: 'siku', confirm: '(bei itathibitishwa)', days: (n) => ` x siku ${n}`, delivery: 'Usafiri', discount: 'Punguzo', total: 'Jumla', tbc: 'Jumla: itathibitishwa', more: (n) => `+vifaa ${n} zaidi` },
 };
 export function smsItems(order, { prices = true, budget = 320, lang = 'en' } = {}) {
     const words = SMS_WORDS[lang] || SMS_WORDS.en;
@@ -174,7 +174,8 @@ export function smsItems(order, { prices = true, budget = 320, lang = 'en' } = {
         const name = item.custom || item.name;
         if (!prices) return `- ${name} x${item.quantity}`;
         if (item.rate === null || item.rate === undefined) return `- ${name} x${item.quantity} ${words.confirm}`;
-        return `- ${name} x${item.quantity} @${smsNumber(item.rate)}${days > 1 ? words.days(days) : ''} = ${smsNumber(item.lineTotal)}`;
+        // No "@": SMS gateways turn it into "!". The price per day goes in brackets instead.
+        return `- ${name} x${item.quantity} (${smsNumber(item.rate)}/${words.perDay})${days > 1 ? words.days(days) : ''} = ${smsNumber(item.lineTotal)}`;
     });
     const tail = [];
     if (prices) {
