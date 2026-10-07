@@ -419,6 +419,14 @@ const reportDefinitions = [
     desc: "Rental utilization, availability and revenue per item.",
     tag: "INVENTORY",
     currencyInHeader: true,
+    // The period filter uses order event dates: booked units and revenue are recounted for the period.
+    dateLabel: "Event date",
+    periodRows: (rows, from, to) => (from || to
+      ? rows.map((row) => {
+        const inPeriod = (row.bookings || []).filter((booking) => (!from || booking.date >= from) && (!to || booking.date <= to));
+        return { ...row, booked: inPeriod.reduce((sum, booking) => sum + booking.units, 0), revenue: inPeriod.reduce((sum, booking) => sum + booking.revenue, 0) };
+      })
+      : rows),
     rows: [],
     rowKey: "sku",
     labelKey: "name",
@@ -436,6 +444,7 @@ const reportDefinitions = [
       { key: "quantity", label: "QTY", type: "number", total: true },
       { key: "rented", label: "OUT TODAY", type: "number", total: true },
       { key: "utilization", label: "UTILIZATION", type: "percent" },
+      { key: "booked", label: "BOOKED", type: "number", total: true },
       { key: "status", label: "STATUS", type: "status" },
       { key: "revenue", label: "REVENUE", type: "money", total: true },
     ],
@@ -454,7 +463,7 @@ const reportDefinitions = [
         { label: "Units in stock", value: quantity.toLocaleString("en-US"), hint: `${rows.length} item${rows.length === 1 ? "" : "s"}${inMaintenance ? ` · ${inMaintenance.toLocaleString("en-US")} in maintenance` : ""}` },
         { label: "Out on orders today", value: rented.toLocaleString("en-US"), hint: `${available.toLocaleString("en-US")} available now` },
         { label: "Utilization", value: `${quantity ? Math.round((rented / quantity) * 100) : 0}%`, hint: overbooked ? `${overbooked} item${overbooked === 1 ? "" : "s"} overbooked` : "out today / in stock", tone: overbooked ? "negative" : "" },
-        { label: "Rental revenue", value: formatTSh(sumBy(rows, "revenue")), hint: "booked, all time" },
+        { label: "Rental revenue", value: formatTSh(sumBy(rows, "revenue")), hint: `${sumBy(rows, "booked").toLocaleString("en-US")} units booked in period` },
       ];
     },
   },
@@ -5077,10 +5086,13 @@ function ReportDetail({ report, onBack, onSwitch }) {
   }, [exportOpen]);
 
   const [from, to] = getPeriodRange(period, customFrom, customTo);
+  // Reports without a date per row (e.g. items) recount their figures for the chosen period instead.
+  const hasPeriod = Boolean(report.dateKey || report.periodRows);
+  const baseRows = report.periodRows ? report.periodRows(report.rows, from, to) : report.rows;
   const filterOptions = Object.fromEntries(
     report.filters.map((filter) => [filter.key, [...new Set(report.rows.map((row) => row[filter.key]))].sort()]),
   );
-  const filteredRows = report.rows.filter((row) => {
+  const filteredRows = baseRows.filter((row) => {
     const text = report.searchKeys.map((key) => row[key]).join(" ").toLowerCase();
     if (query && !text.includes(query.toLowerCase())) return false;
     if (report.dateKey && from && row[report.dateKey] < from) return false;
@@ -5101,7 +5113,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
 
   const activeFilters = [
     query && `Search: “${query}”`,
-    report.dateKey && period !== defaultPeriod && (period === "Custom range"
+    hasPeriod && period !== defaultPeriod && (period === "Custom range"
       ? `${report.dateLabel || "Date"}: ${from ? formatReportDate(from) : "start"} – ${to ? formatReportDate(to) : "today"}`
       : `${report.dateLabel || "Period"}: ${period}`),
     ...report.filters.filter((filter) => selections[filter.key] !== "All").map((filter) => `${filter.label}: ${selections[filter.key]}`),
@@ -5289,7 +5301,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
               aria-label="Search report"
             />
           </label>
-          {report.dateKey && (
+          {hasPeriod && (
             <label className="report-filter-field">
               <span>{report.dateLabel || "Period"}</span>
               <select value={period} onChange={(event) => setPeriod(event.target.value)}>
@@ -5297,7 +5309,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
               </select>
             </label>
           )}
-          {report.dateKey && period === "Custom range" && (
+          {hasPeriod && period === "Custom range" && (
             <>
               <label className="report-filter-field">
                 <span>From</span>

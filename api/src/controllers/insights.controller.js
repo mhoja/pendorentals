@@ -148,20 +148,24 @@ export async function getReport(request, response) {
         return;
     }
     if (id === 'inventory') {
-        const [{ rows: items }, { rows: out }, { rows: earned }] = await Promise.all([
+        const [{ rows: items }, { rows: out }, { rows: booked }] = await Promise.all([
             query('select * from inventory_items order by name'),
             query(UNITS_OUT_SQL, [ACTIVE_STATUSES, todayIso()]),
-            query(`select oi.inventory_item_id, sum(coalesce(oi.rate, 0) * oi.quantity * o.days) as revenue
+            // Each booking line with its event date, so the web app can filter revenue by period.
+            query(`select oi.inventory_item_id, o.event_date as date, oi.quantity as units,
+                          coalesce(oi.rate, 0) * oi.quantity * o.days as revenue
                      from order_items oi join orders o on o.id = oi.order_id
-                    where oi.inventory_item_id is not null and o.status <> 'Cancelled' and o.status <> 'New request'
-                    group by oi.inventory_item_id`),
+                    where oi.inventory_item_id is not null and o.status <> 'Cancelled' and o.status <> 'New request'`),
         ]);
         response.json({ rows: items.map((item) => {
             const rented = out.find((row) => row.inventory_item_id === item.id)?.units || 0;
+            const bookings = booked.filter((row) => row.inventory_item_id === item.id).map(({ date, units, revenue }) => ({ date, units, revenue }));
             return {
                 id: item.id, name: item.name, category: item.category, sku: item.sku, quantity: item.quantity, rented,
                 utilization: item.quantity ? Math.round((rented / item.quantity) * 100) : 0,
-                revenue: earned.find((row) => row.inventory_item_id === item.id)?.revenue || 0, status: item.status,
+                booked: bookings.reduce((sum, row) => sum + row.units, 0),
+                revenue: bookings.reduce((sum, row) => sum + row.revenue, 0),
+                bookings, status: item.status,
             };
         }) });
         return;
