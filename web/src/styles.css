@@ -12475,3 +12475,25 @@ body {
 .cust-profile-menu > button:not(.danger) svg { color: #263750 !important; }
 .cust-profile-menu > button.danger,
 .cust-profile-menu > button.danger svg { color: #c8423a !important; }
+
+/* Phones: the tent photo fills only the round shape in the banner's top-right corner */
+@media (max-width: 760px) {
+    .cust-hero::after {
+        right: -46px;
+        top: -58px;
+        width: 168px;
+        height: 168px;
+        border: 4px solid #ffffff;
+        background: url("./assets/tent-scene.jpeg") 30% 60% / cover no-repeat;
+        box-shadow: 0 8px 22px #1d4ed82e;
+    }
+    .cust-hero-date,
+    .cust-hero h1 { padding-right: 104px; }
+    .cust-hero p { padding-right: 64px; }
+}
+@media (max-width: 760px) {
+    .cust-hero::after { right: -38px; top: -42px; width: 134px; height: 134px; border-width: 3px; }
+    .cust-hero-date,
+    .cust-hero h1,
+    .cust-hero p { padding-right: 92px; }
+}
