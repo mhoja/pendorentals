@@ -11133,3 +11133,104 @@ button.ov-task:disabled {
 .sms-more:hover {
     text-decoration: underline;
 }
+
+/* SMS templates: language choice and English / Kiswahili pairs */
+.sms-lang {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #e3eaf3;
+    border-radius: 12px;
+    background: #f8fafd;
+}
+
+.sms-lang>strong {
+    flex-basis: 100%;
+    color: #172a45;
+    font-size: 12.5px;
+}
+
+.sms-lang button {
+    flex: 1 1 180px;
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1.5px solid #dbe4f0;
+    border-radius: 10px;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sms-lang button span {
+    color: #172a45;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sms-lang button small {
+    color: #7a8799;
+    font-size: 11px;
+}
+
+.sms-lang button.active {
+    border-color: #1764dd;
+    background: #eef5ff;
+}
+
+.sms-lang button.active span {
+    color: #1764dd;
+}
+
+.sms-template {
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #edf1f6;
+}
+
+.sms-template-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.sms-template-head strong {
+    color: #172a45;
+    font-size: 13px;
+}
+
+.sms-template-head em {
+    color: #8592a6;
+    font-size: 11.5px;
+    font-style: normal;
+}
+
+.sms-template-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.sms-template-pair .set-field>span em {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #eef2f7;
+    color: #8592a6;
+    font-size: 10px;
+    font-style: normal;
+}
+
+.sms-unused textarea {
+    opacity: .6;
+}
+
+@media (max-width: 760px) {
+    .sms-template-pair {
+        grid-template-columns: 1fr;
+    }
+}

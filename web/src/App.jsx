@@ -4485,11 +4485,19 @@ function FinancePage({ query, session }) {
 
 // ===== SMS & notifications =====
 const TEMPLATE_INFO = {
+  bookingCreated: ["Booking created", "Sent when staff create an order for a customer."],
+  requestReceived: ["Rent Now request received", "Sent when a customer sends a Rent Now request."],
   bookingConfirmed: ["Booking confirmed", "Sent when an order is marked Confirmed."],
   outForDelivery: ["Out for delivery", "Sent when an order is marked Out for delivery."],
   completed: ["Thank you", "Sent when an order is marked Completed."],
   paymentReceived: ["Payment receipt", "Sent when you record a payment."],
+  invoiceSent: ["Invoice", "Sent when you send an invoice by SMS."],
 };
+const SMS_LANGUAGES = [
+  ["en", "English", "Every SMS in English"],
+  ["sw", "Kiswahili", "Every SMS in Kiswahili"],
+  ["both", "Both", "Two SMS: Kiswahili, then English (uses twice the credits)"],
+];
 
 // Full SMS text with its line breaks; long ones open with "View more".
 function SmsMessageCell({ text }) {
@@ -4517,7 +4525,10 @@ function MessagingPage({ session, settingsResource }) {
   const [toast, setToast] = useToast();
   const stats = messages.data?.stats;
   const list = messages.data?.messages || [];
-  const currentTemplates = templates || settingsResource.data?.settings?.smsTemplates || {};
+  // Draft of { en, sw, language }; null until something is edited.
+  const saved = settingsResource.data?.settings || {};
+  const currentTemplates = templates || { en: saved.smsTemplates || {}, sw: saved.smsTemplatesSw || {}, language: saved.smsLanguage || "en" };
+  const editTemplate = (lang, key, value) => setTemplates({ ...currentTemplates, [lang]: { ...currentTemplates[lang], [key]: value } });
   const admin = session.staffRole === "Admin";
   const [ask, confirmDialog] = useConfirm();
   const [search, setSearch] = useState("");
@@ -4580,7 +4591,7 @@ function MessagingPage({ session, settingsResource }) {
   async function saveTemplates() {
     setSaving(true);
     try {
-      const data = await call("/settings", { method: "PUT", body: { settings: { smsTemplates: currentTemplates } } });
+      const data = await call("/settings", { method: "PUT", body: { settings: { smsTemplates: currentTemplates.en, smsTemplatesSw: currentTemplates.sw, smsLanguage: currentTemplates.language } } });
       settingsResource.setData((current) => ({ ...current, settings: data.settings }));
       setTemplates(null);
       setToast("Templates saved");
@@ -4677,12 +4688,30 @@ function MessagingPage({ session, settingsResource }) {
           </>
         ) : (
           <div className="ws-templates">
-            <p className="team-muted">Use placeholders: {"{firstName} {order} {date} {items} {itemList} {total} {paid} {balance} {place} {amount} {receipt} {phone}"}. {"{items}"} lists every item with quantity, price per day, days and line total, then delivery, discount and the total; {"{itemList}"} lists items and quantities only. Turn each message on or off in Settings → Notifications.</p>
+            <p className="team-muted">Use placeholders: {"{firstName} {business} {order} {date} {days} {items} {itemList} {total} {paid} {balance} {place} {amount} {receipt} {invoice} {due} {login} {priceNote} {phone}"}. {"{items}"} lists every item with quantity, price per day, days and line total, then delivery, discount and the total; {"{itemList}"} lists items and quantities only. Turn each message on or off in Settings → Notifications.</p>
+            <div className="sms-lang" role="radiogroup" aria-label="SMS language">
+              <strong>Send customer SMS in</strong>
+              {SMS_LANGUAGES.map(([value, label, hint]) => (
+                <button key={value} type="button" role="radio" aria-checked={currentTemplates.language === value} className={currentTemplates.language === value ? "active" : ""} disabled={!admin} onClick={() => setTemplates({ ...currentTemplates, language: value })}>
+                  <span>{label}</span><small>{hint}</small>
+                </button>
+              ))}
+            </div>
             {Object.entries(TEMPLATE_INFO).map(([key, [title, help]]) => (
-              <label className="set-field" key={key}>
-                <span>{title} <em>{help}</em></span>
-                <textarea className="ws-textarea" rows="3" maxLength={480} value={currentTemplates[key] || ""} readOnly={!admin} onChange={(event) => setTemplates({ ...currentTemplates, [key]: event.target.value })} />
-              </label>
+              <div className="sms-template" key={key}>
+                <div className="sms-template-head"><strong>{title}</strong><em>{help}</em></div>
+                <div className="sms-template-pair">
+                  {[["en", "English"], ["sw", "Kiswahili"]].map(([lang, label]) => {
+                    const used = currentTemplates.language === "both" || currentTemplates.language === lang;
+                    return (
+                      <label className={`set-field ${used ? "" : "sms-unused"}`} key={lang}>
+                        <span>{label}{!used && <em>not sent</em>}</span>
+                        <textarea className="ws-textarea" rows="4" maxLength={480} value={currentTemplates[lang]?.[key] || ""} readOnly={!admin} onChange={(event) => editTemplate(lang, key, event.target.value)} />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
             {admin ? (
               <div className="modal-actions"><button className="button button-primary" onClick={saveTemplates} disabled={saving || !templates}>{saving ? "Saving…" : <><Save size={15} /> Save templates</>}</button></div>

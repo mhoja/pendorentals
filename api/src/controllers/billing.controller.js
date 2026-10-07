@@ -1,8 +1,7 @@
 import { query, transaction } from '../config/db.js';
 import { HttpError, addDays, cleanText, formatDate, formatTSh, greetName, isIsoDate, isWhole, prettyPhone, todayIso } from '../utils/helpers.js';
-import { loadOrder, nextCode, smsItems } from '../services/orders.service.js';
-import { enabledPaymentMethods, fillTemplate, getSettings } from '../services/settings.service.js';
-import { sendSms } from '../services/sms.service.js';
+import { loadOrder, nextCode, smsDate, smsItems } from '../services/orders.service.js';
+import { enabledPaymentMethods, getSettings, sendTemplate } from '../services/settings.service.js';
 import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
 
 async function refreshInvoiceStatus(db, invoiceId) {
@@ -87,26 +86,39 @@ export async function sendInvoice(request, response) {
     if (invoice.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
     const settings = await getSettings();
     const { rows: [person] } = await query('select first_name, phone from customers where id = $1', [invoice.customerId]);
-    const mobileText = (method) => {
-        const lipa = method.payTo !== 'phone' && method.number ? `Lipa ${method.number}` : '';
-        const phone = method.payTo !== 'lipa' && method.phone ? `to ${method.phone}` : '';
-        return [lipa, phone].filter(Boolean).join(' or ');
+    const howToPay = (lang) => {
+        const or = lang === 'sw' ? ' au ' : ' or ';
+        const to = lang === 'sw' ? 'kwa' : 'to';
+        return enabledPaymentMethods(settings)
+            .map((method) => {
+                if (method.type !== 'mobile') return method.number ? `${method.provider || method.name} ${method.number}` : '';
+                const ways = [
+                    method.payTo !== 'phone' && method.number ? `Lipa ${method.number}` : '',
+                    method.payTo !== 'lipa' && method.phone ? `${to} ${method.phone}` : '',
+                ].filter(Boolean).join(or);
+                return ways ? `${method.name} ${ways}` : '';
+            })
+            .filter(Boolean)
+            .join(', ');
     };
-    const howToPay = enabledPaymentMethods(settings)
-        .map((method) => {
-            if (method.type === 'mobile') return mobileText(method) ? `${method.name} ${mobileText(method)}` : '';
-            return method.number ? `${method.provider || method.name} ${method.number}` : '';
-        })
-        .filter(Boolean)
-        .join(', ');
-    const amountText = invoice.balance > 0
-        ? `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${howToPay ? ` Pay via ${howToPay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`
-        : 'Fully paid - asante!';
+    const due = (lang) => {
+        const pay = howToPay(lang);
+        if (invoice.balance <= 0) return lang === 'sw' ? 'Imelipwa yote - asante!' : 'Fully paid - asante!';
+        if (lang === 'sw') return `Salio ${formatTSh(invoice.balance)} kabla ya ${smsDate(invoice.dueOn, 'sw')}.${pay ? ` Lipa kupitia ${pay}, kumbukumbu ${invoice.code}.` : ` Taja ${invoice.code} unapolipa.`}`;
+        return `Balance due ${formatTSh(invoice.balance)} by ${formatDate(invoice.dueOn)}.${pay ? ` Pay via ${pay}, ref ${invoice.code}.` : ` Quote ${invoice.code} when paying.`}`;
+    };
     const invoiceOrder = invoice.orderCode ? await loadOrder(invoice.orderCode) : null;
-    const itemsBlock = invoiceOrder ? `\n${smsItems(invoiceOrder, { budget: 260 })}\n` : ' ';
-    const message = `Hi ${greetName(person.first_name)}, ${settings.businessName} invoice ${invoice.code}${invoice.orderCode ? ` for ${invoice.orderCode}` : ''}.${itemsBlock}Invoice total ${formatTSh(invoice.amount)}, paid ${formatTSh(invoice.paid)}. ${amountText} Help: ${settings.phone}`;
-    const sms = await sendSms(person.phone, message, { kind: 'invoice', orderId: null });
-    response.json({ sms: { status: sms.status, error: sms.error }, message });
+    const sms = await sendTemplate(settings, 'invoiceSent', person.phone, (lang) => ({
+        firstName: greetName(person.first_name),
+        invoice: invoice.code,
+        order: invoice.orderCode || '-',
+        items: invoiceOrder ? smsItems(invoiceOrder, { budget: 260, lang }) : '',
+        amount: formatTSh(invoice.amount),
+        paid: formatTSh(invoice.paid),
+        due: due(lang),
+        phone: settings.phone,
+    }), { kind: 'invoice', orderId: invoiceOrder?.dbId || null });
+    response.json({ sms: { status: sms.status, error: sms.error } });
 }
 
 // PATCH /api/invoices/:id
@@ -197,18 +209,18 @@ export async function recordPayment(request, response) {
     if (body.notifyCustomer !== false) {
         const code = orderId ? (await query('select code from orders where id = $1', [orderId])).rows[0]?.code : null;
         const paidOrder = code ? await loadOrder(code) : null;
-        const message = fillTemplate(settings.smsTemplates.paymentReceived, {
+        sms = await sendTemplate(settings, 'paymentReceived', row.phone, (lang) => ({
             firstName: greetName(row.first_name),
             amount: formatTSh(amount),
             order: code || payment.invoice,
             receipt: payment.receipt,
             balance: paidOrder?.balance === null || !paidOrder ? '-' : formatTSh(paidOrder.balance),
             paid: paidOrder ? formatTSh(paidOrder.paid) : formatTSh(amount),
-            items: paidOrder ? smsItems(paidOrder, { budget: 280 }) : '',
-            itemList: paidOrder ? smsItems(paidOrder, { prices: false, budget: 200 }) : '',
-            total: paidOrder?.total === null || !paidOrder ? 'to be confirmed' : formatTSh(paidOrder.total),
-        });
-        sms = await sendSms(row.phone, message, { kind: 'payment', orderId });
+            items: paidOrder ? smsItems(paidOrder, { budget: 280, lang }) : '',
+            itemList: paidOrder ? smsItems(paidOrder, { prices: false, budget: 200, lang }) : '',
+            total: paidOrder?.total === null || !paidOrder ? (lang === 'sw' ? 'itathibitishwa' : 'to be confirmed') : formatTSh(paidOrder.total),
+            phone: settings.phone,
+        }), { kind: 'payment', orderId });
     }
     response.status(201).json({ payment, sms: sms && { status: sms.status } });
 }

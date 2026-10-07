@@ -1,10 +1,9 @@
 import { query, transaction } from '../config/db.js';
 import { createSession, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, formatDate, greetName, isIsoDate, isPhone, normalizePhone, personName, prettyPhone, todayIso } from '../utils/helpers.js';
-import { loadOrder, nextCode } from '../services/orders.service.js';
-import { getSettings } from '../services/settings.service.js';
+import { HttpError, cleanText, greetName, isIsoDate, isPhone, normalizePhone, personName, prettyPhone, todayIso } from '../utils/helpers.js';
+import { loadOrder, nextCode, smsDate, smsDays } from '../services/orders.service.js';
+import { getSettings, sendTemplate } from '../services/settings.service.js';
 import { OTHER_AREA, isKnownArea } from '../services/areas.service.js';
-import { sendSms } from '../services/sms.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
 
@@ -114,12 +113,19 @@ export async function createRentalRequest(request, response) {
 
     const settings = await getSettings();
     const place = value.place ? `${value.place}, ${value.area}` : value.area;
-    const login = temporaryPassword
-        ? `Track it at ${publicUrl} - Username: ${value.phone}, Password: ${temporaryPassword}.`
-        : `Track it at ${publicUrl} with your phone number.`;
-    const message = `Hi ${greetName(value.firstName)}, thank you for choosing ${settings.businessName}! We received your request ${orderCode}:\n${itemsSummary(value.items)}\nEvent: ${formatDate(value.eventDate)} (${value.days} day${value.days === 1 ? '' : 's'}) at ${place}. We will call you to confirm the price.\n${login} Help: ${settings.phone}`;
     const order = await loadOrder(orderCode);
-    const sms = await sendSms(value.phone, message, { kind: 'rental_request', orderId: order.dbId });
+    const sms = await sendTemplate(settings, 'requestReceived', value.phone, (lang) => ({
+        firstName: greetName(value.firstName),
+        order: orderCode,
+        itemList: itemsSummary(value.items),
+        date: smsDate(value.eventDate, lang),
+        days: smsDays(value.days, lang),
+        place,
+        login: lang === 'sw'
+            ? (temporaryPassword ? `\nFuatilia: ${publicUrl} - Namba: ${value.phone}, Nenosiri: ${temporaryPassword}.` : `\nFuatilia: ${publicUrl} kwa namba yako ya simu.`)
+            : (temporaryPassword ? `\nTrack it at ${publicUrl} - Username: ${value.phone}, Password: ${temporaryPassword}.` : `\nTrack it at ${publicUrl} with your phone number.`),
+        phone: settings.phone,
+    }), { kind: 'rental_request', orderId: order.dbId });
 
     response.status(201).json({
         order: { ...order, sms: sms.status },

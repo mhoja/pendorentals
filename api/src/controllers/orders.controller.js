@@ -1,9 +1,8 @@
 import { query, transaction } from '../config/db.js';
 import { MANAGERS, hashPassword, newTemporaryPassword } from '../services/auth.service.js';
-import { HttpError, cleanText, formatDate, formatTSh, greetName, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
-import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, smsItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
-import { fillTemplate, getSettings } from '../services/settings.service.js';
-import { sendSms } from '../services/sms.service.js';
+import { HttpError, cleanText, formatTSh, greetName, isPhone, isWhole, normalizePhone, personName } from '../utils/helpers.js';
+import { DELIVERY_STATUSES, ORDER_STATUSES, loadOrder, loadOrders, nextCode, replaceOrderItems, smsDate, smsDays, smsItems, validateOrderItems, validateSchedule } from '../services/orders.service.js';
+import { getSettings, sendTemplate } from '../services/settings.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
 
@@ -120,9 +119,18 @@ export async function createOrder(request, response) {
     let sms = null;
     if (body.notifyCustomer !== false) {
         const settings = await getSettings();
-        const login = temporaryPassword ? ` Track it at ${publicUrl} - Username: ${customer.phone}, Password: ${temporaryPassword}.` : '';
-        const priceNote = order.total === null ? '\nWe will confirm the price shortly.' : '';
-        sms = await sendSms(customer.phone, `Hi ${greetName(customer.first_name)}, ${settings.businessName} has created your booking ${code} for ${formatDate(order.eventDate)} (${order.days} day${order.days === 1 ? '' : 's'}).\n${smsItems(order, { budget: login ? 260 : 360 })}${priceNote}${login ? `\n${login.trim()}` : ''}\nHelp: ${settings.phone}`, { kind: 'order_created', orderId: order.dbId });
+        sms = await sendTemplate(settings, 'bookingCreated', customer.phone, (lang) => ({
+            firstName: greetName(customer.first_name),
+            order: code,
+            date: smsDate(order.eventDate, lang),
+            days: smsDays(order.days, lang),
+            items: smsItems(order, { budget: temporaryPassword ? 260 : 360, lang }),
+            priceNote: order.total !== null ? '' : lang === 'sw' ? '\nTutathibitisha bei hivi karibuni.' : '\nWe will confirm the price shortly.',
+            login: !temporaryPassword ? '' : lang === 'sw'
+                ? `\nFuatilia: ${publicUrl} - Namba: ${customer.phone}, Nenosiri: ${temporaryPassword}.`
+                : `\nTrack it at ${publicUrl} - Username: ${customer.phone}, Password: ${temporaryPassword}.`,
+            phone: settings.phone,
+        }), { kind: 'order_created', orderId: order.dbId });
     }
     response.status(201).json({ order, sms: sms && { status: sms.status }, temporaryPassword: temporaryPassword && sms?.status !== 'sent' ? temporaryPassword : undefined });
 }
@@ -165,19 +173,20 @@ export async function updateOrder(request, response) {
         const templateKey = { Confirmed: 'bookingConfirmed', 'Out for delivery': 'outForDelivery', Completed: 'completed' }[value.status];
         const enabled = { Confirmed: settings.customerConfirm, 'Out for delivery': settings.customerDelivery, Completed: settings.customerThanks }[value.status];
         if (templateKey && enabled) {
-            const message = fillTemplate(settings.smsTemplates[templateKey], {
+            const tbc = (lang) => (lang === 'sw' ? 'itathibitishwa' : 'to be confirmed');
+            sms = await sendTemplate(settings, templateKey, order.customerPhone, (lang) => ({
                 firstName: greetName(order.customer.firstName),
                 order: order.id,
-                date: formatDate(order.eventDate),
-                total: order.total === null ? 'to be confirmed' : formatTSh(order.total),
-                place: order.place ? `${order.place}, ${order.area}` : order.area || 'your venue',
+                date: smsDate(order.eventDate, lang),
+                days: smsDays(order.days, lang),
+                total: order.total === null ? tbc(lang) : formatTSh(order.total),
+                place: order.place ? `${order.place}, ${order.area}` : order.area || (lang === 'sw' ? 'ukumbi wako' : 'your venue'),
                 phone: settings.phone,
-                items: smsItems(order),
-                itemList: smsItems(order, { prices: false }),
+                items: smsItems(order, { lang }),
+                itemList: smsItems(order, { prices: false, lang }),
                 paid: formatTSh(order.paid),
-                balance: order.balance === null ? 'to be confirmed' : formatTSh(order.balance),
-            });
-            sms = await sendSms(order.customerPhone, message, { kind: 'order_status', orderId: order.dbId });
+                balance: order.balance === null ? tbc(lang) : formatTSh(order.balance),
+            }), { kind: 'order_status', orderId: order.dbId });
         }
     }
     response.json({ order, sms: sms && { status: sms.status } });

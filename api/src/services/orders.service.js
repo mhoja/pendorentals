@@ -160,36 +160,48 @@ export function validateSchedule(body, { partial = false } = {}) {
     return value;
 }
 
-// Plain-text item lines for SMS. `prices` adds rate, days, line totals, delivery, discount and the total.
-// Lines are dropped (with "+N more") so the block stays within `budget` characters.
+// Plain-text item lines for SMS (English or Kiswahili). `prices` adds rate, days, line totals,
+// delivery, discount and the total. Lines are dropped (with "+N more") to stay within `budget` characters.
 const smsNumber = (value) => Number(value || 0).toLocaleString('en-US');
-export function smsItems(order, { prices = true, budget = 320 } = {}) {
+const SMS_WORDS = {
+    en: { items: 'Items', confirm: '(price to confirm)', days: (n) => ` x${n}d`, delivery: 'Delivery', discount: 'Discount', total: 'Total', tbc: 'Total: to be confirmed', more: (n) => `+${n} more item${n === 1 ? '' : 's'}` },
+    sw: { items: 'Vifaa', confirm: '(bei itathibitishwa)', days: (n) => ` x siku ${n}`, delivery: 'Usafiri', discount: 'Punguzo', total: 'Jumla', tbc: 'Jumla: itathibitishwa', more: (n) => `+vifaa ${n} zaidi` },
+};
+export function smsItems(order, { prices = true, budget = 320, lang = 'en' } = {}) {
+    const words = SMS_WORDS[lang] || SMS_WORDS.en;
     const days = order.days || 1;
     const lines = order.items.map((item) => {
         const name = item.custom || item.name;
         if (!prices) return `- ${name} x${item.quantity}`;
-        if (item.rate === null || item.rate === undefined) return `- ${name} x${item.quantity} (price to confirm)`;
-        return `- ${name} x${item.quantity} @${smsNumber(item.rate)}${days > 1 ? ` x${days}d` : ''} = ${smsNumber(item.lineTotal)}`;
+        if (item.rate === null || item.rate === undefined) return `- ${name} x${item.quantity} ${words.confirm}`;
+        return `- ${name} x${item.quantity} @${smsNumber(item.rate)}${days > 1 ? words.days(days) : ''} = ${smsNumber(item.lineTotal)}`;
     });
     const tail = [];
     if (prices) {
         const extras = [
-            order.deliveryFee ? `Delivery ${smsNumber(order.deliveryFee)}` : '',
-            order.discount ? `Discount -${smsNumber(order.discount)}` : '',
+            order.deliveryFee ? `${words.delivery} ${smsNumber(order.deliveryFee)}` : '',
+            order.discount ? `${words.discount} -${smsNumber(order.discount)}` : '',
         ].filter(Boolean);
         if (extras.length) tail.push(extras.join(', '));
-        tail.push(order.total === null ? 'Total: to be confirmed' : `Total ${smsNumber(order.total)}`);
+        tail.push(order.total === null ? words.tbc : `${words.total} ${smsNumber(order.total)}`);
     }
-    const head = prices ? 'Items (TSh):' : 'Items:';
+    const head = prices ? `${words.items} (TSh):` : `${words.items}:`;
     const shown = [];
     for (const [index, line] of lines.entries()) {
         const rest = lines.length - index - 1;
-        const candidate = [head, ...shown, line, ...(rest ? [`+${rest} more item${rest === 1 ? '' : 's'}`] : []), ...tail].join('\n');
+        const candidate = [head, ...shown, line, ...(rest ? [words.more(rest)] : []), ...tail].join('\n');
         if (candidate.length > budget && shown.length) {
-            const hidden = lines.length - shown.length;
-            return [head, ...shown, `+${hidden} more item${hidden === 1 ? '' : 's'}`, ...tail].join('\n');
+            return [head, ...shown, words.more(lines.length - shown.length), ...tail].join('\n');
         }
         shown.push(line);
     }
     return [head, ...shown, ...tail].join('\n');
 }
+
+// Dates and day counts for SMS: "20 Nov 2026 / 2 days" in English, "20/11/2026 / siku 2" in Kiswahili.
+export function smsDate(iso, lang = 'en') {
+    if (lang !== 'sw') return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const [year, month, day] = String(iso).slice(0, 10).split('-');
+    return `${day}/${month}/${year}`;
+}
+export const smsDays = (days, lang = 'en') => (lang === 'sw' ? `siku ${days}` : `${days} day${days === 1 ? '' : 's'}`);

@@ -72,11 +72,25 @@ export const DEFAULT_SETTINGS = {
         { id: 'cash', name: 'Cash', type: 'cash', provider: '', number: '', accountName: '', enabled: true },
         { id: 'card', name: 'Card', type: 'card', provider: '', number: '', accountName: '', enabled: false },
     ],
+    // Which language customer SMS go out in: 'en', 'sw' or 'both' (two messages, Kiswahili first).
+    smsLanguage: 'en',
     smsTemplates: {
+        bookingCreated: 'Hi {firstName}, {business} has created your booking {order} for {date} ({days}).\n{items}{priceNote}{login}\nHelp: {phone}',
+        requestReceived: 'Hi {firstName}, thank you for choosing {business}! We received your request {order}:\n{itemList}\nEvent: {date} ({days}) at {place}. We will call you to confirm the price.{login}\nHelp: {phone}',
         bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed.\n{items}\nHelp: {phone}',
         outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}.\n{itemList}\nPlease check them on arrival. Help: {phone}',
         completed: 'Thank you {firstName} for renting with Pendo Rentals! We hope your event was a great one. {phone}',
         paymentReceived: 'Hi {firstName}, we received {amount} for {order}. Receipt {receipt}.\n{items}\nPaid {paid}. Balance {balance}. Asante! Pendo Rentals',
+        invoiceSent: 'Hi {firstName}, {business} invoice {invoice} for {order}.\n{items}\nInvoice total {amount}, paid {paid}. {due}\nHelp: {phone}',
+    },
+    smsTemplatesSw: {
+        bookingCreated: 'Habari {firstName}, {business} imeandaa oda yako {order} ya tarehe {date} ({days}).\n{items}{priceNote}{login}\nMsaada: {phone}',
+        requestReceived: 'Habari {firstName}, asante kwa kuchagua {business}! Tumepokea ombi lako {order}:\n{itemList}\nTukio: {date} ({days}) mahali {place}. Tutakupigia kuthibitisha bei.{login}\nMsaada: {phone}',
+        bookingConfirmed: 'Habari {firstName}, oda yako ya {business} {order} ya tarehe {date} imethibitishwa.\n{items}\nMsaada: {phone}',
+        outForDelivery: 'Habari {firstName}, vifaa vya oda {order} viko njiani kuelekea {place}.\n{itemList}\nTafadhali vihakiki vikifika. Msaada: {phone}',
+        completed: 'Asante {firstName} kwa kukodi kutoka {business}! Tunatumaini sherehe yako ilienda vizuri. {phone}',
+        paymentReceived: 'Habari {firstName}, tumepokea {amount} kwa oda {order}. Risiti {receipt}.\n{items}\nUmelipa {paid}. Salio {balance}. Asante! {business}',
+        invoiceSent: 'Habari {firstName}, ankara ya {business} {invoice} kwa oda {order}.\n{items}\nJumla ya ankara {amount}, umelipa {paid}. {due}\nMsaada: {phone}',
     },
 };
 
@@ -103,6 +117,8 @@ export async function getSettings(db = { query }) {
         ...stored,
         paymentMethods: Array.isArray(stored.paymentMethods) ? stored.paymentMethods : legacyPaymentMethods(stored),
         smsTemplates: upgradeTemplates(stored.smsTemplates),
+        smsTemplatesSw: { ...DEFAULT_SETTINGS.smsTemplatesSw, ...(stored.smsTemplatesSw || {}) },
+        smsLanguage: ['en', 'sw', 'both'].includes(stored.smsLanguage) ? stored.smsLanguage : 'en',
     };
 }
 
@@ -156,12 +172,17 @@ export function sanitizeSettings(input) {
             clean.paymentMethods = sanitizePaymentMethods(input.paymentMethods);
             continue;
         }
-        if (key === 'smsTemplates') {
-            clean.smsTemplates = Object.fromEntries(
-                Object.keys(DEFAULT_SETTINGS.smsTemplates)
-                    .filter((name) => typeof input.smsTemplates?.[name] === 'string')
-                    .map((name) => [name, input.smsTemplates[name].slice(0, 480)]),
+        if (key === 'smsTemplates' || key === 'smsTemplatesSw') {
+            clean[key] = Object.fromEntries(
+                Object.keys(DEFAULT_SETTINGS[key])
+                    .filter((name) => typeof input[key]?.[name] === 'string')
+                    .map((name) => [name, input[key][name].slice(0, 480)]),
             );
+            continue;
+        }
+        if (key === 'smsLanguage') {
+            if (!['en', 'sw', 'both'].includes(input.smsLanguage)) throw new HttpError(400, 'Choose English, Kiswahili or both for SMS.');
+            clean.smsLanguage = input.smsLanguage;
             continue;
         }
         if (typeof fallback === 'boolean') clean[key] = Boolean(input[key]);
@@ -174,12 +195,27 @@ export async function saveSettings(values) {
     const current = await getSettings();
     const next = { ...current, ...sanitizeSettings(values) };
     next.smsTemplates = { ...current.smsTemplates, ...(sanitizeSettings(values).smsTemplates || {}) };
+    next.smsTemplatesSw = { ...current.smsTemplatesSw, ...(sanitizeSettings(values).smsTemplatesSw || {}) };
     await query(
         `insert into settings (key, value, updated_at) values ('workspace', $1, now())
          on conflict (key) do update set value = excluded.value, updated_at = now()`,
         [next],
     );
     return next;
+}
+
+// Customer SMS in the chosen language. `valuesFor(lang)` gives the placeholders for 'en' or 'sw'.
+// With 'both', the Kiswahili message is sent first, then the English one.
+export async function sendTemplate(settings, key, phone, valuesFor, options) {
+    const { sendSms } = await import('./sms.service.js');
+    const languages = settings.smsLanguage === 'both' ? ['sw', 'en'] : [settings.smsLanguage === 'sw' ? 'sw' : 'en'];
+    const results = [];
+    for (const lang of languages) {
+        const templates = lang === 'sw' ? settings.smsTemplatesSw : settings.smsTemplates;
+        const template = templates?.[key] || DEFAULT_SETTINGS[lang === 'sw' ? 'smsTemplatesSw' : 'smsTemplates'][key];
+        results.push(await sendSms(phone, fillTemplate(template, { business: settings.businessName, ...valuesFor(lang) }), options));
+    }
+    return results.find((result) => result.status !== 'sent') || results[0];
 }
 
 export function fillTemplate(template, values) {
