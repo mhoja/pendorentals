@@ -1695,6 +1695,7 @@ function CustomerHome({ session, onLogout }) {
   const [receipt, setReceipt] = useState(null);
   const [invoiceOpen, setInvoiceOpen] = useState(null);
   const [copied, setCopied] = useState("");
+  const [orderFilter, setOrderFilter] = useState("All");
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: "" }));
@@ -1731,6 +1732,14 @@ function CustomerHome({ session, onLogout }) {
   const today = localTodayIso();
   const nextEvent = active.filter((order) => order.eventDate >= today).sort((x, y) => x.eventDate.localeCompare(y.eventDate))[0];
   const owing = live.filter((order) => order.balance > 0);
+  const daysUntil = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+  const whenText = (iso) => { const n = daysUntil(iso); return n <= 0 ? "Today" : n === 1 ? "Tomorrow" : `In ${n} days`; };
+  // Each order's place in the customer's journey, for the filter chips and the coloured stripe.
+  const orderStage = (order) => (order.requestState === "declined" || order.status === "Cancelled" ? "Declined"
+    : order.requestState === "pending" || order.status === "New request" ? "Awaiting"
+      : order.status === "Completed" ? "Completed" : "Active");
+  const ORDER_FILTERS = ["All", "Active", "Awaiting", "Completed", "Declined"];
+  const paidShare = billed ? Math.min(100, Math.round((paidTotal / billed) * 100)) : 0;
   const counts = { "My orders": state.orders.length, "Payments & receipts": state.payments.length, Invoices: state.invoices.length };
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
   const methodIcon = (type) => ({ mobile: Smartphone, bank: Landmark, cash: Banknote, card: CreditCard }[type] || Wallet);
@@ -1759,7 +1768,7 @@ orders.length === 0 ? (
                 const label = declined ? "Declined" : order.requestState === "pending" ? "Awaiting confirmation" : order.status;
                 const info = declined ? { tone: "red", text: "We could not take this request. Call us if you have questions." } : orderStatusInfo[order.status] || { tone: "blue", text: "" };
                 return (
-                  <article className="cust-order" key={order.id}>
+                  <article className={`cust-order stage-${orderStage(order).toLowerCase()}`} key={order.id}>
                     <header>
                       <div>
                         <strong>{order.id}</strong>
@@ -1778,10 +1787,12 @@ orders.length === 0 ? (
                       {order.notes && <div><dt><StickyNote size={13} /> Notes</dt><dd>{order.notes}</dd></div>}
                     </dl>
                     {order.total !== null && order.total !== undefined && (
-                      <div className="cust-order-money">
-                        <span>Total <b>{formatShillings(order.total)}</b></span>
-                        <span>Paid <b>{formatShillings(order.paid)}</b></span>
-                        <span className={order.balance ? "due" : "settled"}>{order.balance ? <>Balance <b>{formatShillings(order.balance)}</b></> : <b>Paid in full</b>}</span>
+                      <div className="cust-order-pay">
+                        <div className="cust-order-pay-top">
+                          <span>Paid <b>{formatShillings(order.paid)}</b> of {formatShillings(order.total)}</span>
+                          <strong className={order.balance ? "due" : "settled"}>{order.balance ? `${formatShillings(order.balance)} to pay` : "Paid in full"}</strong>
+                        </div>
+                        <div className="cust-progress"><i style={{ width: `${order.total ? Math.min(100, Math.round((order.paid / order.total) * 100)) : 100}%` }} /></div>
                       </div>
                     )}
                     {info.text && <p className="cust-order-note"><Info size={13} /> {info.text}</p>}
@@ -1790,6 +1801,33 @@ orders.length === 0 ? (
               })}
             </div>
           )
+  );
+
+  // Short order rows for the Home page; the full cards are on My orders.
+  const orderRows = (orders) => (
+    orders.length === 0 ? (
+      <div className="cust-empty slim"><Tent size={20} /><strong>No requests yet</strong><button type="button" className="auth-link" onClick={() => go("Rent now")}>Rent now</button></div>
+    ) : (
+      <div className="cust-list">
+        {orders.map((order) => {
+          const stage = orderStage(order);
+          const label = order.requestState === "declined" ? "Declined" : order.requestState === "pending" ? "Awaiting confirmation" : order.status;
+          return (
+            <button type="button" className={`cust-row cust-row-link stage-${stage.toLowerCase()}`} key={order.id} onClick={() => go("My orders")}>
+              <span className="cust-row-icon blue"><CalendarDays size={16} /></span>
+              <span className="cust-row-copy">
+                <strong>{order.id} · {formatDateRange(order.eventDate, order.days)}</strong>
+                <small>{orderItemsText(order.items)}</small>
+              </span>
+              <span className="cust-row-end">
+                <span className={`status-pill ${stage === "Declined" ? "red" : stage === "Awaiting" ? "blue" : stage === "Completed" ? "green" : orderTone(order.status)}`}><i />{label}</span>
+                <b>{order.total === null ? "Price to confirm" : formatShillings(order.total)}</b>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    )
   );
 
   const paymentsList = (payments) => (
@@ -1801,7 +1839,7 @@ orders.length === 0 ? (
                   <article className="cust-row" key={payment.id}>
                     <span className="cust-row-icon mint"><Receipt size={16} /></span>
                     <div className="cust-row-copy">
-                      <strong>{payment.receipt} · {formatShillings(payment.amount)}</strong>
+                      <strong>{payment.receipt} <em className="cust-row-amount">{formatShillings(payment.amount)}</em></strong>
                       <small>{shortDate(payment.date)} · {payment.method}{payment.transactionRef ? ` · ${payment.transactionRef}` : ""} · {payment.reference}{payment.delivery ? ` · items ${formatShillings(payment.amount - payment.delivery)}, delivery ${formatShillings(payment.delivery)}` : ""}</small>
                     </div>
                     <span className={`status-pill ${payment.status === "Paid" ? "green" : "red"}`}><i />{payment.status}</span>
@@ -1824,8 +1862,12 @@ orders.length === 0 ? (
                   <article className="cust-row" key={invoice.id}>
                     <span className="cust-row-icon blue"><FileText size={16} /></span>
                     <div className="cust-row-copy">
-                      <strong>{invoice.code} · {formatShillings(invoice.amount)}</strong>
-                      <small>{invoice.orderCode || "No order"} · issued {shortDate(invoice.issuedOn)} · due {shortDate(invoice.dueOn)} · paid {formatShillings(invoice.paid)}{invoice.balance ? ` · balance ${formatShillings(invoice.balance)}` : ""}</small>
+                      <strong>{invoice.code} <em className="cust-row-amount">{formatShillings(invoice.amount)}</em></strong>
+                      <small>{invoice.orderCode || "No order"} · issued {shortDate(invoice.issuedOn)} · due {shortDate(invoice.dueOn)}</small>
+                      <span className="cust-inv-progress">
+                        <span className="cust-progress"><i style={{ width: `${invoice.amount ? Math.min(100, Math.round((invoice.paid / invoice.amount) * 100)) : 0}%` }} /></span>
+                        <small>{invoice.balance ? `${formatShillings(invoice.paid)} paid · ${formatShillings(invoice.balance)} to pay` : "Paid in full"}</small>
+                      </span>
                     </div>
                     <span className={`status-pill ${invoiceTone(invoice.status)}`}><i />{invoice.status}</span>
                     <div className="cust-row-actions">
@@ -1877,25 +1919,59 @@ orders.length === 0 ? (
   if (page === "Rent now") content = <CustomerRentPage session={session} customer={state.customer} onDone={load} onViewOrders={() => go("My orders")} onCancel={() => go("Home")} />;
   else if (loadingOrError) content = loadingOrError;
   else if (page === "Home") {
+    const pending = state.orders.filter((order) => orderStage(order) === "Awaiting").length;
     content = (
       <>
-        <section className="metrics-grid cust-metrics">
-          <Metric icon={CalendarDays} label="Active bookings" value={String(active.length)} change={`${state.orders.length} in total`} kind="up" color="blue-icon" caption="" />
-          <Metric icon={Receipt} label="Total billed" value={formatShillings(billed)} change={`${live.filter((order) => order.total !== null).length} priced`} kind="up" color="purple-icon" caption="" />
-          <Metric icon={CircleCheck} label="Paid" value={formatShillings(paidTotal)} change={`${state.payments.length} receipt${state.payments.length === 1 ? "" : "s"}`} kind="up" color="mint-icon" caption="" />
-          <Metric icon={Banknote} label="Balance due" value={formatShillings(due)} change={due ? `${owing.length} order${owing.length === 1 ? "" : "s"}` : "all paid"} kind={due ? "down" : "up"} color="orange-icon" caption="" />
+        <section className="cust-hero">
+          <div className="cust-hero-copy">
+            <span className="cust-hero-date">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</span>
+            <h1>{greeting}, {firstName}</h1>
+            <p>{nextEvent ? <>Your next event is <b>{whenText(nextEvent.eventDate).toLowerCase()}</b> — {formatDateRange(nextEvent.eventDate, nextEvent.days)}.</> : "Planning an event? Rent tents, chairs, sound and more in a few taps."}</p>
+            <div className="cust-hero-actions">
+              <button type="button" className="cust-hero-primary" onClick={() => go("Rent now")}><Plus size={16} /> Rent now</button>
+              {due > 0 && <button type="button" className="cust-hero-ghost" onClick={() => go("How to pay")}><Wallet size={15} /> How to pay</button>}
+            </div>
+          </div>
+          <div className="cust-hero-balance">
+            <small>{due ? "Balance to pay" : "Your balance"}</small>
+            <strong>{formatShillings(due)}</strong>
+            <span>{due ? `${owing.length} order${owing.length === 1 ? "" : "s"} · quote the order number when paying` : "All paid — asante!"}</span>
+            {billed > 0 && (
+              <>
+                <div className="cust-progress light"><i style={{ width: `${paidShare}%` }} /></div>
+                <em>{formatShillings(paidTotal)} paid of {formatShillings(billed)} · {paidShare}%</em>
+              </>
+            )}
+          </div>
         </section>
+
+        <section className="cust-stats">
+          {[
+            [CalendarDays, "Active bookings", active.filter((order) => orderStage(order) === "Active").length, "blue", "My orders"],
+            [Clock3, "Awaiting confirmation", pending, "amber", "My orders"],
+            [FileText, "Invoices", state.invoices.length, "purple", "Invoices"],
+            [Receipt, "Receipts", state.payments.length, "mint", "Payments & receipts"],
+          ].map(([Icon, label, value, tone, target]) => (
+            <button type="button" key={label} className="cust-stat" onClick={() => go(target)}>
+              <span className={`cust-stat-icon ${tone}`}><Icon size={17} /></span>
+              <span><strong>{value}</strong><small>{label}</small></span>
+              <ChevronRight size={15} className="cust-stat-go" />
+            </button>
+          ))}
+        </section>
+
         <section className="cust-home-grid">
           <article className="panel cust-card">
-            <div className="cust-card-head"><span className="panel-kicker">COMING UP</span><h2>Next event</h2></div>
+            <div className="cust-card-head"><span className="panel-kicker">COMING UP</span><h2>Next event</h2>{nextEvent && <span className="cust-when">{whenText(nextEvent.eventDate)}</span>}</div>
             {nextEvent ? (
               <div className="cust-next">
                 <div className="cust-next-date"><strong>{new Date(`${nextEvent.eventDate}T00:00:00`).getDate()}</strong><span>{new Date(`${nextEvent.eventDate}T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span></div>
                 <div className="cust-next-copy">
-                  <strong>{nextEvent.id} · {nextEvent.status}</strong>
-                  <small>{formatDateRange(nextEvent.eventDate, nextEvent.days)} · {nextEvent.place ? `${nextEvent.place}, ${nextEvent.area}` : nextEvent.area}</small>
+                  <strong>{nextEvent.id} · {nextEvent.requestState === "pending" ? "Awaiting confirmation" : nextEvent.status}</strong>
+                  <small><CalendarDays size={12} /> {formatDateRange(nextEvent.eventDate, nextEvent.days)}</small>
+                  <small><MapPin size={12} /> {nextEvent.place ? `${nextEvent.place}, ${nextEvent.area}` : nextEvent.area}</small>
                   <span>{orderItemsText(nextEvent.items)}</span>
-                  {nextEvent.total !== null && <em className={nextEvent.balance ? "due" : "settled"}>{nextEvent.balance ? `Balance ${formatShillings(nextEvent.balance)}` : "Paid in full"}</em>}
+                  {nextEvent.total !== null && <em className={nextEvent.balance ? "due" : "settled"}>{nextEvent.balance ? `${formatShillings(nextEvent.balance)} to pay` : "Paid in full"}</em>}
                 </div>
               </div>
             ) : (
@@ -1912,12 +1988,12 @@ orders.length === 0 ? (
                 })}
               </ul>
             )}
-            {due > 0 && <p className="cust-pay-hint"><Info size={13} /> You have {formatShillings(due)} to pay. Quote your order number (e.g. {owing[0]?.id}) as the reference.</p>}
           </article>
         </section>
+
         <section className="panel cust-card">
           <div className="cust-card-head"><span className="panel-kicker">LATEST</span><h2>Recent orders</h2><button type="button" className="text-action" onClick={() => go("My orders")}>See all <ArrowRight size={13} /></button></div>
-          {ordersList(state.orders.slice(0, 2))}
+          {orderRows(state.orders.slice(0, 3))}
         </section>
         <section className="panel cust-card">
           <div className="cust-card-head"><span className="panel-kicker">RECEIPTS</span><h2>Recent payments</h2><button type="button" className="text-action" onClick={() => go("Payments & receipts")}>See all <ArrowRight size={13} /></button></div>
@@ -1925,9 +2001,21 @@ orders.length === 0 ? (
         </section>
       </>
     );
-  } else if (page === "My orders") content = <section className="panel cust-card">{ordersList(state.orders)}</section>;
-  else if (page === "Payments & receipts") content = <section className="panel cust-card">{paymentsList(state.payments)}</section>;
-  else if (page === "Invoices") content = <section className="panel cust-card">{invoicesList}</section>;
+  } else if (page === "My orders") {
+    const shown = state.orders.filter((order) => orderFilter === "All" || orderStage(order) === orderFilter);
+    content = (
+      <>
+        <div className="cust-chips" role="tablist" aria-label="Filter orders">
+          {ORDER_FILTERS.map((filter) => {
+            const count = filter === "All" ? state.orders.length : state.orders.filter((order) => orderStage(order) === filter).length;
+            return <button key={filter} type="button" role="tab" aria-selected={orderFilter === filter} className={orderFilter === filter ? "active" : ""} onClick={() => setOrderFilter(filter)}>{filter}<span>{count}</span></button>;
+          })}
+        </div>
+        <section className="cust-plain">{shown.length || orderFilter === "All" ? ordersList(shown) : <div className="cust-empty"><Tent size={22} /><strong>No {orderFilter.toLowerCase()} orders</strong><button type="button" className="auth-link" onClick={() => setOrderFilter("All")}>Show all orders</button></div>}</section>
+      </>
+    );
+  } else if (page === "Payments & receipts") content = <section className="cust-plain">{paymentsList(state.payments)}</section>;
+  else if (page === "Invoices") content = <section className="cust-plain">{invoicesList}</section>;
   else {
     content = (
       <>
@@ -1997,10 +2085,9 @@ orders.length === 0 ? (
         </header>
 
         <div className="page-wrap">
-          <section className="welcome-row">
+          {page !== "Home" && <section className="welcome-row cust-welcome">
             <div>
-              <div className="eyebrow"><span className="eyebrow-dot" /> {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
-              <h1>{page === "Home" ? `${greeting}, ${firstName}` : page}</h1>
+              <h1>{page}</h1>
               <p>{PAGE_TEXT[page]}</p>
             </div>
             {page !== "Rent now" && (
@@ -2008,7 +2095,7 @@ orders.length === 0 ? (
                 <button type="button" className="button button-primary" onClick={() => go("Rent now")}><Plus size={17} /> Rent now</button>
               </div>
             )}
-          </section>
+          </section>}
           {content}
           <footer className="page-footer">
             <span>© {new Date().getFullYear()} {business.name}</span>
@@ -2017,6 +2104,14 @@ orders.length === 0 ? (
           </footer>
         </div>
       </main>
+      <nav className="cust-tabbar" aria-label="My account">
+        {[["Home", LayoutDashboard, "Home"], ["My orders", CalendarDays, "Orders"], ["Rent now", Plus, "Rent"], ["Invoices", FileText, "Invoices"], ["Payments & receipts", Receipt, "Receipts"]].map(([target, Icon, label]) => (
+          <button key={target} type="button" className={`${page === target ? "active" : ""} ${target === "Rent now" ? "cust-tab-rent" : ""}`} onClick={() => go(target)} aria-current={page === target ? "page" : undefined}>
+            <span className="cust-tab-icon"><Icon size={target === "Rent now" ? 22 : 19} /></span>
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
       {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
       {invoiceOpen && <CustomerInvoice session={session} invoiceId={invoiceOpen} onClose={() => setInvoiceOpen(null)} />}
     </div>
