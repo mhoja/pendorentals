@@ -4491,6 +4491,22 @@ const TEMPLATE_INFO = {
   paymentReceived: ["Payment receipt", "Sent when you record a payment."],
 };
 
+// Full SMS text with its line breaks; long ones open with "View more".
+function SmsMessageCell({ text }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 160 || text.split("\n").length > 3;
+  return (
+    <div className={`sms-text ${long && !open ? "clamped" : ""}`}>
+      <p>{text}</p>
+      {long && (
+        <button type="button" className="sms-more" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+          {open ? "Show less" : "View more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function MessagingPage({ session, settingsResource }) {
   const { call } = useApi();
   const messages = useResource("/messages");
@@ -4637,7 +4653,7 @@ function MessagingPage({ session, settingsResource }) {
                 columns={[
                   { key: "createdAt", label: "SENT", render: (row) => <span className="team-muted">{new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> },
                   { key: "recipient", label: "TO", render: (row) => <div className="ws-two-line"><strong>{row.recipient}</strong><small>{row.phone}</small></div> },
-                  { key: "message", label: "MESSAGE", render: (row) => <span className="ws-message" title={row.message}>{row.message}</span> },
+                  { key: "message", label: "MESSAGE", render: (row) => <SmsMessageCell text={row.message} /> },
                   { key: "kind", label: "TYPE", render: (row) => <span className="team-muted">{row.kind.replace(/_/g, " ")}{row.orderCode ? ` · ${row.orderCode}` : ""}</span> },
                   { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" ? "amber" : "red"}>{row.status === "sent" ? "Sent" : row.status === "not_configured" ? "Not configured" : "Failed"}</StatusPill>{row.attempts > 1 && <small title={row.lastAttemptAt ? `Last try ${new Date(row.lastAttemptAt).toLocaleString("en-GB")}` : undefined}>{row.attempts} attempts</small>}{row.status === "failed" && row.error && <small className="sms-error" title={row.error}>{row.error}</small>}</div> },
                 ]}
