@@ -12117,3 +12117,10 @@ body {
 .rent-total small { color: #b07a1c; font-weight: 600; }
 .rent-total strong { color: #2674ed; font: 800 17px 'Manrope', sans-serif; white-space: nowrap; }
 .cust-rent-summary li.cust-rent-total b { color: #2674ed; font-size: 15px; }
+
+/* Forgot password */
+.forgot-done { display: grid; gap: 14px; }
+.forgot-hint { color: #7b899d; font-size: 12px; text-align: center; }
+.sms-msg-wrap { display: grid; gap: 4px; min-width: 0; }
+.sms-secret { display: inline-flex; align-items: center; gap: 4px; justify-self: start; padding: 2px 7px; border-radius: 999px; background: #f1f3f7; color: #5d6b82; font-size: 10.5px; font-weight: 700; }
+.sms-secret svg { color: inherit; }

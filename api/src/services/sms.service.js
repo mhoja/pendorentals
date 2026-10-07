@@ -174,14 +174,24 @@ export const smsText = (text) => String(text)
     .replace(/ {2,}/g, ' ')
     .replace(/[ \t]+\n/g, '\n');
 
+// The phone gets the real password; SMS history keeps "****" in its place (after "Password"/"Nenosiri").
+export function maskSecret(message, secret) {
+    if (!secret) return message;
+    const escaped = String(secret).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const labelled = new RegExp(`((?:password|nenosiri)[^\\n]{0,6}?)${escaped}`, 'gi');
+    const masked = message.replace(labelled, '$1****');
+    return masked === message ? message.split(String(secret)).join('****') : masked;
+}
+
 // Sends and records every SMS in sms_log. Never throws.
-export async function sendSms(phone, rawMessage, { kind = 'manual', orderId = null } = {}) {
+// `secret` (a password in the message) is sent to the phone but hidden in the history.
+export async function sendSms(phone, rawMessage, { kind = 'manual', orderId = null, secret = null } = {}) {
     const message = smsText(rawMessage);
     const result = await deliver(phone, message);
     try {
         await query(
-            'insert into sms_log (phone, message, kind, status, error, provider_ref, order_id) values ($1, $2, $3, $4, $5, $6, $7)',
-            [phone, message, kind, result.status, result.error || null, result.requestId ? String(result.requestId) : null, orderId],
+            'insert into sms_log (phone, message, kind, status, error, provider_ref, order_id, has_secret) values ($1, $2, $3, $4, $5, $6, $7, $8)',
+            [phone, maskSecret(message, secret), kind, result.status, result.error || null, result.requestId ? String(result.requestId) : null, orderId, Boolean(secret)],
         );
     } catch (error) {
         console.error('Could not record SMS', error.message);

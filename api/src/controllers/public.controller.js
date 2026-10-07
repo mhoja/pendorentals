@@ -160,7 +160,7 @@ export async function createRentalRequest(request, response) {
             ? (temporaryPassword ? `\nFuatilia: ${publicUrl} - Namba: ${value.phone}, Nenosiri: ${temporaryPassword}.` : `\nFuatilia: ${publicUrl} kwa namba yako ya simu.`)
             : (temporaryPassword ? `\nTrack it at ${publicUrl} - Username: ${value.phone}, Password: ${temporaryPassword}.` : `\nTrack it at ${publicUrl} with your phone number.`),
         phone: settings.phone,
-    }), { kind: 'rental_request', orderId: order.dbId });
+    }), { kind: 'rental_request', orderId: order.dbId, secret: temporaryPassword });
     await notifyOrderRequest(order).catch((error) => console.error('Could not notify staff', error.message));
 
     response.status(201).json({

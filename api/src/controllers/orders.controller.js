@@ -141,7 +141,7 @@ export async function createOrder(request, response) {
                 ? `\nFuatilia: ${publicUrl} - Namba: ${customer.phone}, Nenosiri: ${temporaryPassword}.`
                 : `\nTrack it at ${publicUrl} - Username: ${customer.phone}, Password: ${temporaryPassword}.`,
             phone: settings.phone,
-        }), { kind: 'order_created', orderId: order.dbId });
+        }), { kind: 'order_created', orderId: order.dbId, secret: temporaryPassword });
     }
     response.status(201).json({ order, sms: sms && { status: sms.status }, temporaryPassword: temporaryPassword && sms?.status !== 'sent' ? temporaryPassword : undefined });
 }

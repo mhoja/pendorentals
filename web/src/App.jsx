@@ -2024,7 +2024,92 @@ orders.length === 0 ? (
 }
 
 
+// Forgot password: a new password goes to the account's phone by SMS (hidden as **** in SMS history).
+function ForgotPasswordScreen({ initialPhone, onBack }) {
+  const [phone, setPhone] = useState(initialPhone || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState("");
+  const valid = /^0[67]\d{8}$/.test(normalizePhone(phone));
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!valid) {
+      setError("Enter the phone number you sign in with, e.g. 0712 345 678.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api("/auth/forgot-password", { method: "POST", body: { phone } });
+      setSent(data.message);
+    } catch (sendError) {
+      setError(sendError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <AuthShowcase variant="staff" />
+      <section className="auth-panel">
+        <div className="auth-flow">
+          <button type="button" className="auth-back" onClick={() => onBack(phone, Boolean(sent))}>
+            <ArrowLeft size={15} /> Back to sign in
+          </button>
+          <div className="auth-card-brand">
+            <BrandMark />
+            <span className="brand-name">Pendo<span>rentals</span></span>
+          </div>
+          {sent ? (
+            <div className="auth-success forgot-done">
+              <div className="auth-success-badge"><MessageSquareText size={28} /></div>
+              <div className="auth-heading">
+                <h1>Check your phone</h1>
+                <p>{sent}</p>
+              </div>
+              <p className="rent-next"><KeyRound size={14} /> Sign in with your phone number and the new password from the SMS, then change it under Account &amp; security.</p>
+              <button type="button" className="auth-primary" onClick={() => onBack(phone, true)}>Back to sign in <ArrowRight size={17} /></button>
+              <small className="forgot-hint">No SMS after a few minutes? Check the number, or call {BUSINESS_INFO.phone}.</small>
+            </div>
+          ) : (
+            <>
+              <div className="auth-heading">
+                <span className="auth-kicker">FORGOT PASSWORD</span>
+                <h1>Reset your password</h1>
+                <p>Enter the phone number you sign in with. We’ll send a new password to it by SMS.</p>
+              </div>
+              <form className="auth-form" onSubmit={submit} noValidate>
+                <label className={`auth-input ${error ? "has-error" : ""}`}>
+                  <Phone size={17} />
+                  <span className="sr-only">Phone number</span>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="username"
+                    placeholder="Phone Number"
+                    value={phone}
+                    onChange={(event) => { setPhone(event.target.value); setError(""); }}
+                    autoFocus
+                  />
+                </label>
+                {error && <p className="auth-error" role="alert"><CircleAlert size={14} /> {error}</p>}
+                <button className="auth-primary" type="submit" disabled={busy || !phone.trim()}>
+                  {busy ? <><LoaderCircle size={17} className="auth-spin" /> Sending…</> : <>Send new password <Send size={16} /></>}
+                </button>
+              </form>
+              <p className="auth-notice">Your old password stops working once the new one is sent, and other devices are signed out.</p>
+            </>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function LoginScreen({ onLogin, onRentNow }) {
+  const [forgot, setForgot] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -2050,6 +2135,21 @@ function LoginScreen({ onLogin, onRentNow }) {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [helpOpen]);
+
+  if (forgot) {
+    return (
+      <ForgotPasswordScreen
+        initialPhone={username}
+        onBack={(phone, sent) => {
+          setForgot(false);
+          if (phone) setUsername(phone);
+          setPassword("");
+          setError("");
+          setNotice(sent ? "Enter the new password from the SMS." : "");
+        }}
+      />
+    );
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -2138,7 +2238,8 @@ function LoginScreen({ onLogin, onRentNow }) {
                 className="auth-link"
                 onClick={() => {
                   setError("");
-                  setNotice(`To reset your password, call Pendo Rentals on ${BUSINESS_INFO.phone}.`);
+                  setNotice("");
+                  setForgot(true);
                 }}
               >
                 Forgot Password?
@@ -5523,7 +5624,7 @@ function MessagingPage({ session, settingsResource }) {
                 columns={[
                   { key: "createdAt", label: "SENT", render: (row) => <span className="team-muted">{new Date(row.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span> },
                   { key: "recipient", label: "TO", render: (row) => <div className="ws-two-line"><strong>{row.recipient}</strong><small>{row.phone}</small></div> },
-                  { key: "message", label: "MESSAGE", render: (row) => <SmsMessageCell text={row.message} /> },
+                  { key: "message", label: "MESSAGE", render: (row) => <div className="sms-msg-wrap"><SmsMessageCell text={row.message} />{row.hasSecret && <small className="sms-secret" title="The password was sent to the phone but is hidden here. These messages can’t be resent."><KeyRound size={11} /> Password hidden</small>}</div> },
                   { key: "kind", label: "TYPE", render: (row) => <span className="team-muted">{row.kind.replace(/_/g, " ")}{row.orderCode ? ` · ${row.orderCode}` : ""}</span> },
                   { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={row.status === "sent" ? "green" : row.status === "not_configured" || row.status === "disconnected" ? "amber" : "red"}>{{ sent: "Sent", not_configured: "Not configured", disconnected: "Disconnected" }[row.status] || "Failed"}</StatusPill>{row.attempts > 1 && <small title={row.lastAttemptAt ? `Last try ${new Date(row.lastAttemptAt).toLocaleString("en-GB")}` : undefined}>{row.attempts} attempts</small>}{row.status === "failed" && row.error && <small className="sms-error" title={row.error}>{row.error}</small>}</div> },
                 ]}
@@ -5532,7 +5633,7 @@ function MessagingPage({ session, settingsResource }) {
                 totalCount={list.length}
                 rowKey="id"
                 renderActions={(row) => [
-                  ...(canSend ? [{ label: row.status === "sent" ? "Send again" : "Retry", confirm: { title: `${row.status === "sent" ? "Send this SMS again" : "Retry this SMS"} to ${row.recipient}?`, message: `“${row.message.slice(0, 120)}${row.message.length > 120 ? "…" : ""}” goes to ${row.phone}.`, confirmLabel: row.status === "sent" ? "Yes, send again" : "Yes, retry" }, onClick: () => act(async () => {
+                  ...(canSend && !row.hasSecret ? [{ label: row.status === "sent" ? "Send again" : "Retry", confirm: { title: `${row.status === "sent" ? "Send this SMS again" : "Retry this SMS"} to ${row.recipient}?`, message: `“${row.message.slice(0, 120)}${row.message.length > 120 ? "…" : ""}” goes to ${row.phone}.`, confirmLabel: row.status === "sent" ? "Yes, send again" : "Yes, retry" }, onClick: () => act(async () => {
                     const data = await call(`/messages/${row.id}/retry`, { method: "POST" });
                     return data.sms.status === "sent" ? `SMS sent to ${row.phone}` : `Still not sent (${smsNotSentReason(data.sms)})`;
                   }) }] : []),

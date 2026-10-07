@@ -321,6 +321,16 @@ const migrations = [
             );
         `,
     },
+    {
+        id: 11,
+        name: 'hidden passwords in sms history',
+        sql: `
+            -- Messages that carried a password are stored with it replaced by ****, so they can't be resent.
+            alter table sms_log add column has_secret boolean not null default false;
+            update sms_log set has_secret = true, message = regexp_replace(message, '((password|nenosiri)[^0-9\n]{0,6})[0-9]{4,10}', '\\1****', 'gi')
+             where message ~* '(password|nenosiri)[^0-9\n]{0,6}[0-9]{4,10}';
+        `,
+    },
 ];
 
 export async function migrate() {

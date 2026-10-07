@@ -52,7 +52,7 @@ export async function inviteMember(request, response) {
         [firstName, lastName, phone, email, body.role, hashPassword(password)],
     );
     const settings = await getSettings();
-    const sms = await sendSms(phone, `Hi ${firstName}, you've been added to the ${settings.businessName} team as ${body.role}. Sign in at ${publicUrl} - Username: ${phone}, Password: ${password}. Please change your password after signing in.`, { kind: 'staff_invite' });
+    const sms = await sendSms(phone, `Hi ${firstName}, you've been added to the ${settings.businessName} team as ${body.role}. Sign in at ${publicUrl} - Username: ${phone}, Password: ${password}. Please change your password after signing in.`, { kind: 'staff_invite', secret: password });
     response.status(201).json({ member: shape(member), sms: { status: sms.status }, temporaryPassword: sms.status !== 'sent' ? password : undefined });
 }
 
@@ -83,7 +83,7 @@ export async function updateMember(request, response) {
     let sms = null;
     if (password) {
         const settings = await getSettings();
-        sms = await sendSms(member.phone, `Hi ${member.first_name}, your ${settings.businessName} password was reset. Username: ${member.phone}, Password: ${password}. Sign in at ${publicUrl}`, { kind: 'staff_invite' });
+        sms = await sendSms(member.phone, `Hi ${member.first_name}, your ${settings.businessName} password was reset. Username: ${member.phone}, Password: ${password}. Sign in at ${publicUrl}`, { kind: 'staff_invite', secret: password });
     }
     response.json({ member: shape(member), sms: sms && { status: sms.status }, temporaryPassword: password && sms?.status !== 'sent' ? password : undefined });
 }

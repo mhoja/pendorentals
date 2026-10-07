@@ -28,6 +28,7 @@ export async function listMessages(_request, response) {
             kind: row.kind,
             status: row.status,
             error: row.error,
+            hasSecret: row.has_secret,
             orderCode: row.order_code,
             attempts: row.attempts,
             lastAttemptAt: row.last_attempt_at,
@@ -63,6 +64,7 @@ export async function retryMessage(request, response) {
     const id = Number(request.params.id);
     const { rows: [row] } = Number.isInteger(id) ? await query('select * from sms_log where id = $1', [id]) : { rows: [] };
     if (!row) throw new HttpError(404, 'Message not found.');
+    if (row.has_secret) throw new HttpError(400, 'This message had a password, which is not kept. Reset the password again to send a new one.');
     await requireConnected();
     const result = await resendLogged(row);
     response.json({ sms: { id, status: result.status, error: result.error } });
@@ -74,9 +76,9 @@ export async function retryMessages(request, response) {
     const body = request.body || {};
     const ids = validIds(body.ids);
     const { rows } = body.failed === true
-        ? await query("select * from sms_log where status <> 'sent' order by id limit 200")
-        : ids.length ? await query('select * from sms_log where id = any($1) order by id', [ids.slice(0, 200)]) : { rows: [] };
-    if (rows.length === 0) throw new HttpError(400, 'Choose the messages to retry.');
+        ? await query("select * from sms_log where status <> 'sent' and not has_secret order by id limit 200")
+        : ids.length ? await query('select * from sms_log where id = any($1) and not has_secret order by id', [ids.slice(0, 200)]) : { rows: [] };
+    if (rows.length === 0) throw new HttpError(400, 'Nothing to retry. Messages that had a password can’t be resent.');
     let sent = 0;
     for (const row of rows) {
         const result = await resendLogged(row);

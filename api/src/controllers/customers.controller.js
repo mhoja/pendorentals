@@ -111,7 +111,7 @@ export async function resetCustomerLogin(request, response) {
         await db.query("delete from sessions where kind = 'customer' and subject_id = $1", [id]);
     });
     const settings = await getSettings();
-    const sms = await sendSms(row.phone, `Hi ${greetName(row.first_name)}, your ${settings.businessName} login: ${publicUrl} - Username: ${row.phone}, Password: ${password}. Help: ${settings.phone}`, { kind: 'customer_login' });
+    const sms = await sendSms(row.phone, `Hi ${greetName(row.first_name)}, your ${settings.businessName} login: ${publicUrl} - Username: ${row.phone}, Password: ${password}. Help: ${settings.phone}`, { kind: 'customer_login', secret: password });
     const created = !row.password_hash;
     const orders = await loadOrders('o.customer_id = $1', [id]);
     response.json({
@@ -151,7 +151,7 @@ export async function createCustomer(request, response) {
     let sms = null;
     if (password) {
         const settings = await getSettings();
-        sms = await sendSms(value.phone, `Karibu ${greetName(value.first_name)}! Your ${settings.businessName} account is ready. Sign in at ${publicUrl} - Username: ${value.phone}, Password: ${password}. Help: ${settings.phone}`, { kind: 'customer_invite' });
+        sms = await sendSms(value.phone, `Karibu ${greetName(value.first_name)}! Your ${settings.businessName} account is ready. Sign in at ${publicUrl} - Username: ${value.phone}, Password: ${password}. Help: ${settings.phone}`, { kind: 'customer_invite', secret: password });
     }
     response.status(201).json({ customer: shape(await loadCustomerRow(inserted.id)), sms: sms && { status: sms.status }, temporaryPassword: password && sms?.status !== 'sent' ? password : undefined });
 }
