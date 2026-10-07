@@ -1936,7 +1936,7 @@ orders.length === 0 ? (
           <div className="cust-hero-copy">
             <span className="cust-hero-date">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</span>
             <h1>{greeting}, {firstName}</h1>
-            <p>{nextEvent ? <>Your next event is <b>{whenText(nextEvent.eventDate).toLowerCase()}</b> — {formatDateRange(nextEvent.eventDate, nextEvent.days)}.</> : "Planning an event? Rent tents, chairs, sound and more in a few taps."}</p>
+            <p>{nextEvent ? <>Your next event is <b>{whenText(nextEvent.eventDate).toLowerCase()}</b><span className="cust-hero-dates"><span className="cust-hero-sep"> — </span>{shortDate(nextEvent.eventDate)}{nextEvent.days > 1 ? ` – ${shortDate(endDateIso(nextEvent.eventDate, nextEvent.days))} · ${nextEvent.days} days` : ""}</span></> : "Planning an event? Rent tents, chairs, sound and more in a few taps."}</p>
             <div className="cust-hero-actions">
               <button type="button" className="cust-hero-primary" onClick={() => go("Rent now")}><Plus size={16} /> Rent now</button>
               {due > 0 && <button type="button" className="cust-hero-ghost" onClick={() => go("How to pay")}><Wallet size={15} /> How to pay</button>}

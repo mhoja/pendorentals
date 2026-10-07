@@ -12497,3 +12497,10 @@ body {
     .cust-hero h1,
     .cust-hero p { padding-right: 92px; }
 }
+.cust-hero-dates { font-weight: 700; color: #fff; }
+@media (max-width: 760px) {
+    /* The event dates get their own bold line, kept clear of the photo circle */
+    .cust-hero p { font-size: 12px; }
+    .cust-hero-sep { display: none; }
+    .cust-hero-dates { display: block; margin-top: 2px; color: #12233d; font-size: 12px; font-weight: 800; }
+}
