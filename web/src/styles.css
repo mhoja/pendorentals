@@ -10465,43 +10465,22 @@ button.inv-open:hover .report-id {
     height: 28px;
 }
 
-/* Finance & receipts: larger filter text and placeholders */
-.report-filters-finance .report-search input,
-.report-filters-finance .report-filter-field select,
-.report-filters-finance .report-filter-field input,
-.report-filters-inventory .report-search input,
-.report-filters-inventory .report-filter-field select,
-.report-filters-inventory .report-filter-field input,
-.report-filters-sales .report-search input,
-.report-filters-sales .report-filter-field select,
-.report-filters-sales .report-filter-field input {
+/* Reports: larger filter text, labels and placeholders (all reports) */
+.report-filter-panel .report-search input,
+.report-filter-panel .report-filter-field select,
+.report-filter-panel .report-filter-field input,
+.report-filter-panel .report-search input::placeholder,
+.report-filter-panel .report-filter-field input::placeholder {
     font-size: 11px;
 }
 
-.report-filters-finance .report-search input::placeholder,
-.report-filters-finance .report-filter-field input::placeholder,
-.report-filters-inventory .report-search input::placeholder,
-.report-filters-inventory .report-filter-field input::placeholder,
-.report-filters-sales .report-search input::placeholder,
-.report-filters-sales .report-filter-field input::placeholder {
-    font-size: 11px;
-}
-
-.report-filters-finance .report-filter-search,
-.report-filters-finance .report-filter-field select,
-.report-filters-finance .report-filter-field input,
-.report-filters-inventory .report-filter-search,
-.report-filters-inventory .report-filter-field select,
-.report-filters-inventory .report-filter-field input,
-.report-filters-sales .report-filter-search,
-.report-filters-sales .report-filter-field select,
-.report-filters-sales .report-filter-field input {
+.report-filter-panel .report-filter-search,
+.report-filter-panel .report-filter-field select,
+.report-filter-panel .report-filter-field input {
     height: 34px;
 }
 
-.report-filters-finance .report-filter-field,
-.report-filters-inventory .report-filter-field,
-.report-filters-sales .report-filter-field {
+.report-filter-panel .report-filter-field {
     font-size: 9.5px;
 }
 
