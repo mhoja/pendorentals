@@ -10418,3 +10418,43 @@ button.inv-open:hover .report-id {
 .report-kpis-more svg.flip {
     transform: rotate(180deg);
 }
+
+/* Finance & receipts: larger, easier-to-read table text */
+.data-table.report-table-finance thead th {
+    height: 38px;
+    font-size: 10px;
+}
+
+.data-table.report-table-finance tbody td {
+    padding-top: 13px;
+    padding-bottom: 13px;
+    color: #4b5d77;
+    font-size: 12px;
+}
+
+.report-table-finance .table-primary {
+    font-size: 12px;
+}
+
+.report-table-finance .report-id {
+    font-size: 12px;
+}
+
+.data-table.report-table-finance .status-pill {
+    font-size: 10.5px;
+}
+
+.report-table-finance tfoot td {
+    height: 44px;
+    font-size: 12px;
+}
+
+.report-table-finance .report-receipt-button {
+    height: 28px;
+    font-size: 11px;
+}
+
+.report-table-finance .report-icon-button {
+    width: 28px;
+    height: 28px;
+}

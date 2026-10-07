@@ -5348,7 +5348,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
       {view === "table" ? (
         <section className="panel report-table-panel">
           <div className="table-scroll">
-            <table className="data-table report-table">
+            <table className={`data-table report-table report-table-${report.id}`}>
               <thead>
                 <tr>
                   {columns.map((column) => (
