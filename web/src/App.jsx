@@ -1696,6 +1696,16 @@ function CustomerHome({ session, onLogout }) {
   const [invoiceOpen, setInvoiceOpen] = useState(null);
   const [copied, setCopied] = useState("");
   const [orderFilter, setOrderFilter] = useState("All");
+  const [profileMenu, setProfileMenu] = useState(false);
+  const profileRef = useRef(null);
+  useEffect(() => {
+    if (!profileMenu) return undefined;
+    const close = (event) => { if (!profileRef.current?.contains(event.target)) setProfileMenu(false); };
+    const escape = (event) => { if (event.key === "Escape") setProfileMenu(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
+  }, [profileMenu]);
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: "" }));
@@ -2076,9 +2086,22 @@ orders.length === 0 ? (
           <div className="topbar-actions">
             <button type="button" className="icon-button" onClick={load} disabled={state.loading} aria-label="Refresh" title="Refresh"><RotateCcw size={17} /></button>
             <div className="top-divider" />
-            <div className="top-profile">
-              <div className="profile-avatar small-avatar">{initials}</div>
-              <span><strong>{session.name}</strong><small>Customer</small></span>
+            <div className="cust-profile-wrap" ref={profileRef}>
+              <button type="button" className="top-profile cust-profile-toggle" onClick={() => setProfileMenu((open) => !open)} aria-haspopup="menu" aria-expanded={profileMenu} aria-label="Account menu">
+                <div className="profile-avatar small-avatar">{initials}</div>
+                <span><strong>{session.name}</strong><small>Customer</small></span>
+              </button>
+              {profileMenu && (
+                <div className="cust-profile-menu" role="menu">
+                  <div className="cust-profile-head">
+                    <div className="profile-avatar small-avatar">{initials}</div>
+                    <span><strong>{session.name}</strong><small>{state.customer?.phone || session.phone}</small></span>
+                  </div>
+                  <button type="button" role="menuitem" onClick={() => { setProfileMenu(false); go("My orders"); }}><CalendarDays size={15} /> My orders</button>
+                  <button type="button" role="menuitem" onClick={() => { setProfileMenu(false); go("How to pay"); }}><Wallet size={15} /> How to pay</button>
+                  <button type="button" role="menuitem" className="danger" onClick={() => { setProfileMenu(false); onLogout(); }}><LogOut size={15} /> Log out</button>
+                </div>
+              )}
             </div>
             <button type="button" className="button button-secondary cust-top-logout" onClick={onLogout}><LogOut size={14} /> Log out</button>
           </div>

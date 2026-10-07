@@ -12431,3 +12431,47 @@ body {
     .cust-progress.light { height: 6px; background: #dbe6f7; }
     .cust-progress.light i { background: linear-gradient(90deg, #22c55e, #16a34a); }
 }
+
+/* Customer avatar menu (top right) */
+.cust-profile-wrap { position: relative; }
+.cust-profile-toggle { border: 0; background: none; padding: 0; font: inherit; text-align: left; cursor: pointer; }
+.cust-shell .top-profile.cust-profile-toggle { cursor: pointer; }
+.cust-profile-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 40;
+    width: 240px;
+    display: grid;
+    padding: 6px;
+    border: 1px solid #e3e9f2;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 16px 40px #0f234029;
+}
+.cust-profile-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 12px; margin-bottom: 4px; border-bottom: 1px solid #eef2f7; }
+.cust-profile-head span { display: grid; min-width: 0; }
+.cust-profile-head strong { overflow: hidden; color: #12233d; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.cust-profile-head small { color: #66748a; font-size: 11.5px; }
+.cust-profile-menu > button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 9px;
+    background: none;
+    color: #263750;
+    font: 600 13.5px 'DM Sans', sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+.cust-profile-menu > button svg { color: inherit; }
+.cust-profile-menu > button:hover { background: #f3f6fb; }
+.cust-profile-menu > button.danger { color: #c8423a; }
+.cust-profile-menu > button.danger:hover { background: #fdecea; }
+.cust-profile-menu > button:not(.danger),
+.cust-profile-menu > button:not(.danger) svg { color: #263750 !important; }
+.cust-profile-menu > button.danger,
+.cust-profile-menu > button.danger svg { color: #c8423a !important; }
