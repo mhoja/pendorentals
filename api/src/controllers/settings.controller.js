@@ -1,6 +1,7 @@
 import { can } from '../services/permissions.service.js';
 import { HttpError } from '../utils/helpers.js';
 import { getSettings, saveSettings } from '../services/settings.service.js';
+import { businessSignatureView, clearBusinessSignature, saveBusinessSignature } from '../services/signature.service.js';
 import { getGatewayState, setGatewayConnected, smsConfigured, smsProvider, verifyGateway } from '../services/sms.service.js';
 
 // GET /api/settings
@@ -54,4 +55,21 @@ export async function connectSmsGateway(request, response) {
 export async function disconnectSmsGateway(request, response) {
     await setGatewayConnected(false, request.user.name);
     response.json({ gateway: await gatewayStatus() });
+}
+
+// GET /api/settings/signature — the business signature used to sign invoices (or null).
+export async function getSignature(_request, response) {
+    response.json({ signature: await businessSignatureView() });
+}
+
+// PUT /api/settings/signature — upload a new signature image ({ image: data URL }); stored in S3.
+export async function uploadSignature(request, response) {
+    await saveBusinessSignature(request.body?.image, request.user);
+    response.json({ signature: await businessSignatureView() });
+}
+
+// DELETE /api/settings/signature
+export async function removeSignature(_request, response) {
+    await clearBusinessSignature();
+    response.json({ signature: null });
 }

@@ -1,4 +1,5 @@
 import { prettyPhone, todayIso } from '../utils/helpers.js';
+import { readFileAsDataUrl } from './storage.service.js';
 
 // Shared by the billing and customer controllers.
 export const INVOICE_SELECT = `
@@ -26,7 +27,18 @@ export function shapeInvoice(row) {
         storedStatus: row.status,
         notes: row.notes || '',
         createdAt: row.created_at,
+        // The signature image itself is only sent with a single invoice (see signatureOf).
+        signed: Boolean(row.signed_at),
+        signedName: row.signed_name || '',
+        signedAt: row.signed_at,
     };
+}
+
+// The signature printed on a signed invoice: the business signature it was signed with (read from S3).
+export async function signatureOf(row) {
+    if (!row.signed_at) return null;
+    const image = row.signature_key ? await readFileAsDataUrl(row.signature_key).catch(() => null) : null;
+    return { image, name: row.signed_name || '', signedAt: row.signed_at };
 }
 
 export const PAYMENT_SELECT = `

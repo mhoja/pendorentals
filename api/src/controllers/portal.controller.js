@@ -1,7 +1,7 @@
 import { query } from '../config/db.js';
 import { HttpError, prettyPhone } from '../utils/helpers.js';
 import { loadOrder, loadOrders } from '../services/orders.service.js';
-import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
+import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment, signatureOf } from '../services/billing.service.js';
 import { getSettings } from '../services/settings.service.js';
 
 // Everything here is limited to the signed-in customer's own records.
@@ -52,7 +52,7 @@ export async function listMyPayments(request, response) {
 
 // GET /api/my/invoices
 export async function listMyInvoices(request, response) {
-    const { rows } = await query(`${INVOICE_SELECT} where i.customer_id = $1 and i.status <> 'Cancelled' order by i.id desc`, [request.user.id]);
+    const { rows } = await query(`${INVOICE_SELECT} where i.customer_id = $1 and i.status <> 'Cancelled' and i.signed_at is not null order by i.id desc`, [request.user.id]);
     response.json({ invoices: rows.map(shapeInvoice) });
 }
 
@@ -60,7 +60,7 @@ export async function listMyInvoices(request, response) {
 export async function getMyInvoice(request, response) {
     const id = Number(request.params.id);
     const { rows: [row] } = Number.isInteger(id)
-        ? await query(`${INVOICE_SELECT} where i.id = $1 and i.customer_id = $2`, [id, request.user.id])
+        ? await query(`${INVOICE_SELECT} where i.id = $1 and i.customer_id = $2 and i.signed_at is not null`, [id, request.user.id])
         : { rows: [] };
     if (!row) throw new HttpError(404, 'Invoice not found.');
     const [order, payments, customer, settings] = await Promise.all([
@@ -73,6 +73,7 @@ export async function getMyInvoice(request, response) {
     const { dbId: _dbId, customer: _customer, ...publicOrder } = order || {};
     response.json({
         invoice: shapeInvoice(row),
+        signature: await signatureOf(row),
         order: order ? publicOrder : null,
         payments: payments.rows.map(customerPayment),
         customer: { name: `${person.first_name} ${person.last_name}`, phone: prettyPhone(person.phone), email: person.email || '', area: person.area || '', place: person.place || '' },

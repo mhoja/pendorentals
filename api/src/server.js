@@ -26,7 +26,10 @@ const app = express();
 const port = Number(process.env.PORT) || 5001;
 
 app.set('trust proxy', 'loopback');
-app.use(express.json({ limit: '100kb' }));
+// Signature images (up to 1 MB, sent as base64) need a bigger body than everything else.
+const smallJson = express.json({ limit: '100kb' });
+const uploadJson = express.json({ limit: '2mb' });
+app.use((request, response, next) => (request.path === '/api/settings/signature' ? uploadJson : smallJson)(request, response, next));
 
 for (const routes of [
     publicRoutes, authRoutes, portalRoutes, inventoryRoutes, categoryRoutes, areaRoutes, orderRoutes, customerRoutes,

@@ -331,6 +331,22 @@ const migrations = [
              where message ~* '(password|nenosiri)[^0-9\n]{0,6}[0-9]{4,10}';
         `,
     },
+    {
+        id: 12,
+        name: 'signed invoices',
+        sql: `
+            -- An invoice reaches the customer only once it is signed with the business signature
+            -- (uploaded in Settings → Business profile, stored in S3). The invoice keeps the S3 key and link
+            -- of the signature it was signed with, so replacing the signature later doesn't change old invoices.
+            alter table invoices add column signature_key text;
+            alter table invoices add column signature_url text;
+            alter table invoices add column signed_name text;
+            alter table invoices add column signed_by integer references staff (id);
+            alter table invoices add column signed_at timestamptz;
+            -- Invoices issued before signatures existed stay visible to their customers.
+            update invoices set signed_at = created_at where signed_at is null;
+        `,
+    },
 ];
 
 export async function migrate() {

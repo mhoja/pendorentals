@@ -2,7 +2,8 @@ import { query, transaction } from '../config/db.js';
 import { HttpError, addDays, cleanText, formatDate, formatTSh, greetName, isIsoDate, isWhole, prettyPhone, todayIso } from '../utils/helpers.js';
 import { loadOrder, nextCode, smsDate, smsItems } from '../services/orders.service.js';
 import { enabledPaymentMethods, getSettings, sendTemplate } from '../services/settings.service.js';
-import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment } from '../services/billing.service.js';
+import { INVOICE_SELECT, PAYMENT_SELECT, shapeInvoice, shapePayment, signatureOf } from '../services/billing.service.js';
+import { getBusinessSignature } from '../services/signature.service.js';
 
 const publicUrl = process.env.PUBLIC_URL || 'http://13.222.191.203:5050';
 
@@ -41,14 +42,18 @@ export async function createInvoice(request, response) {
     if (!isWhole(amount, 1, 1e10)) {
         throw new HttpError(400, order.total === null ? 'Set prices on the order first, or enter the invoice amount.' : 'Enter the invoice amount.', { fields: { amount: 'Enter an amount.' } });
     }
+    // Signing is optional when creating; unsigned invoices stay hidden from the customer.
+    const signature = body.sign === true ? await requireBusinessSignature() : null;
     const issuedOn = isIsoDate(body.issuedOn) ? body.issuedOn : todayIso();
     const dueOn = isIsoDate(body.dueOn) ? body.dueOn : addDays(issuedOn, 7);
     const id = await transaction(async (db) => {
         const code = await nextCode(db, 'invoice_number_seq', settings.invoicePrefix || 'INV-', 6);
         const { rows: [invoice] } = await db.query(
-            `insert into invoices (code, order_id, customer_id, issued_on, due_on, amount, notes, created_by)
-             values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-            [code, order.dbId, order.customer.id, issuedOn, dueOn, amount, cleanText(body.notes, 300) || null, request.user.id],
+            `insert into invoices (code, order_id, customer_id, issued_on, due_on, amount, notes, created_by,
+                                   signature_key, signature_url, signed_name, signed_by, signed_at)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
+            [code, order.dbId, order.customer.id, issuedOn, dueOn, amount, cleanText(body.notes, 300) || null, request.user.id,
+                signature?.key || null, signature?.url || null, signature ? request.user.name : null, signature ? request.user.id : null, signature ? new Date() : null],
         );
         // Payments already recorded against the order count toward the new invoice.
         await db.query("update payments set invoice_id = $1 where order_id = $2 and invoice_id is null", [invoice.id, order.dbId]);
@@ -57,22 +62,7 @@ export async function createInvoice(request, response) {
     });
     const { rows: [row] } = await query(`${INVOICE_SELECT} where i.id = $1`, [id]);
     const invoice = shapeInvoice(row);
-    // Tell the customer the invoice is ready in their account (Settings → Notifications → Invoice created).
-    let sms = null;
-    if (body.notifyCustomer !== false && settings.customerInvoice !== false) {
-        sms = await sendTemplate(settings, 'invoiceCreated', order.customerPhone, (lang) => ({
-            firstName: greetName(order.customer.firstName),
-            invoice: invoice.code,
-            order: order.id,
-            amount: formatTSh(invoice.amount),
-            paid: formatTSh(invoice.paid),
-            due: invoice.balance <= 0
-                ? (lang === 'sw' ? 'Imelipwa yote - asante!' : 'Fully paid - asante!')
-                : lang === 'sw' ? `Salio ${formatTSh(invoice.balance)} kabla ya ${smsDate(invoice.dueOn, 'sw')}.` : `Balance ${formatTSh(invoice.balance)} due by ${formatDate(invoice.dueOn)}.`,
-            link: publicUrl,
-            phone: settings.phone,
-        }), { kind: 'invoice', orderId: order.dbId });
-    }
+    const sms = invoice.signed && body.notifyCustomer !== false ? await notifyInvoiceReady(invoice, order, settings) : null;
     response.status(201).json({ invoice, sms: sms && { status: sms.status, error: sms.error } });
 }
 
@@ -80,6 +70,46 @@ async function loadInvoice(id) {
     const { rows: [row] } = Number.isInteger(id) ? await query(`${INVOICE_SELECT} where i.id = $1`, [id]) : { rows: [] };
     if (!row) throw new HttpError(404, 'Invoice not found.');
     return row;
+}
+
+// The uploaded business signature, needed to sign; without one, invoices can only be saved unsigned.
+async function requireBusinessSignature() {
+    const signature = await getBusinessSignature();
+    if (!signature) throw new HttpError(400, 'Upload the business signature in Settings → Business profile first, or save the invoice unsigned.', { fields: { signature: 'No business signature yet.' } });
+    return signature;
+}
+
+// Tells the customer a signed invoice is ready in their account (Settings → Notifications → Invoice created).
+async function notifyInvoiceReady(invoice, order, settings) {
+    if (settings.customerInvoice === false) return null;
+    return sendTemplate(settings, 'invoiceCreated', order.customerPhone, (lang) => ({
+        firstName: greetName(order.customer.firstName),
+        invoice: invoice.code,
+        order: order.id,
+        amount: formatTSh(invoice.amount),
+        paid: formatTSh(invoice.paid),
+        due: invoice.balance <= 0
+            ? (lang === 'sw' ? 'Imelipwa yote - asante!' : 'Fully paid - asante!')
+            : lang === 'sw' ? `Salio ${formatTSh(invoice.balance)} kabla ya ${smsDate(invoice.dueOn, 'sw')}.` : `Balance ${formatTSh(invoice.balance)} due by ${formatDate(invoice.dueOn)}.`,
+        link: publicUrl,
+        phone: settings.phone,
+    }), { kind: 'invoice', orderId: order.dbId });
+}
+
+// POST /api/invoices/:id/sign — sign an unsigned invoice; it then appears in the customer's account.
+export async function signInvoice(request, response) {
+    const row = await loadInvoice(Number(request.params.id));
+    if (row.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
+    if (row.signed_at) throw new HttpError(409, `${row.code} is already signed by ${row.signed_name || 'a team member'}.`);
+    const body = request.body || {};
+    const signature = await requireBusinessSignature();
+    await query(`update invoices set signature_key = $2, signature_url = $3, signed_name = $4, signed_by = $5, signed_at = now()
+                  where id = $1 and signed_at is null`,
+        [row.id, signature.key, signature.url, request.user.name, request.user.id]);
+    const invoice = shapeInvoice(await loadInvoice(row.id));
+    const order = invoice.orderCode ? await loadOrder(invoice.orderCode) : null;
+    const sms = order && body.notifyCustomer !== false ? await notifyInvoiceReady(invoice, order, await getSettings()) : null;
+    response.json({ invoice, sms: sms && { status: sms.status, error: sms.error } });
 }
 
 // GET /api/invoices/:id — everything needed to show, print or send the invoice.
@@ -93,6 +123,7 @@ export async function getInvoice(request, response) {
     const person = customer.rows[0] || {};
     response.json({
         invoice: shapeInvoice(row),
+        signature: await signatureOf(row),
         order,
         payments: payments.rows.map(shapePayment),
         customer: { name: `${person.first_name} ${person.last_name}`, phone: prettyPhone(person.phone), email: person.email || '', area: person.area || '', place: person.place || '' },
@@ -103,6 +134,7 @@ export async function getInvoice(request, response) {
 export async function sendInvoice(request, response) {
     const invoice = shapeInvoice(await loadInvoice(Number(request.params.id)));
     if (invoice.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
+    if (!invoice.signed) throw new HttpError(400, 'Sign the invoice first. Unsigned invoices can’t be sent to the customer.');
     const settings = await getSettings();
     const { rows: [person] } = await query('select first_name, phone from customers where id = $1', [invoice.customerId]);
     const howToPay = (lang) => {

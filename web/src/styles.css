@@ -12506,3 +12506,46 @@ body {
 }
 /* Payment numbers: one tap selects the whole number, for copying by hand if needed */
 .cust-copy-value { user-select: all; -webkit-user-select: all; }
+
+/* Invoice signatures */
+.sig-section { display: grid; gap: 10px; padding: 14px; border: 1px solid #e3e9f2; border-radius: 12px; background: #fbfcfe; }
+.sig-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sig-head strong { display: inline-flex; align-items: center; gap: 6px; color: #172a45; font-size: 13.5px; }
+.sig-head .ws-check { margin: 0; }
+.inv-unsigned-note { display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px 22px; border-bottom: 1px solid #f6dfc8; background: #fff7ed; color: #b45309; font-size: 12.5px; font-weight: 600; }
+.inv-unsigned-note svg { color: inherit; }
+.inv-sign-form { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(220px, 1fr); gap: 16px; align-items: start; padding: 14px 22px; border-bottom: 1px solid #e9eef5; background: #f8fafd; }
+.inv-sign-side { display: grid; gap: 10px; }
+.inv-sign-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.inv-sign-buttons .button { height: 36px; gap: 6px; font: 700 12.5px 'DM Sans', sans-serif; }
+.inv-sign-buttons .button svg { color: inherit; }
+.inv-unsigned-tag { display: inline-flex; align-items: center; gap: 4px; color: #b45309 !important; font-weight: 700; }
+.inv-unsigned-tag svg { color: inherit; }
+@media (max-width: 700px) {
+    .inv-sign-form { grid-template-columns: 1fr; padding: 12px 14px; }
+}
+
+/* Business signature: settings card and preview where invoices are signed */
+.set-signature { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: center; }
+.set-signature-box { height: 110px; display: grid; place-items: center; padding: 10px; border: 1px solid #dfe6f0; border-radius: 12px; background: #fff; background-image: linear-gradient(45deg, #f6f8fb 25%, transparent 25%), linear-gradient(-45deg, #f6f8fb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f6f8fb 75%), linear-gradient(-45deg, transparent 75%, #f6f8fb 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.set-signature-box img { max-width: 100%; max-height: 90px; object-fit: contain; }
+.set-signature-box.empty { border-style: dashed; background: #fbfcfe; color: #8492a6; font-size: 12.5px; font-weight: 700; }
+.set-signature-box.empty span { display: inline-flex; align-items: center; gap: 6px; }
+.set-signature-box svg { color: inherit; }
+.set-signature-copy { display: grid; gap: 8px; }
+.set-signature-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.set-signature-actions .button { height: 34px; gap: 6px; padding: 0 12px; font: 700 12px 'DM Sans', sans-serif; }
+.set-signature-actions .button svg { color: inherit; }
+.set-upload.disabled { opacity: .6; pointer-events: none; }
+.sig-preview { display: grid; gap: 6px; justify-items: start; }
+.sig-preview-img { width: min(280px, 100%); height: 86px; display: grid; place-items: center; padding: 8px; border: 1px solid #dfe6f0; border-radius: 10px; background: #fff; }
+.sig-preview-img img { max-width: 100%; max-height: 70px; object-fit: contain; }
+.sig-preview small { color: #5d6b82; font-size: 12px; }
+.sig-preview b { color: #12233d; }
+.team-form-note.warn { color: #b45309; }
+.team-form-note.warn svg { color: inherit; }
+@media (max-width: 640px) {
+    .set-signature { grid-template-columns: 1fr; }
+}
+.set-signature-actions .button.cust-danger,
+.set-signature-actions .button.cust-danger svg { border-color: #f3c9c5; background: #fff; color: #c8423a !important; }

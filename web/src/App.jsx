@@ -67,6 +67,7 @@ import {
   CalendarCheck,
   Building2,
   PencilLine,
+  PenLine,
   Banknote,
   ScrollText,
   CreditCard,
@@ -3964,6 +3965,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
   const [paying, setPaying] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [credentials, setCredentials] = useState(null);
+  const [invoicing, setInvoicing] = useState("");
   const [toast, setToast] = useToast();
   const perm = (key) => hasPerm(session, key);
 
@@ -4003,15 +4005,6 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
     }
   }
 
-  async function createInvoice(order) {
-    try {
-      const data = await call("/invoices", { method: "POST", body: { orderCode: order.id } });
-      orders.reload();
-      setToast(`Invoice ${data.invoice.code} created for ${order.id}${data.sms ? (data.sms.status === "sent" ? " · SMS sent to the customer" : ` · SMS not sent (${smsNotSentReason(data.sms)})`) : ""}`);
-    } catch (error) {
-      setToast(error.message);
-    }
-  }
 
   const money = (value) => (value === null || value === undefined ? "—" : formatShillings(value));
   // Columns staff can show or hide with the Columns button (remembered on this device).
@@ -4084,7 +4077,7 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
                   });
                 }
                 if (order.status !== "Cancelled") {
-                  if (perm("invoices.manage") && !order.invoice && order.priced) actions.push({ label: "Create invoice", confirm: { title: `Create an invoice for ${order.id}?`, message: `${order.customer.name} will be invoiced ${formatShillings(order.total)} and get an SMS to view it in their account.`, confirmLabel: "Yes, create invoice" }, onClick: () => createInvoice(order) });
+                  if (perm("invoices.manage") && !order.invoice && order.priced) actions.push({ label: "Create invoice", onClick: () => setInvoicing(order.id) });
                   if (perm("payments.record") && order.priced && order.balance > 0) actions.push({ label: "Record payment", onClick: () => setPaying(order) });
                   if (perm("orders.cancel")) actions.push({ label: "Cancel order", danger: true, confirm: { title: `Cancel ${order.id}?`, message: `${order.customer.name}’s booking for ${orderDates(order)} will be cancelled.`, confirmLabel: "Yes, cancel order" }, onClick: () => setOrderStatus(order, "Cancelled") });
                 }
@@ -4129,6 +4122,17 @@ function OrdersPage({ query, startCreate, onCreateHandled, settings }) {
         </WsModal>
       )}
       {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
+      {invoicing && (
+        <InvoiceCreateModal
+          initialOrder={invoicing}
+          onClose={() => setInvoicing("")}
+          onSaved={(invoice, sms) => {
+            setInvoicing("");
+            orders.reload();
+            setToast(`Invoice ${invoice.code} created${invoice.signed ? "" : " (not signed — hidden from the customer)"}${sms ? (sms.status === "sent" ? " · SMS sent to the customer" : ` · SMS not sent (${smsNotSentReason(sms)})`) : ""}`);
+          }}
+        />
+      )}
       {toast}
     </>
   );
@@ -4765,7 +4769,7 @@ function CustomersPage({ query, onNewOrder, addOpen, setAddOpen }) {
 const INVOICE_STAMPS = { Paid: ["PAID", "#1f9a6a"], "Partially paid": ["PART PAID", "#c4851f"], Overdue: ["OVERDUE", "#d0443c"], Unpaid: ["UNPAID", "#2674ed"], Cancelled: ["CANCELLED", "#8592a6"] };
 
 // Lines, totals and payment details for an invoice, from GET /api/invoices/:id plus settings.
-function invoiceContent({ invoice, order, payments, customer }, settings = {}) {
+function invoiceContent({ invoice, order, payments, customer, signature }, settings = {}) {
   const days = order?.days || 1;
   const items = (order?.items || []).map((item, index) => ({
     no: index + 1,
@@ -4798,7 +4802,7 @@ function invoiceContent({ invoice, order, payments, customer }, settings = {}) {
     email: settings.email || BUSINESS_INFO.email,
     tin: settings.tin || "",
   };
-  return { invoice, order, payments: payments || [], customer: customer || {}, items, totals, howToPay, event, venue, business, stamp: INVOICE_STAMPS[invoice.status] || INVOICE_STAMPS.Unpaid };
+  return { invoice, order, payments: payments || [], customer: customer || {}, items, totals, howToPay, event, venue, business, signature: signature || null, stamp: INVOICE_STAMPS[invoice.status] || INVOICE_STAMPS.Unpaid };
 }
 
 const invoiceStyles = `
@@ -4847,6 +4851,12 @@ const invoiceStyles = `
   .payments td, .payments th { padding: 6px 8px; font-size: 11px; text-align: left; border-bottom: 1px solid #edf1f6; }
   .payments th { color: #8492a6; font-weight: 700; }
   .payments .num { text-align: right; }
+  .sign { width: 240px; margin: 26px 0 0 auto; text-align: center; }
+  .sign img { display: block; width: 220px; height: 70px; margin: 0 auto; object-fit: contain; }
+  .sign-blank { display: grid; place-items: center; height: 70px; color: #c2410c; font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+  .sign-line { margin: 2px 0 5px; border-top: 1.5px solid #1c2a3f; }
+  .sign strong { display: block; font-size: 12px; }
+  .sign small { color: #8492a6; font-size: 10px; letter-spacing: .4px; text-transform: uppercase; }
   .foot { margin-top: 26px; padding-top: 12px; border-top: 1px dashed #c9d3e0; color: #6b7a90; font-size: 10.5px; text-align: center; }
   .items .calc, .payments .meta { display: none; }
   @media print { .screen { padding: 0; background: #fff; } .screen .sheet { max-width: none; padding: 0; box-shadow: none; } }
@@ -4952,6 +4962,11 @@ function invoiceHtml(detail, settings, { screen = false } = {}) {
     </div>
   </section>
   ${c.payments.length ? `<div class="block"><h4>Payments received</h4><table class="payments"><thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th>Status</th><th class="num">Amount</th></tr></thead><tbody>${c.payments.map((payment) => `<tr><td class="rcpt">${escapeHtml(payment.receipt)}</td><td>${escapeHtml(shortDate(payment.date))}</td><td>${escapeHtml(payment.method)}</td><td>${escapeHtml(payment.status)}</td><td class="num amt">${money(payment.amount)}</td><td class="meta">${escapeHtml(shortDate(payment.date))} · ${escapeHtml(payment.method)} · ${escapeHtml(payment.status)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  <div class="sign ${c.signature ? "" : "unsigned"}">
+    ${c.signature
+      ? `${c.signature.image ? `<img src="${c.signature.image}" alt="Signature" />` : `<span class="sign-blank"></span>`}<div class="sign-line"></div><strong>${escapeHtml(c.signature.name || c.business.name)}</strong><small>Authorised signature${c.signature.image ? ` · ${escapeHtml(new Date(c.signature.signedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }))}` : ""}</small>`
+      : `<span class="sign-blank">Not signed yet</span><div class="sign-line"></div><small>Authorised signature</small>`}
+  </div>
   <div class="foot">Thank you for renting with ${escapeHtml(c.business.name)}. Questions? Call ${escapeHtml(c.business.phone)}.</div>
 </div></body></html>`;
 }
@@ -5085,6 +5100,26 @@ async function downloadInvoicePdf(detail, settings = {}) {
     });
     y = pdf.lastAutoTable.finalY + 10;
   }
+  if (c.signature) {
+    if (y > pdf.internal.pageSize.getHeight() - 55) {
+      pdf.addPage();
+      y = 20;
+    }
+    const boxX = right - 62;
+    if (c.signature.image) {
+      try {
+        pdf.addImage(c.signature.image, "PNG", boxX + 2, y, 58, 18);
+      } catch {
+        // a damaged image is left out; the name and line still print
+      }
+    }
+    pdf.setDrawColor(...ink);
+    pdf.setLineWidth(0.4);
+    pdf.line(boxX, y + 20, right, y + 20);
+    text(c.signature.name || c.business.name, boxX + 31, y + 25, { size: 9, bold: true, align: "center" });
+    text(`AUTHORISED SIGNATURE${c.signature.image ? ` · ${new Date(c.signature.signedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}`, boxX + 31, y + 29.5, { size: 6.5, color: muted, align: "center" });
+    y += 38;
+  }
   pdf.setDrawColor(201, 211, 224);
   pdf.setLineDashPattern([1, 1], 0);
   pdf.line(left, y, right, y);
@@ -5102,6 +5137,9 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
   const settingsRes = useResource("/settings");
   const settings = settingsRes.data?.settings || {};
   const [editing, setEditing] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signNotify, setSignNotify] = useState(true);
+  const businessSignature = useBusinessSignature();
   const [form, setForm] = useState({ dueOn: "", notes: "" });
   const [busy, setBusy] = useState("");
   const [toast, setToast] = useToast();
@@ -5130,6 +5168,16 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
     const result = await call(`/invoices/${invoice.id}/send`, { method: "POST" });
     setToast(result.sms.status === "sent" ? `Invoice sent to ${invoice.phone}` : `SMS not sent (${smsNotSentReason(result.sms)})`);
   });
+
+  const sign = (event) => {
+    event.preventDefault();
+    act("sign", async () => {
+      const result = await call(`/invoices/${invoice.id}/sign`, { method: "POST", body: { notifyCustomer: signNotify } });
+      setSigning(false);
+      refresh();
+      setToast(`${invoice.code} signed — now visible to the customer${result.sms ? (result.sms.status === "sent" ? " · SMS sent" : ` · SMS not sent (${smsNotSentReason(result.sms)})`) : ""}`);
+    });
+  };
 
   const saveEdit = (event) => {
     event.preventDefault();
@@ -5165,12 +5213,30 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
             <div className="inv-view-actions">
               <button type="button" className="button button-secondary" onClick={() => printInvoice(data, settings)}><Printer size={14} /> Print</button>
               <button type="button" className="button button-secondary" onClick={() => act("pdf", () => downloadInvoicePdf(data, settings))} disabled={busy === "pdf"}><Download size={14} /> PDF</button>
-              {manage && invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
+              {manage && invoice.status !== "Cancelled" && !invoice.signed && <button type="button" className="button button-primary" onClick={() => setSigning((value) => !value)}><PenLine size={14} /> Sign invoice</button>}
+              {manage && invoice.status !== "Cancelled" && invoice.signed && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
               {manage && invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={() => { setForm({ dueOn: String(invoice.dueOn).slice(0, 10), notes: invoice.notes }); setEditing((value) => !value); }}><PencilLine size={14} /> Edit</button>}
               {onRecordPayment && hasPerm(session, "payments.record") && invoice.balance > 0 && invoice.status !== "Cancelled" && <button type="button" className="button button-primary" onClick={() => onRecordPayment(invoice, refresh)}><Banknote size={14} /> Record payment</button>}
               {manage && invoice.status !== "Cancelled" && invoice.paid === 0 && <button type="button" className="button button-secondary cust-danger" onClick={cancelInvoice} disabled={busy === "cancel"}><X size={14} /> Cancel</button>}
             </div>
           </div>
+          {!invoice.signed && invoice.status !== "Cancelled" && !signing && (
+            <p className="inv-unsigned-note"><CircleAlert size={14} /> Not signed — the customer can’t see this invoice yet.{manage ? " Sign it to share it." : ""}</p>
+          )}
+          {signing && (
+            <form className="inv-sign-form" onSubmit={sign}>
+              {businessSignature.signature
+                ? <SignaturePreview signature={businessSignature.signature} signer={session.name} />
+                : <p className="team-form-note warn"><CircleAlert size={13} /> {businessSignature.status === "loading" ? "Loading the business signature…" : "No business signature yet — upload it in Settings → Business profile, then sign."}</p>}
+              <div className="inv-sign-side">
+                <label className="auth-check ws-check"><input type="checkbox" checked={signNotify} onChange={(event) => setSignNotify(event.target.checked)} /><span>SMS the customer that it’s ready in their account</span></label>
+                <div className="inv-sign-buttons">
+                  <button type="button" className="button button-secondary" onClick={() => setSigning(false)}>Cancel</button>
+                  <button type="submit" className="button button-primary" disabled={busy === "sign" || !businessSignature.signature}>{busy === "sign" ? <><LoaderCircle size={14} className="auth-spin" /> Signing…</> : <><PenLine size={14} /> Sign &amp; share</>}</button>
+                </div>
+              </div>
+            </form>
+          )}
           {editing && (
             <form className="inv-view-edit" onSubmit={saveEdit}>
               <label className="set-field"><span>Due date</span><input type="date" value={form.dueOn} onChange={(event) => setForm({ ...form, dueOn: event.target.value })} /></label>
@@ -5188,11 +5254,117 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
   );
 }
 
-function InvoiceCreateModal({ onClose, onSaved }) {
+// The business signature (uploaded in Settings → Business profile, stored in S3) used to sign invoices.
+function useBusinessSignature() {
+  const resource = useResource("/settings/signature");
+  return { ...resource, signature: resource.data?.signature || null };
+}
+
+// Signature preview shown where an invoice is signed.
+function SignaturePreview({ signature, signer }) {
+  return (
+    <div className="sig-preview">
+      <div className="sig-preview-img">{signature?.image ? <img src={signature.image} alt="Business signature" /> : <span>Signature</span>}</div>
+      <small>Signed by <b>{signer}</b> · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</small>
+    </div>
+  );
+}
+
+// Settings → Business profile: upload, replace or remove the business signature.
+function BusinessSignatureCard({ admin, onToast }) {
   const { call } = useApi();
+  const { signature, status, error: loadError, setData } = useBusinessSignature();
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [ask, confirmDialog] = useConfirm();
+  const inputRef = useRef(null);
+
+  async function upload(file) {
+    setError("");
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Choose a PNG, JPG or WebP image.");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setError("The image is larger than 1 MB. Choose a smaller picture.");
+      return;
+    }
+    const image = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Couldn’t read that file."));
+      reader.readAsDataURL(file);
+    }).catch((readError) => { setError(readError.message); return null; });
+    if (!image) return;
+    if (signature && !(await ask({ title: "Replace the business signature?", message: "New invoices will be signed with the new image. Invoices already signed keep the old signature.", confirmLabel: "Yes, replace" }))) return;
+    setBusy("upload");
+    try {
+      const data = await call("/settings/signature", { method: "PUT", body: { image } });
+      setData(data);
+      onToast("Business signature saved");
+    } catch (uploadError) {
+      setError(uploadError.message);
+    } finally {
+      setBusy("");
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function remove() {
+    if (!(await ask({ title: "Remove the business signature?", message: "Invoices can’t be signed until a new signature is uploaded, so new invoices stay hidden from customers. Invoices already signed are not affected.", confirmLabel: "Yes, remove", danger: true }))) return;
+    setBusy("remove");
+    try {
+      setData(await call("/settings/signature", { method: "DELETE" }));
+      onToast("Business signature removed");
+    } catch (removeError) {
+      setError(removeError.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <SettingsCard title="Business signature" desc="Printed on invoices when they are signed. Unsigned invoices stay hidden from customers.">
+      <div className="set-signature">
+        <div className={`set-signature-box ${signature?.image ? "" : "empty"}`}>
+          {status === "loading" ? <LoaderCircle size={18} className="auth-spin" />
+            : signature?.image ? <img src={signature.image} alt="Business signature" />
+              : <span><PenLine size={18} /> No signature yet</span>}
+        </div>
+        <div className="set-signature-copy">
+          {signature ? (
+            <small className="set-hint">Uploaded {new Date(signature.uploadedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{signature.uploadedBy ? ` by ${signature.uploadedBy}` : ""}.</small>
+          ) : (
+            <small className="set-hint">Sign on white paper with a dark pen, take a clear photo or scan, crop it close to the signature and upload it. A PNG with a transparent background looks best.</small>
+          )}
+          {admin && (
+            <div className="set-signature-actions">
+              <label className={`set-upload ${busy ? "disabled" : ""}`}>
+                {busy === "upload" ? <><LoaderCircle size={14} className="auth-spin" /> Uploading…</> : <><Upload size={14} /> {signature ? "Replace signature" : "Upload signature"}</>}
+                <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(busy)} onChange={(event) => upload(event.target.files?.[0])} />
+              </label>
+              {signature && <button type="button" className="button button-secondary cust-danger" onClick={remove} disabled={Boolean(busy)}><Trash2 size={14} /> Remove</button>}
+            </div>
+          )}
+          <small className="set-hint">PNG, JPG or WebP, up to 1 MB.</small>
+          {(error || loadError) && <small className="set-error"><CircleAlert size={12} /> {error || loadError}</small>}
+        </div>
+      </div>
+      {confirmDialog}
+    </SettingsCard>
+  );
+}
+
+function InvoiceCreateModal({ onClose, onSaved, initialOrder = "" }) {
+  const { call, session } = useApi();
   const orders = useResource("/orders");
-  const [orderCode, setOrderCode] = useState("");
+  const [orderCode, setOrderCode] = useState(initialOrder);
   const [amount, setAmount] = useState("");
+  const { signature, status: signatureStatus } = useBusinessSignature();
+  const [signNow, setSignNow] = useState(true);
+  const canSign = Boolean(signature);
+  const signing = signNow && canSign;
   const [dueOn, setDueOn] = useState(shiftIsoDate(localTodayIso(), 7));
   const [notes, setNotes] = useState("");
   const [notify, setNotify] = useState(true);
@@ -5201,17 +5373,20 @@ function InvoiceCreateModal({ onClose, onSaved }) {
   const candidates = (orders.data?.orders || []).filter((order) => !order.invoice && order.status !== "Cancelled");
   const selected = candidates.find((order) => order.id === orderCode);
   const [ask, confirmDialog] = useConfirm();
+  useEffect(() => {
+    if (initialOrder && selected && amount === "" && selected.total) setAmount(String(selected.total));
+  }, [initialOrder, selected?.id]);
   async function save(event) {
     event.preventDefault();
     if (selected && !(await ask({
       title: `Create an invoice for ${selected.id}?`,
-      message: `${selected.customer.name} will be invoiced ${amount === "" ? "the order total" : formatShillings(Number(amount))}, due ${shortDate(dueOn)}.${notify ? ` An SMS will tell them to view it in their account (${selected.customer.phone}).` : ""}`,
+      message: `${selected.customer.name} will be invoiced ${amount === "" ? "the order total" : formatShillings(Number(amount))}, due ${shortDate(dueOn)}.${signing ? `${notify ? ` Signed by ${session.name}; an SMS will tell them to view it in their account (${selected.customer.phone}).` : ` Signed by ${session.name}.`}` : " It is saved unsigned and stays hidden from the customer until someone signs it."}`,
       confirmLabel: "Yes, create invoice",
     }))) return;
     setBusy(true);
     setError("");
     try {
-      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn, notes, notifyCustomer: notify } });
+      const data = await call("/invoices", { method: "POST", body: { orderCode, amount: amount === "" ? undefined : Number(amount), dueOn, notes, notifyCustomer: notify, sign: signing } });
       onSaved(data.invoice, data.sms);
     } catch (saveError) {
       setError(saveError.message);
@@ -5241,10 +5416,27 @@ function InvoiceCreateModal({ onClose, onSaved }) {
           </div>
         )}
         <label className="set-field"><span>Notes on the invoice <em>Optional</em></span><input value={notes} maxLength={300} onChange={(event) => setNotes(event.target.value)} placeholder="e.g. Deposit received at booking" /></label>
-        <label className="auth-check ws-check">
-          <input type="checkbox" checked={notify} onChange={(event) => setNotify(event.target.checked)} />
-          <span>SMS the customer that the invoice is ready to view or download in their account</span>
-        </label>
+        <section className="sig-section">
+          <div className="sig-head">
+            <strong><PenLine size={15} /> Signature</strong>
+            {canSign && <label className="auth-check ws-check"><input type="checkbox" checked={signNow} onChange={(event) => { setSignNow(event.target.checked); setError(""); }} /><span>Sign now</span></label>}
+          </div>
+          {signatureStatus === "loading" ? (
+            <p className="team-form-note"><LoaderCircle size={13} className="auth-spin" /> Loading the business signature…</p>
+          ) : !canSign ? (
+            <p className="team-form-note warn"><CircleAlert size={13} /> No business signature yet — upload it in Settings → Business profile. The invoice is saved unsigned and stays hidden from the customer until it is signed.</p>
+          ) : signNow ? (
+            <>
+              <SignaturePreview signature={signature} signer={session.name} />
+              <label className="auth-check ws-check">
+                <input type="checkbox" checked={notify} onChange={(event) => setNotify(event.target.checked)} />
+                <span>SMS the customer that the invoice is ready to view or download in their account</span>
+              </label>
+            </>
+          ) : (
+            <p className="team-form-note"><Info size={13} /> The invoice is saved unsigned. The customer can’t see it, and no SMS is sent, until someone signs it from the invoice.</p>
+          )}
+        </section>
         {selected && selected.total === null && <p className="team-form-note"><Info size={13} /> This order has no prices yet — enter the invoice amount, or price the order first.</p>}
         {error && <p className="inv-form-error" role="alert"><CircleAlert size={14} /> {error}</p>}
         <div className="modal-actions">
@@ -5350,17 +5542,17 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
                     </div>
                   );
                 } },
-                { key: "status", label: "STATUS", render: (row) => <StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill> },
+                { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill>{!row.signed && row.status !== "Cancelled" && <small className="inv-unsigned-tag"><PenLine size={11} /> Not signed</small>}</div> },
               ]}
               rows={rows}
               itemLabel="invoices"
               totalCount={list.length}
               rowKey="id"
               renderActions={(row) => [
-                { label: "View invoice", onClick: () => setViewing(row.id) },
+                { label: row.signed || row.status === "Cancelled" || !perm("invoices.manage") ? "View invoice" : "View & sign", onClick: () => setViewing(row.id) },
                 { label: "Print", onClick: () => withDetail(row, (data) => printInvoice(data, settings)) },
                 { label: "Download PDF", onClick: () => withDetail(row, (data) => downloadInvoicePdf(data, settings)) },
-                ...(perm("invoices.manage") && row.status !== "Cancelled" ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
+                ...(perm("invoices.manage") && row.status !== "Cancelled" && row.signed ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
                   try {
                     const result = await call(`/invoices/${row.id}/send`, { method: "POST" });
                     setToast(result.sms.status === "sent" ? `${row.code} sent to ${row.phone}` : `SMS not sent (${smsNotSentReason(result.sms)})`);
@@ -5379,7 +5571,7 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
           </>
         )}
       </section>
-      {creating && <InvoiceCreateModal onClose={() => setCreating(false)} onSaved={(invoice, sms) => { setCreating(false); invoices.setData((current) => ({ ...current, invoices: [invoice, ...current.invoices] })); setToast(`Invoice ${invoice.code} created${sms ? (sms.status === "sent" ? " · SMS sent to the customer" : ` · SMS not sent (${smsNotSentReason(sms)})`) : ""}`); }} />}
+      {creating && <InvoiceCreateModal onClose={() => setCreating(false)} onSaved={(invoice, sms) => { setCreating(false); invoices.setData((current) => ({ ...current, invoices: [invoice, ...current.invoices] })); setToast(`Invoice ${invoice.code} created${invoice.signed ? "" : " (not signed — hidden from the customer)"}${sms ? (sms.status === "sent" ? " · SMS sent to the customer" : ` · SMS not sent (${smsNotSentReason(sms)})`) : ""}`); }} />}
       {viewing && (
         <InvoiceView
           invoiceId={viewing}
@@ -8327,6 +8519,8 @@ function SettingsPage({ onLogout, session, settingsResource }) {
                 </div>
               </div>
             </SettingsCard>
+
+            <BusinessSignatureCard admin={admin} onToast={setToast} />
 
             <SettingsCard title="Business details">
               <div className="set-grid">
