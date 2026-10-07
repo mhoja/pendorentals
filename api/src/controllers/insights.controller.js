@@ -108,7 +108,8 @@ export async function getDashboard(request, response) {
             query(`select count(*)::int as count, coalesce(sum(amount), 0) as amount from expenses where status = 'Pending'`),
             query(`${PAYMENT_SELECT} order by p.paid_on desc, p.id desc limit 5`),
         ]);
-        const owing = openOrders.filter((order) => order.balance > 0);
+        // Every order except cancelled ones, so completed orders that still owe money count too.
+        const owing = (await loadOrders("o.status <> 'Cancelled'")).filter((order) => order.balance > 0);
         finance = {
             month, lastMonth,
             outstanding: owing.reduce((sum, order) => sum + order.balance, 0),

@@ -125,9 +125,10 @@ function BrandMark() {
   );
 }
 
-function Metric({ icon: Icon, label, value, change, kind, color, caption }) {
+function Metric({ icon: Icon, label, value, change, kind, color, caption, help }) {
   return (
-    <article className="metric-card">
+    <article className={`metric-card ${help ? "has-help" : ""}`} title={help} tabIndex={help ? 0 : undefined} aria-label={help ? `${label}: ${value}. ${help}` : undefined}>
+      {help && <span className="metric-help" aria-hidden="true"><CircleHelp size={13} /></span>}
       <div className={`metric-icon ${color}`}>
         <Icon size={18} strokeWidth={2.1} />
       </div>
@@ -4646,10 +4647,10 @@ function OverviewPage({ onNavigate }) {
     <>
       {fin ? (
         <section className="metrics-grid" aria-label={`This month, ${windows.thisMonth}`}>
-          <Metric icon={Banknote} label={`Collected · ${windows.thisMonth}`} value={formatShillings(fin.month.collected)} change={collectedVs.change} kind={collectedVs.kind} color="mint-icon" caption={collectedVs.caption} />
-          <Metric icon={ChartNoAxesCombined} label={`Net · ${windows.thisMonth}`} value={formatShillings(fin.month.net)} change={netVs.change} kind={netVs.kind} color="blue-icon" caption={netVs.caption} />
-          <Metric icon={Receipt} label="To collect" value={formatShillings(fin.outstanding)} change={`${fin.owingOrders} order${fin.owingOrders === 1 ? "" : "s"}`} kind={fin.overdueInvoices.count ? "down" : "up"} color="orange-icon" caption={fin.overdueInvoices.count ? `${fin.overdueInvoices.count} invoice${fin.overdueInvoices.count === 1 ? "" : "s"} overdue` : "balance owed"} />
-          <Metric icon={CalendarDays} label="Out on rent today" value={inv.out.toLocaleString("en-US")} change={`${outPct}%`} kind="up" color="purple-icon" caption={`${inv.available.toLocaleString("en-US")} available`} />
+          <Metric icon={Banknote} label={`Collected · ${windows.thisMonth}`} value={formatShillings(fin.month.collected)} change={collectedVs.change} kind={collectedVs.kind} color="mint-icon" caption={collectedVs.caption} help={`All payments received from 1 ${windows.thisMonth} to today (refunds excluded), compared with ${windows.lastMonth}.`} />
+          <Metric icon={ChartNoAxesCombined} label={`Net · ${windows.thisMonth}`} value={formatShillings(fin.month.net)} change={netVs.change} kind={netVs.kind} color="blue-icon" caption={netVs.caption} help={`What the business keeps this month: money collected minus tithe, giving and approved expenses. Compared with ${windows.lastMonth}.`} />
+          <Metric icon={Receipt} label="To collect" value={formatShillings(fin.outstanding)} change={`${fin.owingOrders} order${fin.owingOrders === 1 ? "" : "s"}`} kind={fin.overdueInvoices.count ? "down" : "up"} color="orange-icon" caption={fin.overdueInvoices.count ? `${fin.overdueInvoices.count} invoice${fin.overdueInvoices.count === 1 ? "" : "s"} overdue` : "balance owed"} help="Money customers still owe: each order's total minus what has been paid, added up across all orders except cancelled ones (delivery fees included). Orders still waiting for a price are not counted." />
+          <Metric icon={CalendarDays} label="Out on rent today" value={inv.out.toLocaleString("en-US")} change={`${outPct}%`} kind="up" color="purple-icon" caption={`${inv.available.toLocaleString("en-US")} available`} help="Units on confirmed, ready or out-for-delivery orders whose event covers today. Available leaves out units in maintenance." />
         </section>
       ) : (
         <section className="metrics-grid" aria-label="Business overview">
@@ -4671,7 +4672,13 @@ function OverviewPage({ onNavigate }) {
             const cmp = vsLast(now, before, lower);
             const shown = label === "Payments" ? now.toLocaleString("en-US") : formatShillings(now);
             return (
-              <div key={label}>
+              <div key={label} title={{
+                Tithe: "Tithe set aside from payments received this month.",
+                Giving: "Giving set aside from payments received this month.",
+                Expenses: "Approved expenses this month (pending ones are not counted).",
+                "Delivery fees": "Part of this month's payments that paid delivery fees.",
+                Payments: "Number of payments received this month.",
+              }[label]}>
                 <span>{label}</span>
                 <strong>{shown}</strong>
                 <em className={`ov-delta ${cmp.kind}`}>{cmp.change === "Same" || cmp.change === "New" ? cmp.change : `${cmp.kind === "up" ? (lower ? "▼" : "▲") : (lower ? "▲" : "▼")} ${cmp.change}`} <i>{label === "Payments" ? `${lastShort}: ${before}` : `${lastShort}: ${formatShillings(before)}`}</i></em>
