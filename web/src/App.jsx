@@ -997,6 +997,18 @@ const itemLabel = (name) => RENTAL_ITEMS.find((item) => item.name === name)?.lab
 const itemUnit = (name) => RENTAL_ITEMS.find((item) => item.name === name)?.unit || "pcs";
 const itemDisplay = (item) => item.custom || itemLabel(item.name);
 const formatEventDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+// Multi-day orders run from the event (start) date to start + days − 1 (the end date).
+const addDaysIso = (iso, count) => {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+};
+const endDateIso = (iso, days) => (iso ? addDaysIso(iso, Math.max(1, Number(days) || 1) - 1) : "");
+const daysBetween = (start, end) => Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+const formatDateRange = (iso, days) => {
+  const count = Number(days) || 1;
+  return count > 1 ? `${formatEventDate(iso)} – ${formatEventDate(endDateIso(iso, count))} (${count} days)` : `${formatEventDate(iso)} · 1 day`;
+};
 
 function localTodayIso() {
   const now = new Date();
@@ -1123,24 +1135,17 @@ function RentItemsSection({ items, onItems, submitted, error }) {
 
 // Step 2 of a rental request: event date, days, area and venue.
 function RentWhenWhereFields({ form, update, invalid, show }) {
+  const multiDay = Number(form.days) > 1;
   return (
     <fieldset className="rent-section">
       <legend><span>2</span> When &amp; where?</legend>
       <div className="auth-field-grid">
-        <div className="auth-field">
-          <label className={`auth-input ${invalid("eventDate") ? "has-error" : ""}`}>
-            <CalendarDays size={17} />
-            <span className="sr-only">Event date</span>
-            <input type="date" min={localTodayIso()} value={form.eventDate} onChange={(event) => update("eventDate", event.target.value)} aria-invalid={invalid("eventDate")} />
-          </label>
-          {show("eventDate")}
-        </div>
-        <div className="auth-field">
+        <div className={`auth-field ${multiDay ? "rent-span" : ""}`}>
           <label className={`auth-input auth-select ${invalid("days") ? "has-error" : ""}`}>
             <Clock3 size={17} />
             <span className="sr-only">Number of days</span>
             <select value={form.days} onChange={(event) => update("days", event.target.value)} aria-invalid={invalid("days")}>
-              {Array.from({ length: 14 }, (_, index) => String(index + 1)).map((value) => (
+              {Array.from({ length: 30 }, (_, index) => String(index + 1)).map((value) => (
                 <option key={value} value={value}>{value} day{value === "1" ? "" : "s"}</option>
               ))}
             </select>
@@ -1148,6 +1153,34 @@ function RentWhenWhereFields({ form, update, invalid, show }) {
           </label>
           {show("days")}
         </div>
+        <div className="auth-field">
+          <label className={`auth-input rent-date ${invalid("eventDate") ? "has-error" : ""}`}>
+            <CalendarDays size={17} />
+            <span className="rent-date-label">{multiDay ? "Start date" : "Event date"}</span>
+            <input type="date" min={localTodayIso()} value={form.eventDate} onChange={(event) => update("eventDate", event.target.value)} aria-invalid={invalid("eventDate")} />
+          </label>
+          {show("eventDate")}
+        </div>
+        {multiDay && (
+          <div className="auth-field">
+            <label className="auth-input rent-date">
+              <CalendarDays size={17} />
+              <span className="rent-date-label">End date</span>
+              <input
+                type="date"
+                min={form.eventDate || localTodayIso()}
+                max={form.eventDate ? endDateIso(form.eventDate, 30) : undefined}
+                value={endDateIso(form.eventDate, form.days)}
+                disabled={!form.eventDate}
+                onChange={(event) => {
+                  const days = event.target.value && form.eventDate ? daysBetween(form.eventDate, event.target.value) : 0;
+                  if (days >= 1 && days <= 30) update("days", String(days));
+                }}
+              />
+            </label>
+            {!form.eventDate && <small className="rent-hint">Choose the start date first.</small>}
+          </div>
+        )}
         <div className="auth-field">
           <label className={`auth-input auth-select ${invalid("area") ? "has-error" : ""}`}>
             <MapPin size={17} />
@@ -1254,7 +1287,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
             </div>
             <dl className="auth-summary">
               <div><dt><ClipboardCheck size={14} /> Request</dt><dd>{order.id}</dd></div>
-              <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatEventDate(order.eventDate)} · {order.days} day{order.days === 1 ? "" : "s"}</dd></div>
+              <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatDateRange(order.eventDate, order.days)}</dd></div>
               <div><dt><MapPin size={14} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
               <div className="rent-summary-items">
                 <dt><Package size={14} /> Items</dt>
@@ -1452,7 +1485,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
     const itemCount = form.items.length;
     const ok = await ask({
       title: "Send this rental request?",
-      message: `${itemCount} item${itemCount === 1 ? "" : "s"} for ${formatEventDate(form.eventDate)} (${form.days} day${form.days === "1" ? "" : "s"}) at ${form.place ? `${form.place}, ${form.area}` : form.area}. We will call you to confirm availability and price.`,
+      message: `${itemCount} item${itemCount === 1 ? "" : "s"} for ${formatDateRange(form.eventDate, form.days)} at ${form.place ? `${form.place}, ${form.area}` : form.area}. We will call you to confirm availability and price.`,
       confirmLabel: "Send request",
     });
     if (!ok) return;
@@ -1489,7 +1522,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
         <h2>Request {order.id} received</h2>
         <p>Our team will call you shortly to confirm availability and price.</p>
         <dl className="auth-summary">
-          <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatEventDate(order.eventDate)} · {order.days} day{order.days === 1 ? "" : "s"}</dd></div>
+          <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatDateRange(order.eventDate, order.days)}</dd></div>
           <div><dt><MapPin size={14} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
           <div className="rent-summary-items">
             <dt><Package size={14} /> Items</dt>
@@ -1523,7 +1556,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
         <div className="cust-card-head"><span className="panel-kicker">YOUR REQUEST</span><h2>Summary</h2></div>
         <ul className="cust-rent-summary">
           <li><Package size={14} /><span>{form.items.length ? form.items.map((item) => `${item.custom || itemDisplay(item)} × ${item.quantity}`).join(", ") : "No items yet"}</span></li>
-          <li><CalendarDays size={14} /><span>{form.eventDate ? `${formatEventDate(form.eventDate)} · ${form.days} day${form.days === "1" ? "" : "s"}` : "Choose the event date"}</span></li>
+          <li><CalendarDays size={14} /><span>{form.eventDate ? formatDateRange(form.eventDate, form.days) : "Choose the event date"}</span></li>
           <li><MapPin size={14} /><span>{form.area ? (form.place ? `${form.place}, ${form.area}` : form.area) : "Choose your area"}</span></li>
           <li><UserRound size={14} /><span>{customer ? `${customer.firstName} ${customer.lastName} · ${customer.phone}` : session.name}</span></li>
         </ul>
@@ -1632,7 +1665,7 @@ orders.length === 0 ? (
                       ))}
                     </div>
                     <dl>
-                      <div><dt><CalendarDays size={13} /> Event</dt><dd>{formatEventDate(order.eventDate)} · {order.days} day{order.days === 1 ? "" : "s"}</dd></div>
+                      <div><dt><CalendarDays size={13} /> Event</dt><dd>{formatDateRange(order.eventDate, order.days)}</dd></div>
                       <div><dt><MapPin size={13} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
                       {order.notes && <div><dt><StickyNote size={13} /> Notes</dt><dd>{order.notes}</dd></div>}
                     </dl>
@@ -1752,7 +1785,7 @@ orders.length === 0 ? (
                 <div className="cust-next-date"><strong>{new Date(`${nextEvent.eventDate}T00:00:00`).getDate()}</strong><span>{new Date(`${nextEvent.eventDate}T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span></div>
                 <div className="cust-next-copy">
                   <strong>{nextEvent.id} · {nextEvent.status}</strong>
-                  <small>{formatEventDate(nextEvent.eventDate)} · {nextEvent.days} day{nextEvent.days === 1 ? "" : "s"} · {nextEvent.place ? `${nextEvent.place}, ${nextEvent.area}` : nextEvent.area}</small>
+                  <small>{formatDateRange(nextEvent.eventDate, nextEvent.days)} · {nextEvent.place ? `${nextEvent.place}, ${nextEvent.area}` : nextEvent.area}</small>
                   <span>{orderItemsText(nextEvent.items)}</span>
                   {nextEvent.total !== null && <em className={nextEvent.balance ? "due" : "settled"}>{nextEvent.balance ? `Balance ${formatShillings(nextEvent.balance)}` : "Paid in full"}</em>}
                 </div>
@@ -3319,7 +3352,7 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
           : `${form.newCustomer.firstName.trim()} ${form.newCustomer.lastName.trim()}`;
     const ok = await ask({
       title: creating ? "Create this order?" : `Save changes to ${order.id}?`,
-      message: `${customerName} · ${shortDate(form.eventDate)} · ${form.items.length} item${form.items.length === 1 ? "" : "s"} · ${total === null ? "price to be set" : formatShillings(total)} · ${form.status}${form.notify ? ". The customer will get an SMS." : "."}`,
+      message: `${customerName} · ${days > 1 ? `${shortDate(form.eventDate)} – ${shortDate(endDateIso(form.eventDate, days))} (${days} days)` : shortDate(form.eventDate)} · ${form.items.length} item${form.items.length === 1 ? "" : "s"} · ${total === null ? "price to be set" : formatShillings(total)} · ${form.status}${form.notify ? ". The customer will get an SMS." : "."}`,
       confirmLabel: creating ? "Yes, create order" : "Yes, save order",
     });
     if (!ok) return;
@@ -3401,9 +3434,28 @@ function OrderEditor({ order, prefillCustomer, inventory, drivers, onClose, onSa
 
           <section className="ws-order-card">
             <header className="ws-order-card-head"><h3><CalendarDays size={15} /> Event</h3></header>
-            <div className="ws-order-row ws-cols-event">
-              <label className="set-field"><span>Event date</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /></label>
+            <div className={`ws-order-row ws-cols-dates ${days > 1 ? "multi" : ""}`}>
               <label className="set-field"><span>Days</span><input type="number" min="1" max="60" value={form.days} onChange={(event) => set("days", event.target.value)} /></label>
+              <label className="set-field"><span>{days > 1 ? "Start date" : "Event date"}</span><input type="date" value={form.eventDate} onChange={(event) => set("eventDate", event.target.value)} aria-invalid={Boolean(fieldErrors.eventDate)} /></label>
+              {days > 1 && (
+                <label className="set-field">
+                  <span>End date</span>
+                  <input
+                    type="date"
+                    value={endDateIso(form.eventDate, days)}
+                    min={form.eventDate || undefined}
+                    max={form.eventDate ? endDateIso(form.eventDate, 60) : undefined}
+                    disabled={!form.eventDate}
+                    title={form.eventDate ? "" : "Choose the start date first"}
+                    onChange={(event) => {
+                      const count = event.target.value && form.eventDate ? daysBetween(form.eventDate, event.target.value) : 0;
+                      if (count >= 1 && count <= 60) set("days", String(count));
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            <div className="ws-order-row ws-cols-place">
               <label className="set-field"><span>Area</span><select value={form.area} onChange={(event) => set("area", event.target.value)}><option value="">Choose</option><AreaOptions current={form.area} /></select></label>
               <label className="set-field"><span>Venue / landmark</span><input value={form.place} maxLength={80} placeholder="e.g. Kayenze Primary School" onChange={(event) => set("place", event.target.value)} /></label>
             </div>

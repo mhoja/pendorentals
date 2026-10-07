@@ -11911,3 +11911,30 @@ button.ov-task:disabled {
     .cust-rent-form { grid-template-columns: 1fr; }
     .cust-rent-side { position: static; }
 }
+
+/* Rent forms: start and end dates for multi-day orders */
+.rent-span { grid-column: 1 / -1; }
+.auth-input.rent-date { position: relative; }
+.rent-date-label {
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    padding: 0 5px;
+    background: #fff;
+    color: #5d6b82;
+    font: 700 10.5px 'Manrope', sans-serif;
+    letter-spacing: .02em;
+    pointer-events: none;
+}
+.auth-input.rent-date input:disabled { color: #9aa6b8; cursor: not-allowed; }
+
+/* Order form: days, start and end dates, then area and venue */
+.ws-cols-dates { grid-template-columns: .6fr 1fr; }
+.ws-cols-dates.multi { grid-template-columns: .6fr 1fr 1fr; }
+.ws-cols-place { grid-template-columns: 1fr 1.7fr; }
+.ws-cols-dates input:disabled { color: #9aa6b8; cursor: not-allowed; }
+@media (max-width: 560px) {
+    .ws-cols-dates.multi { grid-template-columns: 1fr 1fr; }
+    .ws-cols-dates.multi > :first-child { grid-column: 1 / -1; }
+    .ws-cols-place { grid-template-columns: 1fr; }
+}
