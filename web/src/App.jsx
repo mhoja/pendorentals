@@ -359,14 +359,23 @@ const reportDefinitions = [
       { key: "channel", label: "Revenue by channel" },
       { key: "customer", label: "Top customers" },
     ],
-    metrics: (rows) => {
-      const kept = rows.filter((row) => row.status !== "Cancelled");
-      const revenue = sumBy(kept, "total");
+    monthlyCards: true,
+    metrics: (rows, previous) => {
+      const totals = (list) => {
+        const kept = list.filter((row) => row.status !== "Cancelled");
+        const revenue = sumBy(kept, "total");
+        const cancelled = list.filter((row) => row.status === "Cancelled");
+        return { revenue, orders: list.length, kept: kept.length, average: kept.length ? revenue / kept.length : 0, cancelled: cancelled.length, cancelledValue: sumBy(cancelled, "total") };
+      };
+      const now = totals(rows);
+      const before = previous ? totals(previous) : null;
+      const count = (value) => value.toLocaleString("en-US");
+      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatTSh, ...extra });
       return [
-        { label: "Revenue", value: formatTSh(revenue), hint: "excluding cancelled" },
-        { label: "Orders", value: rows.length, hint: `${kept.length} not cancelled` },
-        { label: "Average order", value: formatTSh(kept.length ? revenue / kept.length : 0), hint: "per order" },
-        { label: "Cancelled", value: rows.length - kept.length, hint: formatTSh(sumBy(rows.filter((row) => row.status === "Cancelled"), "total")), tone: "negative" },
+        card("Revenue", "revenue", formatTSh(now.revenue), "excluding cancelled"),
+        card("Orders", "orders", count(now.orders), `${now.kept} not cancelled`, { format: count }),
+        card("Average order", "average", formatTSh(now.average), "per order"),
+        card("Cancelled", "cancelled", count(now.cancelled), formatTSh(now.cancelledValue), { format: count, tone: now.cancelled ? "negative" : "", lowerIsBetter: true }),
       ];
     },
   },
@@ -401,14 +410,23 @@ const reportDefinitions = [
       { key: "method", label: "Spend by payment method" },
       { key: "vendor", label: "Top vendors" },
     ],
-    metrics: (rows) => {
-      const total = sumBy(rows, "amount");
+    monthlyCards: true,
+    metrics: (rows, previous) => {
+      const totals = (list) => {
+        const total = sumBy(list, "amount");
+        const pending = list.filter((row) => row.status === "Pending");
+        return { total, entries: list.length, average: list.length ? total / list.length : 0, pending: sumBy(pending, "amount"), pendingCount: pending.length };
+      };
+      const now = totals(rows);
+      const before = previous ? totals(previous) : null;
       const byCategory = groupTotals(rows, "category", "amount");
+      // For costs, going down is the good direction.
+      const card = (label, key, value, hint, extra = {}) => ({ label, value, hint, current: now[key], previous: before?.[key], format: formatTSh, lowerIsBetter: true, ...extra });
       return [
-        { label: "Total expenses", value: formatTSh(total), hint: `${rows.length} entries` },
-        { label: "Largest category", value: byCategory[0]?.label || "—", hint: byCategory[0] ? formatTSh(byCategory[0].value) : "" },
-        { label: "Average expense", value: formatTSh(rows.length ? total / rows.length : 0), hint: "per entry" },
-        { label: "Pending approval", value: formatTSh(sumBy(rows.filter((row) => row.status === "Pending"), "amount")), hint: `${rows.filter((row) => row.status === "Pending").length} entries`, tone: "negative" },
+        card("Total expenses", "total", formatTSh(now.total), `${now.entries} entr${now.entries === 1 ? "y" : "ies"}`),
+        { label: "Largest category", value: byCategory[0]?.label || "—", hint: byCategory[0] ? formatTSh(byCategory[0].value) : "no expenses" },
+        card("Average expense", "average", formatTSh(now.average), "per entry"),
+        card("Pending approval", "pending", formatTSh(now.pending), `${now.pendingCount} entr${now.pendingCount === 1 ? "y" : "ies"}`, { tone: now.pending ? "negative" : "" }),
       ];
     },
   },
@@ -4882,6 +4900,7 @@ function ReportsPage() {
     loadReports();
   }, [loadReports]);
   const reports = reportDefinitions.map((report) => ({ ...report, rows: reportRows[report.id] || [] }));
+  const windows = monthWindows();
   const activeReport = reports.find((report) => report.id === activeReportId);
   const categories = ["All reports", "Finance", "Inventory", "Customers", "Operations"];
   const rowsOf = (id) => reportRows[id] || [];
@@ -4982,7 +5001,10 @@ function ReportsPage() {
           <div className="report-grid">
             {visibleReports.map((report) => {
               const Icon = report.icon;
-              const headline = report.metrics(report.rows)[0];
+              // Finance, sales and expense cards show this month against last month.
+              const monthly = report.monthlyCards && report.dateKey;
+              const headline = monthly ? monthlyMetrics(report, windows)[0] : report.metrics(report.rows)[0];
+              const change = monthly ? compareMetric(headline, windows.lastMonth) : null;
               return (
                 <article className="panel report-card" key={report.id}>
                   <div className="report-card-top">
@@ -4991,9 +5013,12 @@ function ReportsPage() {
                   </div>
                   <h3>{report.title}</h3>
                   <p>{report.desc}</p>
-                  <div className="report-card-stat">
-                    <span>{headline.label}</span>
-                    <strong>{headline.value}</strong>
+                  <div className={`report-card-stat ${monthly ? "monthly" : ""}`}>
+                    <span>{headline.label}{monthly && <em> · {windows.thisMonth}</em>}</span>
+                    <strong>{loadStatus === "ready" ? headline.value : "…"}</strong>
+                    {change && loadStatus === "ready" && (
+                      <span className="report-kpi-compare"><em className={`report-kpi-change ${change.tone}`}>{change.badge}</em><i>{change.last}</i></span>
+                    )}
                   </div>
                   <div className="report-card-actions">
                     <button className="text-action" onClick={() => openReport(report.id)}>
@@ -5013,6 +5038,39 @@ function ReportsPage() {
       </section>
     </>
   );
+}
+
+// This month (1st → today) and the whole of last month, for month-on-month report cards.
+function monthWindows() {
+  const today = localTodayIso();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const lastMonthEnd = shiftIsoDate(monthStart, -1);
+  const lastMonthStart = `${lastMonthEnd.slice(0, 7)}-01`;
+  const monthName = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { month: "long" });
+  return { today, monthStart, lastMonthStart, lastMonthEnd, thisMonth: monthName(monthStart), lastMonth: monthName(lastMonthStart) };
+}
+
+const rowsBetween = (rows, dateKey, start, end) => rows.filter((row) => {
+  const day = String(row[dateKey]).slice(0, 10);
+  return day >= start && day <= end;
+});
+
+// Metrics for this month, each carrying last month's value for comparison.
+const monthlyMetrics = (report, windows = monthWindows()) => report.metrics(
+  rowsBetween(report.rows, report.dateKey, windows.monthStart, windows.today),
+  rowsBetween(report.rows, report.dateKey, windows.lastMonthStart, windows.lastMonthEnd),
+);
+
+// Badge (▲ 12% / ▼ 5% / New / Same) and last month's total for one metric.
+function compareMetric(metric, lastMonthName) {
+  if (metric.current === undefined || metric.previous === undefined) return null;
+  const { current, previous } = metric;
+  const last = `${lastMonthName.slice(0, 3)}: ${(metric.format || String)(previous)}`;
+  if (previous === current) return { badge: "Same", last, tone: "flat" };
+  if (previous === 0) return { badge: "New", last, tone: metric.lowerIsBetter ? "down" : "up" };
+  const percent = Math.round(((current - previous) / Math.abs(previous)) * 100);
+  const better = metric.lowerIsBetter ? current < previous : current > previous;
+  return { badge: percent === 0 ? "≈ 0%" : `${percent > 0 ? "▲" : "▼"} ${Math.abs(percent)}%`, last, tone: better ? "up" : "down" };
 }
 
 function ReportDetail({ report, onBack, onSwitch }) {
@@ -5137,28 +5195,12 @@ function ReportDetail({ report, onBack, onSwitch }) {
 
   // With no filters, monthly reports show this month vs last month on the cards.
   const monthlyView = report.monthlyCards && report.dateKey && activeFilters.length === 0 && period === defaultPeriod;
-  const today = localTodayIso();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  const lastMonthEnd = shiftIsoDate(monthStart, -1);
-  const lastMonthStart = `${lastMonthEnd.slice(0, 7)}-01`;
-  const inRange = (row, start, end) => String(row[report.dateKey]).slice(0, 10) >= start && String(row[report.dateKey]).slice(0, 10) <= end;
-  const monthName = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { month: "long" });
-  const cardMetrics = monthlyView
-    ? report.metrics(report.rows.filter((row) => inRange(row, monthStart, today)), report.rows.filter((row) => inRange(row, lastMonthStart, lastMonthEnd)))
-    : report.metrics(sortedRows);
+  const windows = monthWindows();
+  const cardMetrics = monthlyView ? monthlyMetrics(report, windows) : report.metrics(sortedRows);
   const cardScope = monthlyView
-    ? { title: `This month · ${monthName(monthStart)}`, detail: `Cards and table show 1–${Number(today.slice(8, 10))} ${monthName(monthStart)}, compared with ${monthName(lastMonthStart)}. Change any filter to see other records.` }
+    ? { title: `This month · ${windows.thisMonth}`, detail: `Cards and table show 1–${Number(windows.today.slice(8, 10))} ${windows.thisMonth}, compared with ${windows.lastMonth}. Change any filter to see other records.` }
     : { title: "Filtered records", detail: `${sortedRows.length} record${sortedRows.length === 1 ? "" : "s"} matching your filters` };
-  function compareMonths(metric) {
-    if (!monthlyView || metric.current === undefined || metric.previous === undefined) return null;
-    const { current, previous } = metric;
-    const last = `${monthName(lastMonthStart).slice(0, 3)}: ${(metric.format || String)(previous)}`;
-    if (previous === current) return { badge: "Same", last, tone: "flat" };
-    if (previous === 0) return { badge: "New", last, tone: metric.lowerIsBetter ? "down" : "up" };
-    const percent = Math.round(((current - previous) / Math.abs(previous)) * 100);
-    const better = metric.lowerIsBetter ? current < previous : current > previous;
-    return { badge: percent === 0 ? "≈ 0%" : `${percent > 0 ? "▲" : "▼"} ${Math.abs(percent)}%`, last, tone: better ? "up" : "down" };
-  }
+  const compareMonths = (metric) => (monthlyView ? compareMetric(metric, windows.lastMonth) : null);
 
   // The table is paged; totals, exports and printing still cover every matching record.
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));

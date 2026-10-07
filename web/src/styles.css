@@ -10527,3 +10527,87 @@ button.inv-open:hover .report-id {
     font-size: 13.5px;
     font-weight: 600;
 }
+
+/* ===== Reports: readable text everywhere ===== */
+.report-performance-heading h2 { font-size: 18px; }
+.report-performance-heading p { font-size: 11.5px; }
+.report-period-control { font-size: 10.5px; }
+.report-summary-stats article>span { font-size: 11px; }
+.report-summary-stats article>strong { font-size: 22px; }
+.report-summary-stats article>small { font-size: 10.5px; }
+.report-library-heading h2 { font-size: 16px; }
+.report-library .report-search { height: 34px; }
+.report-library .report-search input { font-size: 11.5px; }
+.report-tag { font-size: 9px; }
+.report-card h3 { font-size: 14px; }
+.report-card p { font-size: 11.5px; line-height: 1.5; }
+.report-card-stat span { font-size: 10px; }
+.report-card-stat strong { font-size: 14px; }
+.report-card .text-action { font-size: 12px; }
+.report-card-badge { font-size: 9.5px; }
+.report-detail-title p { font-size: 11.5px; }
+.report-filter-status { font-size: 11px; }
+.report-chip { font-size: 10.5px; }
+.report-filter-status .report-clear { font-size: 10.5px; }
+
+/* Every report table; the Finance and Items rules above are more specific and keep their sizes */
+.report-table thead th { height: 38px; font-size: 10px; }
+.report-table tbody td { color: #4b5d77; font-size: 11px; }
+.report-table .table-primary,
+.report-table .report-id { font-size: 11px; }
+.report-table .status-pill { font-size: 9.5px; }
+.report-table tfoot td { height: 44px; font-size: 11px; }
+.report-table .report-receipt-button { font-size: 10px; }
+
+/* Report library: month-on-month headline on finance cards */
+.report-card-stat.monthly {
+    display: grid;
+    justify-content: stretch;
+    gap: 3px;
+    padding: 10px 12px;
+}
+
+.report-card-stat.monthly span em {
+    color: #9aa6b6;
+    font-style: normal;
+}
+
+.report-card-stat.monthly strong {
+    font-size: 17px;
+}
+
+.report-card-stat .report-kpi-compare {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.report-card-stat .report-kpi-compare i {
+    color: #66748a;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 600;
+}
+
+.report-card-stat .report-kpi-change {
+    font-size: 10.5px;
+}
+
+/* Report library: clearer badges and larger text */
+.report-card-stat .report-kpi-change.up { background: #e6f6ee; color: #1f8a5b !important; }
+.report-card-stat .report-kpi-change.down { background: #fdecec; color: #c8423a !important; }
+.report-card-stat .report-kpi-change.flat { background: #eef2f7; color: #66748a !important; }
+.report-card-stat .report-kpi-change { font-weight: 800; opacity: 1; }
+.report-card-stat .report-kpi-compare i { color: #4b5d77; }
+
+.report-card h3 { font-size: 15px; font-weight: 800; color: #172a45; }
+.report-card p { font-size: 12px; }
+.report-tag { font-size: 10px; }
+.report-category-tabs button { font-size: 12.5px; }
+.report-card-stat span { font-size: 11px; }
+.report-card-stat strong { font-size: 15px; }
+.report-card-stat.monthly strong { font-size: 18px; }
+.report-card .text-action { font-size: 12.5px; }
+.report-performance-heading p { font-size: 12px; }
+.report-summary-stats article>span { font-size: 12px; }
+.report-summary-stats article>small { font-size: 11px; }
