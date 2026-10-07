@@ -1396,11 +1396,24 @@ function CustomerInvoice({ session, invoiceId, onClose }) {
   );
 }
 
+const greetFirst = (name) => String(name || "").toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (match, gap, letter) => gap + letter.toUpperCase());
+
+// Customer account: sidebar, home summary, orders, payments, invoices and how to pay.
+const CUSTOMER_PAGES = [
+  ["Home", LayoutDashboard],
+  ["My orders", CalendarDays],
+  ["Payments & receipts", Receipt],
+  ["Invoices", FileText],
+  ["How to pay", Wallet],
+];
+
 function CustomerHome({ session, onLogout, onRentMore }) {
-  const [state, setState] = useState({ loading: true, error: "", customer: null, orders: [], payments: [], invoices: [] });
-  const [tab, setTab] = useState("orders");
+  const [state, setState] = useState({ loading: true, error: "", customer: null, orders: [], payments: [], invoices: [], business: null });
+  const [page, setPage] = useState("Home");
+  const [mobileNav, setMobileNav] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [invoiceOpen, setInvoiceOpen] = useState(null);
+  const [copied, setCopied] = useState("");
 
   async function load() {
     setState((current) => ({ ...current, loading: true, error: "" }));
@@ -1410,7 +1423,7 @@ function CustomerHome({ session, onLogout, onRentMore }) {
         api("/my/payments", { token: session.token }),
         api("/my/invoices", { token: session.token }),
       ]);
-      setState({ loading: false, error: "", customer: data.customer, orders: data.orders, payments: paid.payments, invoices: billed.invoices });
+      setState({ loading: false, error: "", customer: data.customer, orders: data.orders, payments: paid.payments, invoices: billed.invoices, business: data.business });
     } catch (error) {
       if (error.status === 401) {
         onLogout();
@@ -1424,96 +1437,42 @@ function CustomerHome({ session, onLogout, onRentMore }) {
     load();
   }, [session.token]);
 
-  const firstName = state.customer?.firstName || session.name.split(" ")[0];
+  const go = (next) => { setPage(next); setMobileNav(false); window.scrollTo({ top: 0 }); };
+  const copy = (text) => navigator.clipboard?.writeText(text).then(() => { setCopied(text); setTimeout(() => setCopied(""), 1800); });
+  const firstName = greetFirst(state.customer?.firstName || session.name.split(" ")[0]);
+  const initials = session.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const business = state.business || { name: BUSINESS_INFO.name, phone: BUSINESS_INFO.phone, email: BUSINESS_INFO.email, address: BUSINESS_INFO.address, paymentMethods: [] };
+  const live = state.orders.filter((order) => order.status !== "Cancelled");
+  const active = live.filter((order) => order.status !== "Completed");
+  const billed = live.reduce((sum, order) => sum + (order.total || 0), 0);
+  const paidTotal = state.payments.filter((payment) => payment.status === "Paid").reduce((sum, payment) => sum + payment.amount, 0);
+  const due = live.reduce((sum, order) => sum + (order.balance || 0), 0);
+  const today = localTodayIso();
+  const nextEvent = active.filter((order) => order.eventDate >= today).sort((x, y) => x.eventDate.localeCompare(y.eventDate))[0];
+  const owing = live.filter((order) => order.balance > 0);
+  const counts = { "My orders": state.orders.length, "Payments & receipts": state.payments.length, Invoices: state.invoices.length };
+  const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening";
+  const methodIcon = (type) => ({ mobile: Smartphone, bank: Landmark, cash: Banknote, card: CreditCard }[type] || Wallet);
+  const PAGE_TEXT = {
+    Home: "Your bookings, payments and what is coming up.",
+    "My orders": "Every request and booking you have made with us.",
+    "Payments & receipts": "Payments we have received from you. View or print any receipt.",
+    Invoices: "Invoices for your bookings. View, print or download them.",
+    "How to pay": "Pay with any of these methods and quote your order or invoice number.",
+  };
 
-  return (
-    <div className="cust-page">
-      <header className="cust-top">
-        <div className="cust-brand">
-          <BrandMark />
-          <span className="brand-name">Pendo<span>rentals</span></span>
-        </div>
-        <div className="cust-user">
-          <span className="cust-avatar">{session.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
-          <span className="cust-user-copy"><strong>{session.name}</strong><small>Customer</small></span>
-          <button type="button" className="cust-logout" onClick={onLogout}><LogOut size={14} /> Log out</button>
-        </div>
-      </header>
+  const loadingOrError = state.loading ? (
+    <div className="cust-loading"><LoaderCircle size={18} className="auth-spin" /> Loading your account…</div>
+  ) : state.error ? (
+    <div className="cust-empty"><CircleAlert size={20} /><strong>{state.error}</strong><button type="button" className="auth-link" onClick={load}>Try again</button></div>
+  ) : null;
 
-      <main className="cust-main">
-        <section className="cust-hero">
-          <div>
-            <span className="auth-kicker">MY RENTALS</span>
-            <h1>Karibu, {firstName}!</h1>
-            <p>Track your bookings, see your payments and print receipts and invoices.</p>
-          </div>
-          <button type="button" className="auth-primary cust-rent" onClick={() => onRentMore(state.customer)}>
-            <Plus size={16} /> Rent more
-          </button>
-        </section>
-
-        <section className="cust-section">
-          <div className="cust-section-head">
-            <div className="cust-tabs-row" role="tablist" aria-label="My account">
-              {[["orders", "My orders", state.orders.length], ["payments", "Payments & receipts", state.payments.length], ["invoices", "Invoices", state.invoices.length]].map(([value, label, count]) => (
-                <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>
-                  {label}{!state.loading && <span>{count}</span>}
-                </button>
-              ))}
-            </div>
-            <button type="button" className="cust-refresh" onClick={load} disabled={state.loading}><RotateCcw size={13} /> Refresh</button>
-          </div>
-
-          {state.loading ? (
-            <div className="cust-loading"><LoaderCircle size={18} className="auth-spin" /> Loading your requests…</div>
-          ) : state.error ? (
-            <div className="cust-empty"><CircleAlert size={20} /><strong>{state.error}</strong><button type="button" className="auth-link" onClick={load}>Try again</button></div>
-          ) : tab === "payments" ? (
-            state.payments.length === 0 ? (
-              <div className="cust-empty"><Banknote size={22} /><strong>No payments yet</strong><small>Receipts appear here after you pay for a booking.</small></div>
-            ) : (
-              <div className="cust-list">
-                {state.payments.map((payment) => (
-                  <article className="cust-row" key={payment.id}>
-                    <span className="cust-row-icon mint"><Receipt size={16} /></span>
-                    <div className="cust-row-copy">
-                      <strong>{payment.receipt} · {formatShillings(payment.amount)}</strong>
-                      <small>{shortDate(payment.date)} · {payment.method}{payment.transactionRef ? ` · ${payment.transactionRef}` : ""} · {payment.reference}{payment.delivery ? ` · items ${formatShillings(payment.amount - payment.delivery)}, delivery ${formatShillings(payment.delivery)}` : ""}</small>
-                    </div>
-                    <span className={`status-pill ${payment.status === "Paid" ? "green" : "red"}`}><i />{payment.status}</span>
-                    <div className="cust-row-actions">
-                      <button type="button" className="button button-secondary" onClick={() => setReceipt(payment)}><Eye size={14} /> View</button>
-                      <button type="button" className="button button-secondary" onClick={() => printReceipts([payment])}><Printer size={14} /> Print</button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )
-          ) : tab === "invoices" ? (
-            state.invoices.length === 0 ? (
-              <div className="cust-empty"><FileText size={22} /><strong>No invoices yet</strong><small>Invoices from Pendo Rentals for your bookings appear here.</small></div>
-            ) : (
-              <div className="cust-list">
-                {state.invoices.map((invoice) => (
-                  <article className="cust-row" key={invoice.id}>
-                    <span className="cust-row-icon blue"><FileText size={16} /></span>
-                    <div className="cust-row-copy">
-                      <strong>{invoice.code} · {formatShillings(invoice.amount)}</strong>
-                      <small>{invoice.orderCode || "No order"} · issued {shortDate(invoice.issuedOn)} · due {shortDate(invoice.dueOn)} · paid {formatShillings(invoice.paid)}{invoice.balance ? ` · balance ${formatShillings(invoice.balance)}` : ""}</small>
-                    </div>
-                    <span className={`status-pill ${invoiceTone(invoice.status)}`}><i />{invoice.status}</span>
-                    <div className="cust-row-actions">
-                      <button type="button" className="button button-primary" onClick={() => setInvoiceOpen(invoice.id)}><Eye size={14} /> View & print</button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )
-          ) : state.orders.length === 0 ? (
-            <div className="cust-empty"><Tent size={22} /><strong>No requests yet</strong><small>Tap “Rent more” to request tents, chairs and more.</small></div>
+  const ordersList = (orders) => (
+orders.length === 0 ? (
+            <div className="cust-empty"><Tent size={22} /><strong>No requests yet</strong><small>Tap “Rent now” to request tents, chairs and more.</small></div>
           ) : (
             <div className="cust-orders">
-              {state.orders.map((order) => {
+              {orders.map((order) => {
                 const info = orderStatusInfo[order.status] || { tone: "blue", text: "" };
                 return (
                   <article className="cust-order" key={order.id}>
@@ -1546,24 +1505,238 @@ function CustomerHome({ session, onLogout, onRentMore }) {
                 );
               })}
             </div>
-          )}
-        </section>
+          )
+  );
 
-        <section className="cust-help">
-          <span className="auth-help-icon"><Headset size={18} /></span>
-          <div>
-            <strong>Questions about your rental?</strong>
-            <small>Our team in Kayenze, Geita is happy to help.</small>
-          </div>
-          <a href={`tel:${BUSINESS_INFO.phone.replace(/\s/g, "")}`}><Phone size={14} /> {BUSINESS_INFO.phone}</a>
-          <a href={`mailto:${BUSINESS_INFO.email}`}><Mail size={14} /> Email us</a>
+  const paymentsList = (payments) => (
+            payments.length === 0 ? (
+              <div className="cust-empty"><Banknote size={22} /><strong>No payments yet</strong><small>Receipts appear here after you pay for a booking.</small></div>
+            ) : (
+              <div className="cust-list">
+                {payments.map((payment) => (
+                  <article className="cust-row" key={payment.id}>
+                    <span className="cust-row-icon mint"><Receipt size={16} /></span>
+                    <div className="cust-row-copy">
+                      <strong>{payment.receipt} · {formatShillings(payment.amount)}</strong>
+                      <small>{shortDate(payment.date)} · {payment.method}{payment.transactionRef ? ` · ${payment.transactionRef}` : ""} · {payment.reference}{payment.delivery ? ` · items ${formatShillings(payment.amount - payment.delivery)}, delivery ${formatShillings(payment.delivery)}` : ""}</small>
+                    </div>
+                    <span className={`status-pill ${payment.status === "Paid" ? "green" : "red"}`}><i />{payment.status}</span>
+                    <div className="cust-row-actions">
+                      <button type="button" className="button button-secondary" onClick={() => setReceipt(payment)}><Eye size={14} /> View</button>
+                      <button type="button" className="button button-secondary" onClick={() => printReceipts([payment])}><Printer size={14} /> Print</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
+  );
+
+  const invoicesList = (
+            state.invoices.length === 0 ? (
+              <div className="cust-empty"><FileText size={22} /><strong>No invoices yet</strong><small>Invoices from Pendo Rentals for your bookings appear here.</small></div>
+            ) : (
+              <div className="cust-list">
+                {state.invoices.map((invoice) => (
+                  <article className="cust-row" key={invoice.id}>
+                    <span className="cust-row-icon blue"><FileText size={16} /></span>
+                    <div className="cust-row-copy">
+                      <strong>{invoice.code} · {formatShillings(invoice.amount)}</strong>
+                      <small>{invoice.orderCode || "No order"} · issued {shortDate(invoice.issuedOn)} · due {shortDate(invoice.dueOn)} · paid {formatShillings(invoice.paid)}{invoice.balance ? ` · balance ${formatShillings(invoice.balance)}` : ""}</small>
+                    </div>
+                    <span className={`status-pill ${invoiceTone(invoice.status)}`}><i />{invoice.status}</span>
+                    <div className="cust-row-actions">
+                      <button type="button" className="button button-primary" onClick={() => setInvoiceOpen(invoice.id)}><Eye size={14} /> View & print</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
+  );
+
+  const methodCards = business.paymentMethods.length === 0 ? (
+    <div className="cust-empty"><Wallet size={22} /><strong>Payment details coming soon</strong><small>Call us on {business.phone} to arrange payment.</small></div>
+  ) : (
+    <div className="cust-methods">
+      {business.paymentMethods.map((method) => {
+        const Icon = methodIcon(method.type);
+        const payTo = method.payTo || "lipa";
+        const lines = [
+          ...(method.type === "mobile" && payTo !== "phone" && method.number ? [["Lipa Namba", method.number]] : []),
+          ...(method.type === "mobile" && payTo !== "lipa" && method.phone ? [["Send to phone", method.phone]] : []),
+          ...(method.type === "bank" ? [["Bank", method.provider || "—"], ["Account number", method.number || "Ask us"]] : []),
+          ...(method.type === "other" && method.number ? [["Details", method.number]] : []),
+        ];
+        return (
+          <article className={`cust-method ${method.type}`} key={method.name}>
+            <header><span className="cust-method-icon"><Icon size={18} /></span><strong>{method.name}</strong></header>
+            {lines.length ? (
+              <dl>
+                {lines.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>
+                      <b>{value}</b>
+                      {value !== "Ask us" && value !== "—" && label !== "Bank" && <button type="button" className="cust-copy" onClick={() => copy(value)}>{copied === value ? <><Check size={12} /> Copied</> : <><ClipboardCheck size={12} /> Copy</>}</button>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : <p className="cust-method-note">{method.type === "cash" ? "Pay at our office in " + (business.address || "Kayenze, Geita") + "." : method.type === "card" ? "Pay by card at our office." : "Ask us for the details."}</p>}
+            {method.accountName && method.type !== "cash" && method.type !== "card" && <small className="cust-method-name">Name: {method.accountName}</small>}
+          </article>
+        );
+      })}
+    </div>
+  );
+
+  let content;
+  if (loadingOrError) content = loadingOrError;
+  else if (page === "Home") {
+    content = (
+      <>
+        <section className="metrics-grid cust-metrics">
+          <Metric icon={CalendarDays} label="Active bookings" value={String(active.length)} change={`${state.orders.length} in total`} kind="up" color="blue-icon" caption="" />
+          <Metric icon={Receipt} label="Total billed" value={formatShillings(billed)} change={`${live.filter((order) => order.total !== null).length} priced`} kind="up" color="purple-icon" caption="" />
+          <Metric icon={CircleCheck} label="Paid" value={formatShillings(paidTotal)} change={`${state.payments.length} receipt${state.payments.length === 1 ? "" : "s"}`} kind="up" color="mint-icon" caption="" />
+          <Metric icon={Banknote} label="Balance due" value={formatShillings(due)} change={due ? `${owing.length} order${owing.length === 1 ? "" : "s"}` : "all paid"} kind={due ? "down" : "up"} color="orange-icon" caption="" />
         </section>
+        <section className="cust-home-grid">
+          <article className="panel cust-card">
+            <div className="cust-card-head"><span className="panel-kicker">COMING UP</span><h2>Next event</h2></div>
+            {nextEvent ? (
+              <div className="cust-next">
+                <div className="cust-next-date"><strong>{new Date(`${nextEvent.eventDate}T00:00:00`).getDate()}</strong><span>{new Date(`${nextEvent.eventDate}T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span></div>
+                <div className="cust-next-copy">
+                  <strong>{nextEvent.id} · {nextEvent.status}</strong>
+                  <small>{formatEventDate(nextEvent.eventDate)} · {nextEvent.days} day{nextEvent.days === 1 ? "" : "s"} · {nextEvent.place ? `${nextEvent.place}, ${nextEvent.area}` : nextEvent.area}</small>
+                  <span>{orderItemsText(nextEvent.items)}</span>
+                  {nextEvent.total !== null && <em className={nextEvent.balance ? "due" : "settled"}>{nextEvent.balance ? `Balance ${formatShillings(nextEvent.balance)}` : "Paid in full"}</em>}
+                </div>
+              </div>
+            ) : (
+              <div className="cust-empty slim"><Tent size={20} /><strong>No upcoming events</strong><button type="button" className="auth-link" onClick={() => onRentMore(state.customer)}>Rent now</button></div>
+            )}
+          </article>
+          <article className="panel cust-card">
+            <div className="cust-card-head"><span className="panel-kicker">PAYING US</span><h2>How to pay</h2><button type="button" className="text-action" onClick={() => go("How to pay")}>All details <ArrowRight size={13} /></button></div>
+            {business.paymentMethods.length === 0 ? <p className="cust-method-note">Call us on {business.phone} to arrange payment.</p> : (
+              <ul className="cust-mini-methods">
+                {business.paymentMethods.slice(0, 4).map((method) => {
+                  const Icon = methodIcon(method.type);
+                  return <li key={method.name}><span className="cust-method-icon"><Icon size={14} /></span><strong>{method.name}</strong><small>{paymentMethodDetail(method)}</small></li>;
+                })}
+              </ul>
+            )}
+            {due > 0 && <p className="cust-pay-hint"><Info size={13} /> You have {formatShillings(due)} to pay. Quote your order number (e.g. {owing[0]?.id}) as the reference.</p>}
+          </article>
+        </section>
+        <section className="panel cust-card">
+          <div className="cust-card-head"><span className="panel-kicker">LATEST</span><h2>Recent orders</h2><button type="button" className="text-action" onClick={() => go("My orders")}>See all <ArrowRight size={13} /></button></div>
+          {ordersList(state.orders.slice(0, 2))}
+        </section>
+        <section className="panel cust-card">
+          <div className="cust-card-head"><span className="panel-kicker">RECEIPTS</span><h2>Recent payments</h2><button type="button" className="text-action" onClick={() => go("Payments & receipts")}>See all <ArrowRight size={13} /></button></div>
+          {paymentsList(state.payments.slice(0, 3))}
+        </section>
+      </>
+    );
+  } else if (page === "My orders") content = <section className="panel cust-card">{ordersList(state.orders)}</section>;
+  else if (page === "Payments & receipts") content = <section className="panel cust-card">{paymentsList(state.payments)}</section>;
+  else if (page === "Invoices") content = <section className="panel cust-card">{invoicesList}</section>;
+  else {
+    content = (
+      <>
+        {due > 0 && (
+          <section className="cust-due-banner">
+            <Banknote size={18} />
+            <div><strong>Balance due: {formatShillings(due)}</strong><small>{owing.map((order) => `${order.id} ${formatShillings(order.balance)}`).join(" · ")}</small></div>
+          </section>
+        )}
+        {methodCards}
+        <p className="cust-pay-hint"><Info size={13} /> After paying, keep your transaction code (e.g. the M-Pesa message). We record the payment and you’ll find the receipt under Payments &amp; receipts.</p>
+      </>
+    );
+  }
+
+  return (
+    <div className="app-shell cust-shell">
+      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+        <a className="brand" href="#home" onClick={() => go("Home")}>
+          <BrandMark />
+          <span className="brand-lockup">
+            <span className="brand-name">Pendo<span>rentals</span></span>
+            <span className="brand-caption">MY ACCOUNT</span>
+          </span>
+        </a>
+        <div className="nav-caption">MY RENTALS</div>
+        <nav className="main-nav" aria-label="My account">
+          {CUSTOMER_PAGES.map(([label, Icon]) => (
+            <button key={label} className={`nav-link ${page === label ? "active" : ""}`} onClick={() => go(label)}>
+              <Icon size={17} strokeWidth={1.8} />
+              <span>{label}</span>
+              {!state.loading && counts[label] > 0 && <span className="nav-count">{counts[label]}</span>}
+            </button>
+          ))}
+        </nav>
+        <button type="button" className="cust-side-rent" onClick={() => onRentMore(state.customer)}><Plus size={15} /> Rent now</button>
+        <div className="sidebar-bottom">
+          <div className="help-panel">
+            <div className="help-icon"><Headset size={17} /></div>
+            <strong>Need help?</strong>
+            <span>Call {business.phone}</span>
+            <a href={`tel:${String(business.phone).replace(/\s/g, "")}`}>Call us <ArrowRight size={13} /></a>
+          </div>
+          <button className="profile-button" onClick={onLogout} title="Log out">
+            <div className="profile-avatar">{initials}</div>
+            <span><strong>{session.name}</strong><small>Customer</small></span>
+            <LogOut size={17} />
+          </button>
+        </div>
+      </aside>
+      {mobileNav && <button className="mobile-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
+
+      <main className="main-content">
+        <header className="topbar">
+          <div className="topbar-left">
+            <button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={19} /></button>
+            <div className="breadcrumbs"><span>My account</span><ChevronRight size={14} /><strong>{page}</strong></div>
+          </div>
+          <div className="topbar-actions">
+            <button type="button" className="icon-button" onClick={load} disabled={state.loading} aria-label="Refresh" title="Refresh"><RotateCcw size={17} /></button>
+            <div className="top-divider" />
+            <div className="top-profile">
+              <div className="profile-avatar small-avatar">{initials}</div>
+              <span><strong>{session.name}</strong><small>Customer</small></span>
+            </div>
+            <button type="button" className="button button-secondary cust-top-logout" onClick={onLogout}><LogOut size={14} /> Log out</button>
+          </div>
+        </header>
+
+        <div className="page-wrap">
+          <section className="welcome-row">
+            <div>
+              <div className="eyebrow"><span className="eyebrow-dot" /> {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).toUpperCase()}</div>
+              <h1>{page === "Home" ? `${greeting}, ${firstName}` : page}</h1>
+              <p>{PAGE_TEXT[page]}</p>
+            </div>
+            <div className="welcome-actions">
+              <button type="button" className="button button-primary" onClick={() => onRentMore(state.customer)}><Plus size={17} /> Rent now</button>
+            </div>
+          </section>
+          {content}
+          <footer className="page-footer">
+            <span>© {new Date().getFullYear()} {business.name}</span>
+            <span>{business.address}</span>
+            <a href={`mailto:${business.email}`}>{business.email}</a>
+          </footer>
+        </div>
       </main>
       {receipt && <ReceiptPreview payment={receipt} onClose={() => setReceipt(null)} />}
       {invoiceOpen && <CustomerInvoice session={session} invoiceId={invoiceOpen} onClose={() => setInvoiceOpen(null)} />}
     </div>
   );
 }
+
 
 function LoginScreen({ onLogin, onRentNow }) {
   const [username, setUsername] = useState("");

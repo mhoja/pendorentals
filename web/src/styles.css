@@ -11558,3 +11558,348 @@ button.ov-task:disabled {
     flex: none;
     color: inherit;
 }
+
+/* ===== Customer account: sidebar layout ===== */
+.cust-side-rent {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 14px 12px 0;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: #2674ed;
+    color: #fff !important;
+    font: 700 13px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.cust-side-rent svg { color: inherit; }
+.cust-side-rent:hover { background: #1764dd; }
+
+.help-panel a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #7fb2ff;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.cust-top-logout {
+    height: 34px;
+    gap: 6px;
+    padding: 0 12px;
+    font: 700 12px 'DM Sans', sans-serif;
+}
+
+.cust-top-logout svg { color: inherit; }
+
+.cust-shell .top-profile {
+    cursor: default;
+}
+
+.cust-metrics {
+    margin-bottom: 13px;
+}
+
+.cust-home-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
+    margin-bottom: 13px;
+}
+
+.panel.cust-card {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 13px;
+    padding: 16px 18px 18px;
+}
+
+.cust-home-grid .panel.cust-card {
+    margin-bottom: 0;
+}
+
+.cust-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+}
+
+.cust-card-head .panel-kicker {
+    flex-basis: 100%;
+}
+
+.cust-card-head h2 {
+    margin: 0;
+    color: #172a45;
+    font: 750 15px var(--font-display);
+}
+
+.cust-card-head .text-action {
+    margin-left: auto;
+}
+
+.cust-next {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.cust-next-date {
+    flex: none;
+    width: 64px;
+    display: grid;
+    justify-items: center;
+    padding: 10px 6px;
+    border-radius: 12px;
+    background: #eaf2ff;
+}
+
+.cust-next-date strong {
+    color: #1764dd;
+    font: 800 24px var(--font-display);
+    line-height: 1;
+}
+
+.cust-next-date span {
+    color: #4b6fa8;
+    font-size: 10.5px;
+    font-weight: 700;
+}
+
+.cust-next-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.cust-next-copy strong {
+    color: #172a45;
+    font-size: 13.5px;
+}
+
+.cust-next-copy small,
+.cust-next-copy span {
+    color: #66748a;
+    font-size: 12px;
+}
+
+.cust-next-copy em {
+    justify-self: start;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
+}
+
+.cust-next-copy em.due { background: #fdecec; color: #c8423a; }
+.cust-next-copy em.settled { background: #e6f6ee; color: #1f8a5b; }
+
+.cust-empty.slim {
+    padding: 18px;
+}
+
+.cust-mini-methods {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cust-mini-methods li {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid #edf1f6;
+    border-radius: 10px;
+    background: #fbfcfe;
+}
+
+.cust-mini-methods strong {
+    color: #172a45;
+    font-size: 12.5px;
+}
+
+.cust-mini-methods small {
+    overflow: hidden;
+    color: #66748a;
+    font-size: 11.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cust-method-icon {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    flex: none;
+    border-radius: 9px;
+    background: #eaf2ff;
+    color: #1764dd;
+}
+
+.cust-method-icon svg { color: inherit; }
+
+.cust-pay-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fff8e6;
+    color: #6b5313;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.cust-pay-hint svg {
+    flex: none;
+    margin-top: 1px;
+    color: inherit;
+}
+
+.cust-methods {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    margin-bottom: 13px;
+}
+
+.cust-method {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 16px;
+    border: 1px solid #e3eaf3;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 3px 12px #20355008;
+}
+
+.cust-method header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cust-method header strong {
+    color: #172a45;
+    font: 800 15px var(--font-display);
+}
+
+.cust-method.bank .cust-method-icon { background: #f1ecff; color: #6d4fd6; }
+.cust-method.cash .cust-method-icon { background: #e6f6ee; color: #1f8a5b; }
+.cust-method.card .cust-method-icon { background: #fff4e0; color: #b26a00; }
+
+.cust-method dl {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+}
+
+.cust-method dl div {
+    display: grid;
+    gap: 2px;
+}
+
+.cust-method dt {
+    color: #8592a6;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+}
+
+.cust-method dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+.cust-method dd b {
+    color: #10305e;
+    font: 800 17px var(--font-display);
+    letter-spacing: .3px;
+}
+
+.cust-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid #d8e5f7;
+    border-radius: 6px;
+    background: #f5f9ff;
+    color: #1764dd !important;
+    font: 700 11px 'DM Sans', sans-serif;
+    cursor: pointer;
+}
+
+.cust-copy svg { color: inherit; }
+
+.cust-method-note,
+.cust-method-name {
+    margin: 0;
+    color: #66748a;
+    font-size: 12px;
+}
+
+.cust-due-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 13px;
+    padding: 14px 16px;
+    border: 1px solid #f3c9c5;
+    border-radius: 12px;
+    background: #fff6f5;
+    color: #c8423a;
+}
+
+.cust-due-banner svg { flex: none; color: inherit; }
+
+.cust-due-banner div {
+    display: grid;
+    gap: 2px;
+}
+
+.cust-due-banner strong {
+    color: #b8352e;
+    font-size: 14px;
+}
+
+.cust-due-banner small {
+    color: #8a4a45;
+    font-size: 12px;
+}
+
+@media (max-width: 900px) {
+    .cust-home-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .cust-top-logout,
+    .cust-shell .top-profile span {
+        display: none;
+    }
+}
+
+.panel.cust-card {
+    align-content: start;
+}

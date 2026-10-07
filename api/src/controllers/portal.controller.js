@@ -25,7 +25,23 @@ export async function listMyOrders(request, response) {
             place: customer.place,
         },
         orders: orders.map(({ dbId, customer: _customer, ...order }) => order),
+        business: await businessForCustomers(),
     });
+}
+
+// Contacts and the switched-on payment methods, so customers know how to pay.
+async function businessForCustomers() {
+    const settings = await getSettings();
+    return {
+        name: settings.businessName,
+        phone: settings.phone,
+        whatsapp: settings.whatsapp,
+        email: settings.email,
+        address: [settings.address, settings.region].filter(Boolean).join(', '),
+        paymentMethods: settings.paymentMethods
+            .filter((method) => method.enabled)
+            .map(({ name, type, provider, number, phone, payTo, accountName }) => ({ name, type, provider, number, phone, payTo, accountName })),
+    };
 }
 
 // GET /api/my/payments — receipts for the customer's payments.
