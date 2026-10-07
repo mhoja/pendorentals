@@ -76,7 +76,7 @@ export const DEFAULT_SETTINGS = {
     smsLanguage: 'en',
     smsTemplates: {
         bookingCreated: 'Hi {firstName}, {business} has created your booking {order} for {date} ({days}).\n{items}{priceNote}{login}\nHelp: {phone}',
-        requestReceived: 'Hi {firstName}, thank you for choosing {business}! We received your request {order}:\n{itemList}\nEvent: {date} ({days}) at {place}. We will call you to confirm the price.{login}\nHelp: {phone}',
+        requestReceived: 'Hi {firstName}, thank you for choosing {business}! We received your request {order}:\n{itemList}\nEvent: {date} ({days}) at {place}. We will call you to confirm your booking.{login}\nHelp: {phone}',
         bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed.\n{items}\nHelp: {phone}',
         outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}.\n{itemList}\nPlease check them on arrival. Help: {phone}',
         completed: 'Thank you {firstName} for renting with Pendo Rentals! We hope your event was a great one. {phone}',
@@ -85,7 +85,7 @@ export const DEFAULT_SETTINGS = {
     },
     smsTemplatesSw: {
         bookingCreated: 'Habari {firstName}, {business} imeandaa oda yako {order} ya tarehe {date} ({days}).\n{items}{priceNote}{login}\nMsaada: {phone}',
-        requestReceived: 'Habari {firstName}, asante kwa kuchagua {business}! Tumepokea ombi lako {order}:\n{itemList}\nTukio: {date} ({days}) mahali {place}. Tutakupigia kuthibitisha bei.{login}\nMsaada: {phone}',
+        requestReceived: 'Habari {firstName}, asante kwa kuchagua {business}! Tumepokea ombi lako {order}:\n{itemList}\nTukio: {date} ({days}) mahali {place}. Tutakupigia kuthibitisha oda yako.{login}\nMsaada: {phone}',
         bookingConfirmed: 'Habari {firstName}, oda yako ya {business} {order} ya tarehe {date} imethibitishwa.\n{items}\nMsaada: {phone}',
         outForDelivery: 'Habari {firstName}, vifaa vya oda {order} viko njiani kuelekea {place}.\n{itemList}\nTafadhali vihakiki vikifika. Msaada: {phone}',
         completed: 'Asante {firstName} kwa kukodi kutoka {business}! Tunatumaini sherehe yako ilienda vizuri. {phone}',
@@ -117,7 +117,7 @@ export async function getSettings(db = { query }) {
         ...stored,
         paymentMethods: Array.isArray(stored.paymentMethods) ? stored.paymentMethods : legacyPaymentMethods(stored),
         smsTemplates: upgradeTemplates(stored.smsTemplates),
-        smsTemplatesSw: { ...DEFAULT_SETTINGS.smsTemplatesSw, ...(stored.smsTemplatesSw || {}) },
+        smsTemplatesSw: upgradeTemplates(stored.smsTemplatesSw, DEFAULT_SETTINGS.smsTemplatesSw, OLD_DEFAULT_TEMPLATES_SW),
         smsLanguage: ['en', 'sw', 'both'].includes(stored.smsLanguage) ? stored.smsLanguage : 'en',
     };
 }
@@ -127,11 +127,15 @@ const OLD_DEFAULT_TEMPLATES = {
     bookingConfirmed: 'Hi {firstName}, your Pendo Rentals booking {order} for {date} is confirmed. Total: {total}. Help: {phone}',
     outForDelivery: 'Hi {firstName}, your Pendo Rentals items for {order} are on the way to {place}. Help: {phone}',
     paymentReceived: 'Hi {firstName}, we received {amount} for {order}. Receipt {receipt}. Balance: {balance}. Asante! Pendo Rentals',
+    requestReceived: 'Hi {firstName}, thank you for choosing {business}! We received your request {order}:\n{itemList}\nEvent: {date} ({days}) at {place}. We will call you to confirm the price.{login}\nHelp: {phone}',
 };
-function upgradeTemplates(saved = {}) {
-    const templates = { ...DEFAULT_SETTINGS.smsTemplates, ...saved };
-    for (const [key, old] of Object.entries(OLD_DEFAULT_TEMPLATES)) {
-        if (templates[key] === old) templates[key] = DEFAULT_SETTINGS.smsTemplates[key];
+const OLD_DEFAULT_TEMPLATES_SW = {
+    requestReceived: 'Habari {firstName}, asante kwa kuchagua {business}! Tumepokea ombi lako {order}:\n{itemList}\nTukio: {date} ({days}) mahali {place}. Tutakupigia kuthibitisha bei.{login}\nMsaada: {phone}',
+};
+function upgradeTemplates(saved = {}, defaults = DEFAULT_SETTINGS.smsTemplates, oldDefaults = OLD_DEFAULT_TEMPLATES) {
+    const templates = { ...defaults, ...(saved || {}) };
+    for (const [key, old] of Object.entries(oldDefaults)) {
+        if (templates[key] === old) templates[key] = defaults[key];
     }
     return templates;
 }

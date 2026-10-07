@@ -8113,12 +8113,19 @@ button:not(.nav-link):not(.button-primary):not(.danger) {
         border: 1px solid #e5ebf3;
         border-radius: 10px;
     }
-    .inv-name {
-        grid-column: 2;
+    /* Phones: category and name on their own lines, then rate | quantity, then SKU and remove. */
+    .inv-add-row > .inv-cell-wrap:nth-child(1),
+    .inv-add-row > .inv-cell-wrap:nth-child(2) {
+        grid-column: 1 / -1;
+    }
+    .inv-cell-wrap .inv-cell-label {
+        display: block;
     }
     .inv-modal .inv-row-remove {
         grid-column: 2;
         justify-self: end;
+        align-self: end;
+        margin-bottom: 5px;
     }
 }
 
@@ -12078,3 +12085,35 @@ body {
 @media (max-width: 640px) {
     .notif-panel { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; }
 }
+
+/* Add items: each field's own label, shown on phones where the column headings are hidden */
+.inv-cell-wrap { min-width: 0; }
+.inv-cell-label {
+    display: none;
+    margin: 0 0 4px 2px;
+    color: #5d6b82;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .2px;
+}
+
+/* Rent forms: price per item and running total */
+.rent-line { padding: 6px 10px 8px; color: #5d6b82; font-size: 12px; border-top: 1px dashed #e3eaf3; }
+.rent-line b { color: #172a45; }
+.rent-line.tbc { color: #b07a1c; font-style: italic; }
+.rent-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #d6e6ff;
+    border-radius: 10px;
+    background: #eef5ff;
+    color: #2a4a78;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+.rent-total small { color: #b07a1c; font-weight: 600; }
+.rent-total strong { color: #2674ed; font: 800 17px 'Manrope', sans-serif; white-space: nowrap; }
+.cust-rent-summary li.cust-rent-total b { color: #2674ed; font-size: 15px; }

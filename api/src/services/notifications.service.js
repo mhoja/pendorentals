@@ -37,7 +37,8 @@ const smsDateRange = (order) => {
 export async function notifyOrderRequest(order) {
     const place = order.place ? `${order.place}, ${order.area}` : order.area;
     const items = order.items.map(itemText);
-    const body = `${order.customer.name} (${order.customer.phone}) · ${items.join(', ')} · ${smsDateRange(order)} · ${place}`;
+    const price = order.total === null ? 'needs prices' : `TSh ${order.total.toLocaleString('en-US')}`;
+    const body = `${order.customer.name} (${order.customer.phone}) · ${items.join(', ')} · ${smsDateRange(order)} · ${place} · ${price}`;
     await query('insert into notifications (kind, title, body, order_id) values ($1, $2, $3, $4)',
         ['order_request', `New order request ${order.id}`, body, order.dbId]);
 
@@ -45,7 +46,7 @@ export async function notifyOrderRequest(order) {
     if (settings.alertSms === false || settings.alertNewBooking === false) return;
     const recipients = await staffWith(NOTIFICATION_PERMISSIONS.order_request);
     const shownItems = items.length > 5 ? [...items.slice(0, 5), `+${items.length - 5} more`] : items;
-    const message = `New order request ${order.id} from ${order.customer.name} (${prettyPhone(order.customerPhone)}):\n${shownItems.map((line) => `- ${line}`).join('\n')}\nEvent: ${smsDateRange(order)} at ${place}.\nConfirm it in Order requests: ${publicUrl}`;
+    const message = `New order request ${order.id} from ${order.customer.name} (${prettyPhone(order.customerPhone)}):\n${shownItems.map((line) => `- ${line}`).join('\n')}\nEvent: ${smsDateRange(order)} at ${place}.\nTotal: ${order.total === null ? 'needs prices' : `TSh ${order.total.toLocaleString('en-US')}`}.\nConfirm it in Order requests: ${publicUrl}`;
     Promise.all(recipients.map((staff) => sendSms(staff.phone, message, { kind: 'staff_alert', orderId: order.dbId })))
         .catch((error) => console.error('Could not text staff about a new request', error.message));
 }

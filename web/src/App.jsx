@@ -989,7 +989,7 @@ const RENTAL_ITEMS = [
 ];
 
 const orderStatusInfo = {
-  "New request": { tone: "blue", text: "We received your request and will call you to confirm the price." },
+  "New request": { tone: "blue", text: "We received your request and will call you to confirm your booking." },
   Confirmed: { tone: "green", text: "Your booking is confirmed." },
   "Ready for pickup": { tone: "amber", text: "Your items are ready." },
   "Out for delivery": { tone: "blue", text: "Your items are on the way." },
@@ -1039,22 +1039,59 @@ function validateRentRequest(form) {
 }
 
 // Step 1 of a rental request: pick items and quantities. Shared by the public form and the customer account.
-function RentItemsSection({ items, onItems, submitted, error }) {
+// What customers can rent, with the price per day (inventory that is available). Loaded once per visit.
+let rentalCatalogCache = null;
+function useRentalCatalog() {
+  const [state, setState] = useState(() => rentalCatalogCache || { status: "loading", items: [] });
+  useEffect(() => {
+    if (rentalCatalogCache) return;
+    api("/rental-catalog")
+      .then(({ items }) => {
+        rentalCatalogCache = { status: "ready", items };
+        setState(rentalCatalogCache);
+      })
+      .catch(() => setState({ status: "error", items: [] }));
+  }, []);
+  return state;
+}
+
+// Price of the request so far: items picked from inventory have a rate; "Other" items are priced by the team.
+function rentEstimate(items, days) {
+  const count = Math.max(1, Number(days) || 1);
+  const priced = items.filter((item) => item.rate !== undefined && item.rate !== null);
+  return { total: priced.reduce((sum, item) => sum + item.rate * item.quantity * count, 0), priced: priced.length, unpriced: items.length - priced.length, days: count };
+}
+const rentPayloadItems = (items) => items.map(({ name, custom, quantity, inventoryItemId }) => (inventoryItemId
+  ? { inventoryItemId, quantity }
+  : { name, quantity, ...(name === "Other" ? { custom: custom.trim() } : {}) }));
+
+function RentItemsSection({ items, onItems, submitted, error, days }) {
   const [picker, setPicker] = useState("");
+  const catalog = useRentalCatalog();
   const selectedCount = items.length;
+  // Fall back to the general list if inventory can't be loaded; those requests are priced by the team.
+  const fromInventory = catalog.items.length > 0;
   const available = RENTAL_ITEMS.filter((item) => !items.some((selected) => selected.name === item.name));
+  const stockLeft = catalog.items.filter((item) => !items.some((selected) => selected.inventoryItemId === item.id));
+  const groups = [...new Set(stockLeft.map((item) => item.category))];
+  const estimate = rentEstimate(items, days);
 
   const setItems = onItems;
 
-  function addItem(name) {
+  function addItem(value) {
     setPicker("");
-    if (!name) return;
-    if (name === "Other") {
+    if (!value) return;
+    if (value === "Other") {
       setItems((items) => [...items, { key: `other-${Date.now()}`, name: "Other", custom: "", quantity: 1 }]);
       return;
     }
-    const catalogItem = RENTAL_ITEMS.find((item) => item.name === name);
-    setItems((items) => [...items, { key: name, name, custom: "", quantity: catalogItem.start }]);
+    if (value.startsWith("inv:")) {
+      const stock = catalog.items.find((item) => item.id === value.slice(4));
+      if (stock) setItems((items) => [...items, { key: stock.id, inventoryItemId: stock.id, name: stock.name, category: stock.category, rate: stock.rate, custom: "", quantity: 1 }]);
+      return;
+    }
+    const catalogItem = RENTAL_ITEMS.find((item) => item.name === value);
+    setItems((items) => [...items, { key: value, name: value, custom: "", quantity: catalogItem.start }]);
   }
 
   function setQuantity(key, value) {
@@ -1076,10 +1113,18 @@ function RentItemsSection({ items, onItems, submitted, error }) {
           aria-invalid={invalid("items")}
           className="is-placeholder"
         >
-          <option value="">{selectedCount ? "Add another item…" : "Choose an item to rent…"}</option>
-          {available.map((item) => (
-            <option key={item.name} value={item.name}>{item.label ? `${item.label} (${item.sub.toLowerCase()})` : item.name}</option>
-          ))}
+          <option value="">{catalog.status === "loading" ? "Loading items…" : selectedCount ? "Add another item…" : "Choose an item to rent…"}</option>
+          {fromInventory
+            ? groups.map((group) => (
+              <optgroup key={group} label={group}>
+                {stockLeft.filter((item) => item.category === group).map((item) => (
+                  <option key={item.id} value={`inv:${item.id}`}>{item.name} — {formatShillings(item.rate)}/day</option>
+                ))}
+              </optgroup>
+            ))
+            : available.map((item) => (
+              <option key={item.name} value={item.name}>{item.label ? `${item.label} (${item.sub.toLowerCase()})` : item.name}</option>
+            ))}
           <option value="Other">Other (not listed)…</option>
         </select>
         <ChevronDown size={15} className="auth-select-caret" />
@@ -1088,8 +1133,9 @@ function RentItemsSection({ items, onItems, submitted, error }) {
         <div className="rent-selected">
           {items.map((item) => {
             const catalogItem = RENTAL_ITEMS.find((entry) => entry.name === item.name);
-            const Icon = catalogItem?.icon || Sparkles;
+            const Icon = item.inventoryItemId ? categoryIcons[item.category] || Package : catalogItem?.icon || Sparkles;
             const unit = catalogItem?.unit || "pcs";
+            const priced = item.rate !== undefined && item.rate !== null;
             return (
               <div className={`rent-item selected ${item.name === "Other" ? "rent-item-other" : ""}`} key={item.key}>
                 <div className="rent-item-head">
@@ -1106,7 +1152,10 @@ function RentItemsSection({ items, onItems, submitted, error }) {
                       onChange={(event) => setItems((items) => items.map((entry) => (entry.key === item.key ? { ...entry, custom: event.target.value } : entry)))}
                     />
                   ) : (
-                    <span className="rent-item-name">{catalogItem.label || catalogItem.name}{catalogItem.sub && <small>{catalogItem.sub}</small>}</span>
+                    <span className="rent-item-name">
+                      {item.inventoryItemId ? item.name : catalogItem.label || catalogItem.name}
+                      {priced ? <small>{formatShillings(item.rate)} / day</small> : catalogItem?.sub && <small>{catalogItem.sub}</small>}
+                    </span>
                   )}
                   <button
                     type="button"
@@ -1130,9 +1179,18 @@ function RentItemsSection({ items, onItems, submitted, error }) {
                   <i>{unit}</i>
                   <button type="button" onClick={() => setQuantity(item.key, item.quantity + 1)} aria-label={`More ${item.custom || item.name}`}><Plus size={12} /></button>
                 </div>
+                <div className={`rent-line ${priced ? "" : "tbc"}`}>
+                  {priced ? <>{item.quantity} × {formatShillings(item.rate)}{estimate.days > 1 ? ` × ${estimate.days} days` : ""} = <b>{formatShillings(item.rate * item.quantity * estimate.days)}</b></> : "Price to be confirmed by our team"}
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+      {selectedCount > 0 && estimate.priced > 0 && (
+        <div className="rent-total">
+          <span>Total for {estimate.days} day{estimate.days === 1 ? "" : "s"}{estimate.unpriced ? <small> + {estimate.unpriced} item{estimate.unpriced === 1 ? "" : "s"} to be priced</small> : ""}</span>
+          <strong>{formatShillings(estimate.total)}</strong>
         </div>
       )}
       {show("items") || <small className="rent-hint">{selectedCount ? `${selectedCount} item${selectedCount === 1 ? "" : "s"} selected — add more from the list above.` : "Pick from the list. Choose “Other” if your item isn’t listed."}</small>}
@@ -1294,7 +1352,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
       const data = await api("/rental-requests", {
         method: "POST",
         body: {
-          items: form.items.map(({ name, custom, quantity }) => ({ name, quantity, ...(name === "Other" ? { custom: custom.trim() } : {}) })),
+          items: rentPayloadItems(form.items),
           eventDate: form.eventDate,
           days: Number(form.days),
           area: form.area,
@@ -1335,6 +1393,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
                 <dt><Package size={14} /> Items</dt>
                 <dd>{order.items.map((item) => <span key={item.custom || item.name}>{itemDisplay(item)} × {item.quantity}</span>)}</dd>
               </div>
+              {order.total !== null && <div><dt><Banknote size={14} /> Total</dt><dd>{formatShillings(order.total)}</dd></div>}
             </dl>
             {sms.status === "sent" ? (
               <div className="rent-sms-card sent">
@@ -1365,7 +1424,7 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
                 </div>
               </div>
             )}
-            <p className="rent-next"><PhoneCall size={14} /> Our team will call you shortly to confirm availability and price.</p>
+            <p className="rent-next"><PhoneCall size={14} /> Our team will call you shortly to confirm {order.total === null ? "availability and price" : "your booking"}.</p>
             <button type="button" className="auth-primary" onClick={() => onSignedIn(session)}>
               View my requests <ArrowRight size={17} />
             </button>
@@ -1391,11 +1450,11 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
           <div className="auth-heading">
             <span className="auth-kicker">RENT NOW</span>
             <h1>Request your rental</h1>
-            <p>Tell us what you need. We’ll confirm the price and send you an SMS.</p>
+            <p>Choose what you need and see the price. We’ll call you to confirm and send you an SMS.</p>
           </div>
 
           <form className="auth-form rent-form" onSubmit={handleSubmit} noValidate>
-            <RentItemsSection items={form.items} onItems={setItems} submitted={submitted} error={errors.items} />
+            <RentItemsSection items={form.items} onItems={setItems} submitted={submitted} error={errors.items} days={form.days} />
 
             <RentWhenWhereFields form={form} update={update} invalid={invalid} show={show} />
 
@@ -1502,6 +1561,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [ask, confirmDialog] = useConfirm();
+  const estimate = rentEstimate(form.items, form.days);
 
   const { firstName: _first, lastName: _last, phone: _phone, agree: _agree, ...clientErrors } = validateRentRequest({ ...form, firstName: "x", lastName: "x", phone: "0700000000", agree: true });
   const errors = { ...clientErrors, ...Object.fromEntries(Object.entries(serverErrors).filter(([, message]) => message)) };
@@ -1527,7 +1587,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
     const itemCount = form.items.length;
     const ok = await ask({
       title: "Send this rental request?",
-      message: `${itemCount} item${itemCount === 1 ? "" : "s"} for ${formatDateRange(form.eventDate, form.days)} at ${form.place ? `${form.place}, ${form.area}` : form.area}. We will call you to confirm availability and price.`,
+      message: `${itemCount} item${itemCount === 1 ? "" : "s"} for ${formatDateRange(form.eventDate, form.days)} at ${form.place ? `${form.place}, ${form.area}` : form.area}.${estimate.priced ? ` Total ${formatShillings(estimate.total)}${estimate.unpriced ? " plus items to be priced" : ""}.` : ""} We will call you to confirm.`,
       confirmLabel: "Send request",
     });
     if (!ok) return;
@@ -1537,7 +1597,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
         method: "POST",
         token: session.token,
         body: {
-          items: form.items.map(({ name, custom, quantity }) => ({ name, quantity, ...(name === "Other" ? { custom: custom.trim() } : {}) })),
+          items: rentPayloadItems(form.items),
           eventDate: form.eventDate,
           days: Number(form.days),
           area: form.area,
@@ -1562,7 +1622,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
       <section className="panel cust-card cust-rent-done">
         <div className="auth-success-badge"><PackageCheck size={28} /></div>
         <h2>Request {order.id} received</h2>
-        <p>Our team will call you shortly to confirm availability and price.</p>
+        <p>Our team will call you shortly to confirm {order.total === null ? "availability and price" : "your booking"}.</p>
         <dl className="auth-summary">
           <div><dt><CalendarDays size={14} /> Event</dt><dd>{formatDateRange(order.eventDate, order.days)}</dd></div>
           <div><dt><MapPin size={14} /> Location</dt><dd>{order.place ? `${order.place}, ${order.area}` : order.area}</dd></div>
@@ -1570,6 +1630,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
             <dt><Package size={14} /> Items</dt>
             <dd>{order.items.map((item) => <span key={item.custom || item.name}>{itemDisplay(item)} × {item.quantity}</span>)}</dd>
           </div>
+          {order.total !== null && <div><dt><Banknote size={14} /> Total</dt><dd>{formatShillings(order.total)}</dd></div>}
         </dl>
         {sms.status === "sent" && <p className="cust-pay-hint"><MessageSquareText size={13} /> We sent the request details by SMS to {sms.phone}.</p>}
         <div className="cust-rent-actions">
@@ -1584,7 +1645,7 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
     <form className="cust-rent-form" onSubmit={handleSubmit} noValidate>
       <div className="cust-rent-main">
         <section className="panel cust-card rent-form auth-form">
-          <RentItemsSection items={form.items} onItems={setItems} submitted={submitted} error={errors.items} />
+          <RentItemsSection items={form.items} onItems={setItems} submitted={submitted} error={errors.items} days={form.days} />
         </section>
         <section className="panel cust-card rent-form auth-form">
           <RentWhenWhereFields form={form} update={update} invalid={invalid} show={show} />
@@ -1598,11 +1659,14 @@ function CustomerRentPage({ session, customer, onDone, onViewOrders, onCancel })
         <div className="cust-card-head"><span className="panel-kicker">YOUR REQUEST</span><h2>Summary</h2></div>
         <ul className="cust-rent-summary">
           <li><Package size={14} /><span>{form.items.length ? form.items.map((item) => `${item.custom || itemDisplay(item)} × ${item.quantity}`).join(", ") : "No items yet"}</span></li>
+          {form.items.length > 0 && (
+            <li className="cust-rent-total"><Banknote size={14} /><span>{estimate.priced ? <><b>{formatShillings(estimate.total)}</b>{estimate.unpriced ? ` + ${estimate.unpriced} item${estimate.unpriced === 1 ? "" : "s"} to be priced` : ""}</> : "Price to be confirmed"}</span></li>
+          )}
           <li><CalendarDays size={14} /><span>{form.eventDate ? formatDateRange(form.eventDate, form.days) : "Choose the event date"}</span></li>
           <li><MapPin size={14} /><span>{form.area ? (form.place ? `${form.place}, ${form.area}` : form.area) : "Choose your area"}</span></li>
           <li><UserRound size={14} /><span>{customer ? `${customer.firstName} ${customer.lastName} · ${customer.phone}` : session.name}</span></li>
         </ul>
-        <p className="cust-pay-hint"><Info size={13} /> Prices are confirmed by our team. We’ll call you and send an SMS once your booking is confirmed.</p>
+        <p className="cust-pay-hint"><Info size={13} /> Prices are today’s daily rates{estimate.unpriced ? "; items not on the list are priced by our team" : ""}. We’ll call you to confirm and send an SMS once your booking is confirmed.</p>
         {submitError && <p className="auth-error" role="alert"><CircleAlert size={14} /> {submitError}</p>}
         <button className="button button-primary cust-rent-send" type="submit" disabled={submitting}>
           {submitting ? <><LoaderCircle size={16} className="auth-spin" /> Sending…</> : <>Send request <Send size={15} /></>}
@@ -1676,7 +1740,7 @@ function CustomerHome({ session, onLogout }) {
     "Payments & receipts": "Payments we have received from you. View or print any receipt.",
     Invoices: "Invoices for your bookings. View, print or download them.",
     "How to pay": "Pay with any of these methods and quote your order or invoice number.",
-    "Rent now": "Tell us what you need. We’ll confirm availability and price, then call you.",
+    "Rent now": "Choose what you need and see the price. We’ll call you to confirm your booking.",
   };
 
   const loadingOrError = state.loading ? (
@@ -2600,67 +2664,82 @@ function InventoryAddModal({ onClose, onSave, categories }) {
               const Icon = categoryIcons[row.category] || Package;
               return (
                 <div className="inv-add-row" key={row.key}>
-                  <select
-                    className="inv-cell"
-                    value={row.category}
-                    onChange={(event) => setRows((current) => current.map((entry) => (entry.key === row.key ? { ...entry, category: event.target.value, dimensions: {} } : entry)))}
-                    aria-label={`Item ${index + 1} category`}
-                    autoFocus={index === rows.length - 1}
-                    aria-invalid={Boolean(errors.category)}
-                  >
-                    <option value="" disabled>Category</option>
-                    {categories.map((category) => <option key={category.id}>{category.name}</option>)}
-                  </select>
-                  <label className="inv-cell inv-name">
-                    <span className="inv-row-icon"><Icon size={15} /></span>
+                  <div className="inv-cell-wrap">
+                    <span className="inv-cell-label" aria-hidden="true">Category</span>
+                    <select
+                      className="inv-cell"
+                      value={row.category}
+                      onChange={(event) => setRows((current) => current.map((entry) => (entry.key === row.key ? { ...entry, category: event.target.value, dimensions: {} } : entry)))}
+                      aria-label={`Item ${index + 1} category`}
+                      autoFocus={index === rows.length - 1}
+                      aria-invalid={Boolean(errors.category)}
+                    >
+                      <option value="" disabled>Category</option>
+                      {categories.map((category) => <option key={category.id}>{category.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="inv-cell-wrap">
+                    <span className="inv-cell-label" aria-hidden="true">Item name</span>
+                    <label className="inv-cell inv-name">
+                      <span className="inv-row-icon"><Icon size={15} /></span>
+                      <input
+                        placeholder={`Item ${index + 1}, e.g. Wedding tent 10×20`}
+                        value={row.name}
+                        onChange={(event) => updateRow(row.key, "name", event.target.value)}
+                        aria-label={`Item ${index + 1} name`}
+                        aria-invalid={Boolean(errors.name)}
+                        maxLength={60}
+                      />
+                    </label>
+                  </div>
+                  <div className="inv-cell-wrap">
+                    <span className="inv-cell-label" aria-hidden="true">Daily rate (TSh)</span>
                     <input
-                      placeholder={`Item ${index + 1}, e.g. Wedding tent 10×20`}
-                      value={row.name}
-                      onChange={(event) => updateRow(row.key, "name", event.target.value)}
-                      aria-label={`Item ${index + 1} name`}
-                      aria-invalid={Boolean(errors.name)}
-                      maxLength={60}
+                      className="inv-cell"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={row.rate}
+                      onChange={(event) => updateRow(row.key, "rate", event.target.value)}
+                      aria-label={`Item ${index + 1} daily rate in TSh`}
+                      aria-invalid={Boolean(errors.rate)}
                     />
-                  </label>
-                  <input
-                    className="inv-cell"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={row.rate}
-                    onChange={(event) => updateRow(row.key, "rate", event.target.value)}
-                    aria-label={`Item ${index + 1} daily rate in TSh`}
-                    aria-invalid={Boolean(errors.rate)}
-                  />
-                  <input
-                    className="inv-cell"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={row.quantity}
-                    onChange={(event) => updateRow(row.key, "quantity", event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && index === rows.length - 1) {
-                        event.preventDefault();
-                        addRow(row);
-                      }
-                    }}
-                    aria-label={`Item ${index + 1} quantity`}
-                    aria-invalid={Boolean(errors.quantity)}
-                  />
-                  <input
-                    className="inv-cell"
-                    placeholder="Auto"
-                    value={row.sku}
-                    onChange={(event) => updateRow(row.key, "sku", event.target.value.toUpperCase())}
-                    aria-label={`Item ${index + 1} SKU`}
-                    aria-invalid={Boolean(errors.sku)}
-                    maxLength={20}
-                  />
+                  </div>
+                  <div className="inv-cell-wrap">
+                    <span className="inv-cell-label" aria-hidden="true">Quantity</span>
+                    <input
+                      className="inv-cell"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={row.quantity}
+                      onChange={(event) => updateRow(row.key, "quantity", event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && index === rows.length - 1) {
+                          event.preventDefault();
+                          addRow(row);
+                        }
+                      }}
+                      aria-label={`Item ${index + 1} quantity`}
+                      aria-invalid={Boolean(errors.quantity)}
+                    />
+                  </div>
+                  <div className="inv-cell-wrap">
+                    <span className="inv-cell-label" aria-hidden="true">SKU (optional)</span>
+                    <input
+                      className="inv-cell"
+                      placeholder="Auto"
+                      value={row.sku}
+                      onChange={(event) => updateRow(row.key, "sku", event.target.value.toUpperCase())}
+                      aria-label={`Item ${index + 1} SKU`}
+                      aria-invalid={Boolean(errors.sku)}
+                      maxLength={20}
+                    />
+                  </div>
                   <button
                     type="button"
                     className="inv-row-remove"
