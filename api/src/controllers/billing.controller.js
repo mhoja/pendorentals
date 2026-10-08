@@ -96,20 +96,34 @@ async function notifyInvoiceReady(invoice, order, settings) {
     }), { kind: 'invoice', orderId: order.dbId });
 }
 
-// POST /api/invoices/:id/sign — sign an unsigned invoice; it then appears in the customer's account.
+// POST /api/invoices/:id/sign — sign an unsigned invoice (it then appears in the customer's account),
+// or re-sign a signed one with the current business signature after the signature was changed.
 export async function signInvoice(request, response) {
     const row = await loadInvoice(Number(request.params.id));
     if (row.status === 'Cancelled') throw new HttpError(400, 'This invoice is cancelled.');
-    if (row.signed_at) throw new HttpError(409, `${row.code} is already signed by ${row.signed_name || 'a team member'}.`);
     const body = request.body || {};
     const signature = await requireBusinessSignature();
-    await query(`update invoices set signature_key = $2, signature_url = $3, signed_name = $4, signed_by = $5, signed_at = now()
-                  where id = $1 and signed_at is null`,
+    const resign = Boolean(row.signed_at);
+    if (resign && row.signature_key === signature.key) throw new HttpError(409, `${row.code} already has the current signature.`);
+    await query(`update invoices set signature_key = $2, signature_url = $3, signed_name = $4, signed_by = $5, signed_at = now() where id = $1`,
         [row.id, signature.key, signature.url, request.user.name, request.user.id]);
     const invoice = shapeInvoice(await loadInvoice(row.id));
     const order = invoice.orderCode ? await loadOrder(invoice.orderCode) : null;
-    const sms = order && body.notifyCustomer !== false ? await notifyInvoiceReady(invoice, order, await getSettings()) : null;
-    response.json({ invoice, sms: sms && { status: sms.status, error: sms.error } });
+    // The customer is told when an invoice first becomes visible, not when it is only re-signed.
+    const sms = order && !resign && body.notifyCustomer !== false ? await notifyInvoiceReady(invoice, order, await getSettings()) : null;
+    response.json({ invoice, resigned: resign, sms: sms && { status: sms.status, error: sms.error } });
+}
+
+// POST /api/invoices/resign — re-sign every signed (not cancelled) invoice that doesn't carry the current signature.
+// Unsigned invoices are left alone: signing those shares them with the customer, so it is done one by one.
+export async function resignInvoices(request, response) {
+    const signature = await requireBusinessSignature();
+    const { rowCount } = await query(
+        `update invoices set signature_key = $1, signature_url = $2, signed_name = $3, signed_by = $4, signed_at = now()
+          where signed_at is not null and status <> 'Cancelled' and signature_key is distinct from $1`,
+        [signature.key, signature.url, request.user.name, request.user.id],
+    );
+    response.json({ resigned: rowCount });
 }
 
 // GET /api/invoices/:id — everything needed to show, print or send the invoice.

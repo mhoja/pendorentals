@@ -31,6 +31,8 @@ export function shapeInvoice(row) {
         signed: Boolean(row.signed_at),
         signedName: row.signed_name || '',
         signedAt: row.signed_at,
+        // Which business signature it carries (S3 key); null on invoices signed before signatures were uploaded.
+        signatureKey: row.signature_key || null,
     };
 }
 

@@ -5169,13 +5169,19 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
     setToast(result.sms.status === "sent" ? `Invoice sent to ${invoice.phone}` : `SMS not sent (${smsNotSentReason(result.sms)})`);
   });
 
+  const currentKey = businessSignature.signature?.key;
+  // Signed with an older business signature, or before signatures existed: can be re-signed with the current one.
+  const needsResign = Boolean(invoice?.signed && currentKey && invoice.signatureKey !== currentKey);
+
   const sign = (event) => {
     event.preventDefault();
     act("sign", async () => {
       const result = await call(`/invoices/${invoice.id}/sign`, { method: "POST", body: { notifyCustomer: signNotify } });
       setSigning(false);
       refresh();
-      setToast(`${invoice.code} signed — now visible to the customer${result.sms ? (result.sms.status === "sent" ? " · SMS sent" : ` · SMS not sent (${smsNotSentReason(result.sms)})`) : ""}`);
+      setToast(result.resigned
+        ? `${invoice.code} re-signed with the current signature`
+        : `${invoice.code} signed — now visible to the customer${result.sms ? (result.sms.status === "sent" ? " · SMS sent" : ` · SMS not sent (${smsNotSentReason(result.sms)})`) : ""}`);
     });
   };
 
@@ -5214,6 +5220,7 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
               <button type="button" className="button button-secondary" onClick={() => printInvoice(data, settings)}><Printer size={14} /> Print</button>
               <button type="button" className="button button-secondary" onClick={() => act("pdf", () => downloadInvoicePdf(data, settings))} disabled={busy === "pdf"}><Download size={14} /> PDF</button>
               {manage && invoice.status !== "Cancelled" && !invoice.signed && <button type="button" className="button button-primary" onClick={() => setSigning((value) => !value)}><PenLine size={14} /> Sign invoice</button>}
+              {manage && invoice.status !== "Cancelled" && needsResign && <button type="button" className="button button-secondary" onClick={() => setSigning((value) => !value)}><PenLine size={14} /> Re-sign</button>}
               {manage && invoice.status !== "Cancelled" && invoice.signed && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
               {manage && invoice.status !== "Cancelled" && <button type="button" className="button button-secondary" onClick={() => { setForm({ dueOn: String(invoice.dueOn).slice(0, 10), notes: invoice.notes }); setEditing((value) => !value); }}><PencilLine size={14} /> Edit</button>}
               {onRecordPayment && hasPerm(session, "payments.record") && invoice.balance > 0 && invoice.status !== "Cancelled" && <button type="button" className="button button-primary" onClick={() => onRecordPayment(invoice, refresh)}><Banknote size={14} /> Record payment</button>}
@@ -5223,16 +5230,21 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
           {!invoice.signed && invoice.status !== "Cancelled" && !signing && (
             <p className="inv-unsigned-note"><CircleAlert size={14} /> Not signed — the customer can’t see this invoice yet.{manage ? " Sign it to share it." : ""}</p>
           )}
+          {needsResign && invoice.status !== "Cancelled" && !signing && (
+            <p className="inv-unsigned-note info"><Info size={14} /> {invoice.signatureKey ? "Signed with an older business signature." : "Signed before the business signature was uploaded, so no signature is printed."}{manage ? " Re-sign it to use the current signature." : ""}</p>
+          )}
           {signing && (
             <form className="inv-sign-form" onSubmit={sign}>
               {businessSignature.signature
                 ? <SignaturePreview signature={businessSignature.signature} signer={session.name} />
                 : <p className="team-form-note warn"><CircleAlert size={13} /> {businessSignature.status === "loading" ? "Loading the business signature…" : "No business signature yet — upload it in Settings → Business profile, then sign."}</p>}
               <div className="inv-sign-side">
-                <label className="auth-check ws-check"><input type="checkbox" checked={signNotify} onChange={(event) => setSignNotify(event.target.checked)} /><span>SMS the customer that it’s ready in their account</span></label>
+                {invoice.signed
+                  ? <p className="team-form-note"><Info size={13} /> The customer already sees this invoice; only the signature changes. No SMS is sent.</p>
+                  : <label className="auth-check ws-check"><input type="checkbox" checked={signNotify} onChange={(event) => setSignNotify(event.target.checked)} /><span>SMS the customer that it’s ready in their account</span></label>}
                 <div className="inv-sign-buttons">
                   <button type="button" className="button button-secondary" onClick={() => setSigning(false)}>Cancel</button>
-                  <button type="submit" className="button button-primary" disabled={busy === "sign" || !businessSignature.signature}>{busy === "sign" ? <><LoaderCircle size={14} className="auth-spin" /> Signing…</> : <><PenLine size={14} /> Sign &amp; share</>}</button>
+                  <button type="submit" className="button button-primary" disabled={busy === "sign" || !businessSignature.signature}>{busy === "sign" ? <><LoaderCircle size={14} className="auth-spin" /> Signing…</> : invoice.signed ? <><PenLine size={14} /> Re-sign</> : <><PenLine size={14} /> Sign &amp; share</>}</button>
                 </div>
               </div>
             </form>
@@ -5272,8 +5284,9 @@ function SignaturePreview({ signature, signer }) {
 
 // Settings → Business profile: upload, replace or remove the business signature.
 function BusinessSignatureCard({ admin, onToast }) {
-  const { call } = useApi();
-  const { signature, status, error: loadError, setData } = useBusinessSignature();
+  const { call, session } = useApi();
+  const canManageInvoices = hasPerm(session, "invoices.manage");
+  const { signature, status, error: loadError, setData, reload } = useBusinessSignature();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [ask, confirmDialog] = useConfirm();
@@ -5308,6 +5321,21 @@ function BusinessSignatureCard({ admin, onToast }) {
     } finally {
       setBusy("");
       if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function resignAll() {
+    if (!(await ask({ title: `Re-sign ${signature.outdated} invoice${signature.outdated === 1 ? "" : "s"}?`, message: "They get the current business signature, signed by you today. Customers already see these invoices; no SMS is sent. Unsigned invoices are not touched.", confirmLabel: "Yes, re-sign" }))) return;
+    setBusy("resign");
+    setError("");
+    try {
+      const data = await call("/invoices/resign", { method: "POST" });
+      reload();
+      onToast(`${data.resigned} invoice${data.resigned === 1 ? "" : "s"} re-signed`);
+    } catch (resignError) {
+      setError(resignError.message);
+    } finally {
+      setBusy("");
     }
   }
 
@@ -5348,6 +5376,13 @@ function BusinessSignatureCard({ admin, onToast }) {
             </div>
           )}
           <small className="set-hint">PNG, JPG or WebP, up to 1 MB.</small>
+          {signature && signature.outdated > 0 && (
+            <div className="set-resign">
+              <span><Info size={13} /> {signature.outdated} signed invoice{signature.outdated === 1 ? "" : "s"} still {signature.outdated === 1 ? "has" : "have"} an older signature or none.</span>
+              {canManageInvoices && <button type="button" className="button button-secondary" onClick={resignAll} disabled={Boolean(busy)}>{busy === "resign" ? <><LoaderCircle size={14} className="auth-spin" /> Re-signing…</> : <><PenLine size={14} /> Re-sign {signature.outdated === 1 ? "it" : `all ${signature.outdated}`}</>}</button>}
+            </div>
+          )}
+          {signature && signature.unsigned > 0 && <small className="set-hint">{signature.unsigned} invoice{signature.unsigned === 1 ? " is" : "s are"} not signed yet — sign {signature.unsigned === 1 ? "it" : "them"} from Invoices to share with the customer.</small>}
           {(error || loadError) && <small className="set-error"><CircleAlert size={12} /> {error || loadError}</small>}
         </div>
       </div>
@@ -5453,6 +5488,9 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
   const { call, session } = useApi();
   const perm = (key) => hasPerm(session, key);
   const invoices = useResource("/invoices");
+  const businessSignature = useBusinessSignature();
+  const currentKey = businessSignature.signature?.key;
+  const oldSignature = (row) => Boolean(row.signed && currentKey && row.signatureKey !== currentKey && row.status !== "Cancelled");
   const [status, setStatus] = useState("All");
   const [search, setSearch] = useState("");
   const issued = useDateRange();
@@ -5542,14 +5580,14 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
                     </div>
                   );
                 } },
-                { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill>{!row.signed && row.status !== "Cancelled" && <small className="inv-unsigned-tag"><PenLine size={11} /> Not signed</small>}</div> },
+                { key: "status", label: "STATUS", render: (row) => <div className="ws-two-line"><StatusPill tone={invoiceTone(row.status)}>{row.status}</StatusPill>{!row.signed && row.status !== "Cancelled" && <small className="inv-unsigned-tag"><PenLine size={11} /> Not signed</small>}{oldSignature(row) && <small className="inv-unsigned-tag old"><PenLine size={11} /> {row.signatureKey ? "Old signature" : "No signature image"}</small>}</div> },
               ]}
               rows={rows}
               itemLabel="invoices"
               totalCount={list.length}
               rowKey="id"
               renderActions={(row) => [
-                { label: row.signed || row.status === "Cancelled" || !perm("invoices.manage") ? "View invoice" : "View & sign", onClick: () => setViewing(row.id) },
+                { label: !perm("invoices.manage") || row.status === "Cancelled" ? "View invoice" : !row.signed ? "View & sign" : oldSignature(row) ? "View & re-sign" : "View invoice", onClick: () => setViewing(row.id) },
                 { label: "Print", onClick: () => withDetail(row, (data) => printInvoice(data, settings)) },
                 { label: "Download PDF", onClick: () => withDetail(row, (data) => downloadInvoicePdf(data, settings)) },
                 ...(perm("invoices.manage") && row.status !== "Cancelled" && row.signed ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {

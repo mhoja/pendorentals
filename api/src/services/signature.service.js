@@ -46,5 +46,11 @@ export async function businessSignatureView() {
     const signature = await getBusinessSignature();
     if (!signature) return null;
     const image = await readFileAsDataUrl(signature.key).catch(() => null);
-    return { url: signature.url, uploadedAt: signature.uploadedAt, uploadedBy: signature.uploadedBy, image };
+    const { rows: [counts] } = await query(
+        `select count(*) filter (where signed_at is not null and signature_key is distinct from $1)::int as outdated,
+                count(*) filter (where signed_at is null)::int as unsigned
+           from invoices where status <> 'Cancelled'`,
+        [signature.key],
+    );
+    return { key: signature.key, url: signature.url, uploadedAt: signature.uploadedAt, uploadedBy: signature.uploadedBy, image, outdated: counts.outdated, unsigned: counts.unsigned };
 }

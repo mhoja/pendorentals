@@ -12549,3 +12549,9 @@ body {
 }
 .set-signature-actions .button.cust-danger,
 .set-signature-actions .button.cust-danger svg { border-color: #f3c9c5; background: #fff; color: #c8423a !important; }
+.inv-unsigned-note.info { border-bottom-color: #d6e4fb; background: #f1f6ff; color: #1d4ed8; }
+.inv-unsigned-tag.old { color: #1d4ed8 !important; }
+.set-resign { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border: 1px solid #d6e4fb; border-radius: 10px; background: #f1f6ff; color: #1d4ed8; font-size: 12.5px; font-weight: 600; }
+.set-resign span { display: inline-flex; align-items: center; gap: 6px; }
+.set-resign svg { color: inherit; }
+.set-resign .button { height: 32px; gap: 6px; padding: 0 12px; font: 700 12px 'DM Sans', sans-serif; }
