@@ -1982,9 +1982,9 @@ orders.length === 0 ? (
                         <small>{invoice.balance ? `${formatShillings(invoice.paid)} paid · ${formatShillings(invoice.balance)} to pay` : "Paid in full"}</small>
                       </span>
                     </div>
-                    <span className={`status-pill ${invoiceTone(invoice.status)}`}><i />{invoice.status}</span>
-                    <div className="cust-row-actions">
-                      <button type="button" className="button button-primary" onClick={() => setInvoiceOpen(invoice.id)}><Eye size={14} /> View & print</button>
+                    <div className="cust-inv-end">
+                      <span className={`status-pill ${invoiceTone(invoice.status)}`}><i />{invoice.status}</span>
+                      <button type="button" className="cust-inv-view" onClick={() => setInvoiceOpen(invoice.id)} aria-label={`View ${invoice.code}`}><Eye size={13} /> View</button>
                     </div>
                   </article>
                 ))}
