@@ -155,6 +155,57 @@ function Metric({ icon: Icon, label, value, change, kind, color, caption, help }
   );
 }
 
+// ===== Saving PDFs on every device =====
+// iPhone/iPad Safari, apps added to the home screen and in-app browsers (WhatsApp, Facebook…) ignore the
+// normal "download" link, so there the PDF opens in a new tab instead, where it can be saved or shared.
+function pdfOpensInTab() {
+  const agent = navigator.userAgent || "";
+  const ios = /iPad|iPhone|iPod/.test(agent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)/.test(agent);
+  const standalone = window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone === true;
+  return ios || inApp || standalone;
+}
+
+// Call this right at the tap (before anything is awaited) so the browser allows the new tab.
+function openPdfTab() {
+  if (!pdfOpensInTab()) return null;
+  const tab = window.open("", "_blank");
+  if (tab) tab.document.write('<title>Preparing PDF…</title><p style="font:16px sans-serif;padding:24px;color:#41536f">Preparing the PDF…</p>');
+  return tab;
+}
+
+function savePdf(pdf, fileName, tab) {
+  const url = URL.createObjectURL(pdf.output("blob"));
+  if (tab && !tab.closed) {
+    tab.location.href = url;
+    return;
+  }
+  if (pdfOpensInTab()) {
+    // The new tab was blocked: show the PDF here (Back returns to the app).
+    window.location.href = url;
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Runs a PDF builder from a button: opens the tab when needed, and closes it again if building fails.
+async function runPdf(build) {
+  const tab = openPdfTab();
+  try {
+    await build(tab);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
+}
+
 async function downloadTableReport(title, columns, rows, format, options = {}) {
   const fileName = `pendo-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${new Date().toISOString().slice(0, 10)}`;
 
@@ -223,7 +274,7 @@ async function downloadTableReport(title, columns, rows, format, options = {}) {
     headStyles: { fillColor: [38, 116, 237] },
     footStyles: { fillColor: [238, 245, 255], textColor: [16, 48, 94], fontStyle: "bold" },
   });
-  pdfDocument.save(`${fileName}.pdf`);
+  savePdf(pdfDocument, `${fileName}.pdf`, options.tab);
 }
 
 const BUSINESS_INFO = {
@@ -752,7 +803,7 @@ function printReceipts(payments) {
   printHtml(`<!doctype html><html><head><meta charset="utf-8" /><title>Pendo receipts</title><style>${receiptPrintStyles}</style></head><body>${payments.map(receiptMarkup).join("")}</body></html>`);
 }
 
-async function downloadReceiptPdf(payment) {
+async function downloadReceiptPdf(payment, tab) {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ format: "a5" });
   const width = pdf.internal.pageSize.getWidth();
@@ -821,7 +872,7 @@ async function downloadReceiptPdf(payment) {
   pdf.setTextColor(107, 122, 144);
   pdf.text("Thank you for renting with Pendo. Please keep this receipt for your records.", width / 2, 145, { align: "center" });
   pdf.text(`Generated ${new Date().toLocaleString("en-US")}`, width / 2, 150, { align: "center" });
-  pdf.save(`pendo-receipt-${payment.receipt.toLowerCase()}.pdf`);
+  savePdf(pdf, `pendo-receipt-${payment.receipt.toLowerCase()}.pdf`, tab);
 }
 
 const SESSION_KEY = "pendo-session";
@@ -1517,6 +1568,10 @@ function RentNowScreen({ onBack, onSignedIn, prefill, backLabel = "Back to sign 
 function CustomerInvoice({ session, invoiceId, onClose }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  // Load the PDF library while the invoice is on screen, so tapping PDF is quick.
+  useEffect(() => { import("jspdf").catch(() => {}); import("jspdf-autotable").catch(() => {}); }, []);
   const frameRef = useRef(null);
   useEffect(() => {
     api(`/my/invoices/${invoiceId}`, { token: session.token }).then(setDetail).catch((loadError) => setError(loadError.message));
@@ -1537,9 +1592,16 @@ function CustomerInvoice({ session, invoiceId, onClose }) {
               <span>Total <b>{formatShillings(detail.invoice.amount)}</b> · Paid <b>{formatShillings(detail.invoice.paid)}</b> · {detail.invoice.balance ? <>Balance <b className="cust-due">{formatShillings(detail.invoice.balance)}</b></> : <b className="ord-settled">Paid in full</b>}</span>
               <span>
                 <button type="button" className="button button-secondary" onClick={() => printInvoice(detail, detail.settings)}><Printer size={14} /> Print</button>
-                <button type="button" className="button button-primary" onClick={() => downloadInvoicePdf(detail, detail.settings)}><Download size={14} /> PDF</button>
+                <button type="button" className="button button-primary" disabled={pdfBusy} onClick={() => {
+                  setPdfBusy(true);
+                  setPdfError("");
+                  runPdf((tab) => downloadInvoicePdf(detail, detail.settings, tab))
+                    .catch(() => setPdfError("Couldn’t create the PDF. Use Print and choose “Save as PDF”, or try again."))
+                    .finally(() => setPdfBusy(false));
+                }}>{pdfBusy ? <><LoaderCircle size={14} className="auth-spin" /> Preparing…</> : <><Download size={14} /> PDF</>}</button>
               </span>
             </div>
+            {pdfError && <p className="inv-form-error cust-invoice-error"><CircleAlert size={14} /> {pdfError}</p>}
             <iframe ref={frameRef} className="inv-view-frame" title={`Invoice ${detail.invoice.code}`} srcDoc={html}
               onLoad={() => fitFrameToContent(frameRef.current)} />
           </>
@@ -3485,8 +3547,9 @@ function ExportMenu({ title, columns, rows, disabled }) {
   }, [open]);
   async function run(format) {
     setBusy(format);
+    const tab = format === "pdf" ? openPdfTab() : null;
     try {
-      await downloadTableReport(title, columns, rows, format, { subtitle: `${rows.length} rows · Generated ${new Date().toLocaleString("en-US")}` });
+      await downloadTableReport(title, columns, rows, format, { tab, subtitle: `${rows.length} rows · Generated ${new Date().toLocaleString("en-US")}` });
       setOpen(false);
     } finally {
       setBusy("");
@@ -4975,7 +5038,7 @@ function printInvoice(detail, settings) {
   printHtml(invoiceHtml(detail, settings));
 }
 
-async function downloadInvoicePdf(detail, settings = {}) {
+async function downloadInvoicePdf(detail, settings = {}, tab = null) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const c = invoiceContent(detail, settings);
   const { invoice } = c;
@@ -5125,7 +5188,7 @@ async function downloadInvoicePdf(detail, settings = {}) {
   pdf.line(left, y, right, y);
   pdf.setLineDashPattern([], 0);
   text(`Thank you for renting with ${c.business.name}. Questions? Call ${c.business.phone}.`, width / 2, y + 6, { size: 8, color: muted, align: "center" });
-  pdf.save(`${c.business.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-invoice-${invoice.code.toLowerCase()}.pdf`);
+  savePdf(pdf, `${c.business.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-invoice-${invoice.code.toLowerCase()}.pdf`, tab);
 }
 
 // Invoice viewer with print, PDF, SMS, payment, edit and cancel.
@@ -5218,7 +5281,7 @@ function InvoiceView({ invoiceId, onClose, onChanged, onRecordPayment }) {
             </div>
             <div className="inv-view-actions">
               <button type="button" className="button button-secondary" onClick={() => printInvoice(data, settings)}><Printer size={14} /> Print</button>
-              <button type="button" className="button button-secondary" onClick={() => act("pdf", () => downloadInvoicePdf(data, settings))} disabled={busy === "pdf"}><Download size={14} /> PDF</button>
+              <button type="button" className="button button-secondary" onClick={() => act("pdf", () => runPdf((tab) => downloadInvoicePdf(data, settings, tab)))} disabled={busy === "pdf"}><Download size={14} /> PDF</button>
               {manage && invoice.status !== "Cancelled" && !invoice.signed && <button type="button" className="button button-primary" onClick={() => setSigning((value) => !value)}><PenLine size={14} /> Sign invoice</button>}
               {manage && invoice.status !== "Cancelled" && needsResign && <button type="button" className="button button-secondary" onClick={() => setSigning((value) => !value)}><PenLine size={14} /> Re-sign</button>}
               {manage && invoice.status !== "Cancelled" && invoice.signed && <button type="button" className="button button-secondary" onClick={sendSms} disabled={busy === "sms"}><Send size={14} /> Send SMS</button>}
@@ -5589,7 +5652,7 @@ function InvoicesPage({ query, settings, addOpen, setAddOpen }) {
               renderActions={(row) => [
                 { label: !perm("invoices.manage") || row.status === "Cancelled" ? "View invoice" : !row.signed ? "View & sign" : oldSignature(row) ? "View & re-sign" : "View invoice", onClick: () => setViewing(row.id) },
                 { label: "Print", onClick: () => withDetail(row, (data) => printInvoice(data, settings)) },
-                { label: "Download PDF", onClick: () => withDetail(row, (data) => downloadInvoicePdf(data, settings)) },
+                { label: "Download PDF", onClick: () => { const tab = openPdfTab(); withDetail(row, (data) => downloadInvoicePdf(data, settings, tab)).finally(() => { if (tab && tab.location.href === "about:blank") tab.close(); }); } },
                 ...(perm("invoices.manage") && row.status !== "Cancelled" && row.signed ? [{ label: "Send by SMS", confirm: { title: `SMS ${row.code} to ${row.customer}?`, message: `${row.phone} gets the invoice total, amount paid${row.balance > 0 ? `, the balance of ${formatShillings(row.balance)} and how to pay` : ""}.`, confirmLabel: "Yes, send SMS" }, onClick: async () => {
                   try {
                     const result = await call(`/invoices/${row.id}/send`, { method: "POST" });
@@ -6986,6 +7049,7 @@ function ReportDetail({ report, onBack, onSwitch }) {
   async function exportReport(format) {
     setExporting(format);
     setExportError("");
+    const tab = format === "pdf" ? openPdfTab() : null;
     try {
       await downloadTableReport(
         report.title,
@@ -6993,12 +7057,14 @@ function ReportDetail({ report, onBack, onSwitch }) {
         sortedRows.map((row) => columns.map((column) => cellText(row[column.key], column))),
         format,
         {
+          tab,
           subtitle: `${activeFilters.length ? activeFilters.join(" · ") : "All records"} · ${sortedRows.length} rows · Generated ${new Date().toLocaleString("en-US")}`,
           footer: totalsRow,
         },
       );
       setExportOpen(false);
     } catch {
+      tab?.close();
       setExportError("Export failed. Please try again.");
     } finally {
       setExporting("");
@@ -7392,7 +7458,7 @@ function ReceiptPreview({ payment, onClose }) {
             onClick={async () => {
               setDownloading(true);
               try {
-                await downloadReceiptPdf(payment);
+                await runPdf((tab) => downloadReceiptPdf(payment, tab));
               } finally {
                 setDownloading(false);
               }
